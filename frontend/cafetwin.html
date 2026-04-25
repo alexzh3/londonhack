@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1440, initial-scale=1" />
+  <title>cafetwin · scenario simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="cafetwin.css?v=5" />
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="app-state.jsx"></script>
+  <script type="text/babel" src="cafe-iso.jsx"></script>
+  <script type="text/babel" src="app-panels.jsx"></script>
+  <script type="text/babel" src="app-canvas.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "activeScenario": "+2.baristas",
+      "compareMode": true,
+      "darkTheme": false
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      // Editable scenario state — start from presets, allow override per scenario
+      const [overrides, setOverrides] = React.useState({}); // {name: {seats, baristas, footfall}}
+      const [extraScenarios, setExtraScenarios] = React.useState([]); // user-created
+      const [activeName, setActiveName] = React.useState(t.activeScenario);
+      React.useEffect(() => { setActiveName(t.activeScenario); }, [t.activeScenario]);
+
+      // Validate activeName on mount — if it points to an extra scenario that
+      // didn't survive reload, snap back to baseline.
+      React.useEffect(() => {
+        if (!SCENARIO_PRESETS[t.activeScenario]) {
+          setActiveName("baseline");
+          setTweak("activeScenario", "baseline");
+        }
+      }, []); // mount-only
+
+      const [split, setSplit] = React.useState(t.compareMode);
+      React.useEffect(() => { setSplit(t.compareMode); }, [t.compareMode]);
+
+      const [layers, setLayers] = React.useState({ geom: true, people: true, heat: false, paths: false, grid: false });
+      const [zoom, setZoom] = React.useState(1);
+
+      // Sim time control
+      const DAY_LENGTH = 90; // seconds of real time = 1 simulated day @ 1×
+      const [simTime, setSimTime] = React.useState(0);
+      const [running, setRunning] = React.useState(true);
+      const [speed, setSpeed] = React.useState(4);
+      React.useEffect(() => {
+        if (!running) return;
+        let raf;
+        let last = performance.now();
+        const loop = (now) => {
+          const dt = Math.min(0.1, (now - last) / 1000) * speed;
+          last = now;
+          setSimTime(t => {
+            const nt = t + dt;
+            return nt >= DAY_LENGTH ? 0 : nt;
+          });
+          raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+      }, [running, speed]);
+
+      const [draft, setDraft] = React.useState("");
+
+      // Modals
+      const [openModal, setOpenModal] = React.useState(null); // 'new' | 'session' | 'trace' | 'kpi' | 'inspect'
+      const [inspectName, setInspectName] = React.useState(null);
+      const [newDraft, setNewDraft] = React.useState({ name: "", seats: 30, baristas: 3, footfall: 80, style: "default" });
+
+      // Build scenarios with overrides + extras
+      const buildScenario = (preset) => {
+        const ov = overrides[preset.name] || {};
+        const merged = { ...preset, ...ov };
+        return { ...merged, kpis: computeKpis(merged) };
+      };
+      const scenarios = React.useMemo(() => {
+        const base = SCENARIO_ORDER.map((n) => buildScenario(SCENARIO_PRESETS[n]));
+        const extras = extraScenarios.map((s, i) => buildScenario({ ...s, id: String(5 + i).padStart(2, "0") }));
+        return [...base, ...extras];
+      }, [overrides, extraScenarios]);
+
+      const baseScn   = scenarios.find((s) => s.name === "baseline");
+      const activeScn = scenarios.find((s) => s.name === activeName) || baseScn;
+
+      const updateActive = (patch) => {
+        setOverrides((prev) => ({ ...prev, [activeName]: { ...(prev[activeName] || {}), ...patch } }));
+      };
+
+      const onSelectScenario = (name) => {
+        setActiveName(name);
+        setTweak("activeScenario", name);
+      };
+      const onOpenScenario = (name) => { setInspectName(name); setOpenModal("inspect"); };
+
+      const onSendChat = (text) => {
+        // Heuristic: spawn a new scenario from the prompt
+        const lower = text.toLowerCase();
+        const pulled = {
+          name: lower.replace(/[^a-z0-9]+/g, ".").slice(0, 22) || "custom",
+          seats: lower.includes("half") ? Math.max(6, Math.floor(activeScn.seats / 2)) : (lower.match(/(\d+)\s*seat/) ? Number(RegExp.$1) : activeScn.seats),
+          baristas: lower.match(/(\d+)\s*barista/) ? Number(RegExp.$1) : (lower.includes("more staff") ? activeScn.baristas + 2 : activeScn.baristas),
+          footfall: lower.includes("rush") || lower.includes("busy") ? activeScn.footfall * 2 : activeScn.footfall,
+          style: lower.includes("brooklyn") ? "brooklyn" : lower.includes("tokyo") ? "tokyo" : activeScn.style,
+          hours: activeScn.hours,
+        };
+        // dedupe name
+        let nm = pulled.name; let i = 1;
+        while (scenarios.find((s) => s.name === nm)) { nm = pulled.name + "." + (++i); }
+        setExtraScenarios((es) => [...es, { ...pulled, name: nm }]);
+        setActiveName(nm);
+        setTweak("activeScenario", nm);
+        setDraft("");
+      };
+
+      return (
+        <div className="app" data-screen-label="01 cafetwin · scenario sim">
+          <TopBar scenarioName={activeName}
+            onOpenSession={() => setOpenModal("session")}
+            onOpenTrace={() => setOpenModal("trace")} />
+          <div className="app-mid">
+            <AgentFlow
+              active={activeScn} base={baseScn} scenario={activeScn}
+              onTweakSeats={(v) => updateActive({ seats: v })}
+              onTweakBaristas={(v) => updateActive({ baristas: v })}
+              onTweakFootfall={(v) => updateActive({ footfall: v })}
+              onOpenKpi={() => setOpenModal("kpi")}
+            />
+            <MainCanvas
+              split={split}
+              setSplit={(v) => { setSplit(v); setTweak("compareMode", v); }}
+              active={activeScn} base={baseScn}
+              layers={layers} setLayers={setLayers}
+              zoom={zoom} setZoom={setZoom}
+              simTime={simTime} setSimTime={setSimTime}
+              running={running} setRunning={setRunning}
+              speed={speed} setSpeed={setSpeed}
+              dayLength={DAY_LENGTH}
+            />
+            <ChatPanel scenario={activeScn} kpis={activeScn.kpis} base={baseScn}
+              draft={draft} setDraft={setDraft} onSend={onSendChat} />
+          </div>
+          <ScenarioRail scenarios={scenarios} base={baseScn} activeName={activeName}
+            onSelect={onSelectScenario} onOpen={onOpenScenario}
+            onNew={() => setOpenModal("new")} />
+
+          {/* ─── Modals ─── */}
+          <Modal open={openModal === "new"} onClose={() => setOpenModal(null)}
+            title="new scenario" sub="define a what-if · KPIs recompute live"
+            footer={
+              <>
+                <button className="btn-ghost" onClick={() => setOpenModal(null)}>cancel</button>
+                <button className="btn-primary" onClick={() => {
+                  let nm = (newDraft.name || "custom").trim().replace(/\s+/g, ".");
+                  if (!nm) nm = "custom";
+                  let final = nm; let i = 1;
+                  while (scenarios.find((s) => s.name === final)) { final = nm + "." + (++i); }
+                  setExtraScenarios((es) => [...es, { ...newDraft, name: final, hours: 12 }]);
+                  setActiveName(final); setTweak("activeScenario", final);
+                  setOpenModal(null); setNewDraft({ name: "", seats: 30, baristas: 3, footfall: 80, style: "default" });
+                }}>spawn scenario</button>
+              </>
+            }>
+            <div className="form-grid">
+              <label className="form-row">
+                <span>name</span>
+                <input value={newDraft.name} onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} placeholder="rush.hour" />
+              </label>
+              <label className="form-row">
+                <span>style</span>
+                <select value={newDraft.style} onChange={(e) => setNewDraft({ ...newDraft, style: e.target.value })}>
+                  <option value="default">default</option>
+                  <option value="brooklyn">brooklyn</option>
+                  <option value="tokyo">tokyo</option>
+                </select>
+              </label>
+              <ControlSliderField label="seats" value={newDraft.seats} min={6} max={240}
+                onChange={(v) => setNewDraft({ ...newDraft, seats: v })} />
+              <ControlSliderField label="baristas" value={newDraft.baristas} min={1} max={20}
+                onChange={(v) => setNewDraft({ ...newDraft, baristas: v })} />
+              <ControlSliderField label="footfall.λ" value={newDraft.footfall} min={0} max={600} unit="/hr"
+                onChange={(v) => setNewDraft({ ...newDraft, footfall: v })} />
+              <div className="form-preview">
+                <div className="form-preview-hd">predicted KPIs</div>
+                <PreviewKpis draft={newDraft} base={baseScn} />
+              </div>
+            </div>
+          </Modal>
+
+          <Modal open={openModal === "kpi"} onClose={() => setOpenModal(null)}
+            title={`kpi report · ${activeName}`} sub={`vs baseline · scenario.id #${activeScn.id}`}>
+            <KpiReport active={activeScn} base={baseScn} />
+          </Modal>
+
+          <Modal open={openModal === "inspect"} onClose={() => setOpenModal(null)}
+            title={`inspect · ${inspectName}`} sub="full scenario detail"
+            footer={
+              inspectName !== "baseline" && extraScenarios.find(s => s.name === inspectName) ? (
+                <>
+                  <button className="btn-ghost" onClick={() => setOpenModal(null)}>close</button>
+                  <button className="btn-danger" onClick={() => {
+                    setExtraScenarios((es) => es.filter(s => s.name !== inspectName));
+                    if (activeName === inspectName) onSelectScenario("baseline");
+                    setOpenModal(null);
+                  }}>delete scenario</button>
+                </>
+              ) : (
+                <button className="btn-primary" onClick={() => { onSelectScenario(inspectName); setOpenModal(null); }}>activate</button>
+              )
+            }>
+            {inspectName && (() => {
+              const s = scenarios.find((x) => x.name === inspectName);
+              return s ? <KpiReport active={s} base={baseScn} /> : null;
+            })()}
+          </Modal>
+
+          <Modal open={openModal === "session"} onClose={() => setOpenModal(null)}
+            title="session.replay" sub="04:12 captured · 7 events">
+            <div className="session-list">
+              {[
+                { t: "00:08", e: "vision.scan", d: "cafe_floor.mp4 · 6t/18s/2b", ok: true },
+                { t: "01:14", e: "scenario.spawn", d: "10x.size", ok: true },
+                { t: "01:48", e: "kpi.compute", d: "throughput +312%", ok: true },
+                { t: "02:30", e: "style.transfer", d: "brooklyn", running: true },
+                { t: "03:05", e: "optimize.layout", d: "objective: minimize p95_wait", running: true },
+                { t: "03:51", e: "scenario.spawn", d: "+2.baristas", ok: true },
+                { t: "04:12", e: "user.interrupt", d: "switch active → 10x", info: true },
+              ].map((x, i) => (
+                <div key={i} className="session-row">
+                  <span className="session-t">{x.t}</span>
+                  <span className={`session-pill ${x.ok ? "ok" : x.running ? "warn" : "info"}`}>{x.ok ? "ok" : x.running ? "running" : "info"}</span>
+                  <span className="session-e">{x.e}</span>
+                  <span className="session-d">{x.d}</span>
+                </div>
+              ))}
+            </div>
+          </Modal>
+
+          <Modal open={openModal === "trace"} onClose={() => setOpenModal(null)}
+            title="logfire ↗ trace#a4f1c0e" sub="span tree · 14 spans · 8.42s wall">
+            <pre className="trace-tree">{`▾ session.replay                              8.42s
+  ▾ vision.scan                               1.42s   ok
+    │ inputs: cafe_floor.mp4 (24.8MB)
+    │ tools: yolo-x6, plan.lift
+    └ outputs: { tables: 6, chairs: 18, baristas: 2 }
+  ▾ kpi.compute (×3)                          1.83s   ok
+    │ models: claude-haiku, kpi.regression
+    └ outputs: { throughput: 12, wait: 4:31, ... }
+  ▾ pattern.detect                            2.10s   ok
+    └ outputs: { peak: 09:00-11:30, ratio: 7.3 }
+  ▾ scenario.spawn (×3)                       0.84s   ok
+    │ scenarios: [10x.size, brooklyn, +2.baristas]
+  ▾ optimize.layout                           — running
+    │ objective: minimize p95_wait
+    └ status: iterating · gen 14/40
+  ▸ simulate.tick                             — queued`}</pre>
+          </Modal>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection label="Scenario" />
+            <TweakSelect label="active"
+              value={t.activeScenario}
+              options={scenarios.map((s) => s.name)}
+              onChange={(v) => { setTweak("activeScenario", v); setActiveName(v); }} />
+            <TweakToggle label="compare mode (split)"
+              value={t.compareMode}
+              onChange={(v) => setTweak("compareMode", v)} />
+            <TweakButton label="+ new scenario" onClick={() => setOpenModal("new")} />
+
+            <TweakSection label="Active scenario" />
+            <TweakSlider label="seats" value={activeScn.seats} min={6} max={240}
+              onChange={(v) => updateActive({ seats: v })} />
+            <TweakSlider label="baristas" value={activeScn.baristas} min={1} max={20}
+              onChange={(v) => updateActive({ baristas: v })} />
+            <TweakSlider label="footfall λ" value={activeScn.footfall} min={0} max={600} unit="/hr"
+              onChange={(v) => updateActive({ footfall: v })} />
+            <TweakSelect label="style"
+              value={activeScn.style}
+              options={["default", "brooklyn", "tokyo"]}
+              onChange={(v) => updateActive({ style: v })} />
+
+            <TweakSection label="Canvas" />
+            <TweakSlider label="zoom" value={zoom} min={0.5} max={2} step={0.05}
+              onChange={(v) => setZoom(v)} />
+            <TweakToggle label="heat layer"
+              value={layers.heat}
+              onChange={(v) => setLayers({ ...layers, heat: v })} />
+            <TweakToggle label="grid layer"
+              value={layers.grid}
+              onChange={(v) => setLayers({ ...layers, grid: v })} />
+
+            <TweakSection label="Inspect" />
+            <TweakButton label="open kpi report" onClick={() => setOpenModal("kpi")} />
+            <TweakButton label="open session replay" secondary onClick={() => setOpenModal("session")} />
+            <TweakButton label="open logfire trace" secondary onClick={() => setOpenModal("trace")} />
+          </TweaksPanel>
+        </div>
+      );
+    }
+
+    function ControlSliderField({ label, value, min, max, unit = "", onChange }) {
+      return (
+        <label className="form-row">
+          <span>{label}</span>
+          <div className="form-slider">
+            <input type="range" min={min} max={max} value={value}
+              onChange={(e) => onChange(Number(e.target.value))} />
+            <b>{value}{unit}</b>
+          </div>
+        </label>
+      );
+    }
+
+    function PreviewKpis({ draft, base }) {
+      const k = computeKpis({ ...draft, hours: 12 });
+      return (
+        <div className="prev-kpi-grid">
+          <div className="prev-kpi"><span>throughput</span><b>{k.throughput}/hr</b><em>{deltaStr(k.throughput, base.kpis.throughput, "x")}</em></div>
+          <div className="prev-kpi"><span>avg wait</span><b>{k.wait}</b><em>{deltaStr(base.kpis.waitSec, k.waitSec, "pct")}</em></div>
+          <div className="prev-kpi"><span>revenue/d</span><b>{fmtMoney(k.revenue)}</b><em>{deltaStr(k.revenue, base.kpis.revenue, "x")}</em></div>
+          <div className="prev-kpi"><span>nps</span><b>{k.nps}</b><em>{deltaStr(k.nps, base.kpis.nps)}</em></div>
+        </div>
+      );
+    }
+
+    function KpiReport({ active, base }) {
+      const k = active.kpis, b = base.kpis;
+      const rows = [
+        { l: "throughput",   v: `${k.throughput}/hr`, base: `${b.throughput}/hr`, d: deltaStr(k.throughput, b.throughput, "x"), good: k.throughput >= b.throughput },
+        { l: "avg.wait",     v: k.wait,               base: b.wait,               d: deltaStr(b.waitSec, k.waitSec, "pct"),    good: k.waitSec <= b.waitSec },
+        { l: "revenue/day",  v: fmtMoney(k.revenue),  base: fmtMoney(b.revenue),  d: deltaStr(k.revenue, b.revenue, "x"),      good: k.revenue >= b.revenue },
+        { l: "seat.util",    v: `${k.seatUtil}%`,     base: `${b.seatUtil}%`,     d: deltaStr(k.seatUtil, b.seatUtil, "pp"),   good: k.seatUtil <= 92 },
+        { l: "barista.util", v: `${k.baristaUtil}%`,  base: `${b.baristaUtil}%`,  d: deltaStr(k.baristaUtil, b.baristaUtil, "pp"), good: k.baristaUtil <= 90 },
+        { l: "queue.len",    v: `${k.queueLen} avg`,  base: `${b.queueLen} avg`,  d: deltaStr(k.queueLen, b.queueLen),         good: k.queueLen <= 3 },
+        { l: "nps",          v: k.nps,                base: b.nps,                d: deltaStr(k.nps, b.nps),                   good: k.nps >= b.nps },
+        { l: "margin",       v: `${k.margin}%`,       base: `${b.margin}%`,       d: deltaStr(k.margin, b.margin, "pp"),       good: k.margin >= b.margin },
+        { l: "footprint",    v: `${k.footprint} m²`,  base: `${b.footprint} m²`,  d: deltaStr(k.footprint, b.footprint, "pct"),good: true },
+      ];
+      return (
+        <div className="kpi-report">
+          <div className="kpi-report-meta">
+            <div><span>seats</span><b>{active.seats}</b></div>
+            <div><span>baristas</span><b>{active.baristas}</b></div>
+            <div><span>footfall</span><b>{active.footfall}/hr</b></div>
+            <div><span>style</span><b>{active.style}</b></div>
+            <div><span>hours/day</span><b>{active.hours}</b></div>
+          </div>
+          <table className="kpi-table">
+            <thead><tr><th>metric</th><th>{active.name}</th><th>baseline</th><th>Δ</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.l} className={r.good ? "good" : "bad"}>
+                  <td>{r.l}</td><td><b>{r.v}</b></td><td>{r.base}</td><td>{r.d}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

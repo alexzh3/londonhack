@@ -13,25 +13,48 @@
 
 ## 1.5 Scope Tiers
 
-This document preserves the rich UI/product vision, but the current hackathon build must ship the MVP shell first. Treat everything involving R3F, chat threads, scenario trees, Hyper3D, drag/drop, live SSE chat, and rich memory timelines as **Tier 2** unless it is explicitly listed in the MVP shell below.
+This document preserves the rich UI/product vision, but the current hackathon build ships the MVP shell first. Treat everything involving R3F, chat threads with free-form input, scenario trees, Hyper3D, drag/drop, live SSE chat, and rich memory timelines as **Tier 2** unless it is explicitly listed in the MVP shell below.
 
 ### MVP UI Shell — Must Ship First
 
-The MVP UI should look like the product, but most spectacle is fixture-backed. It has one linear path: **Load demo → Generate recommendation → Apply → Accept / Reject**.
+**Locked decision:** the MVP keeps the existing [frontend/cafetwin.html](../../../frontend/cafetwin.html) Babel-in-browser demo as the shell. We do **not** port to Vite/TS/Tailwind for MVP. We add a thin `frontend/api.js` and a `useBackend()` hook in [app-state.jsx](../../../frontend/app-state.jsx); existing components ([AgentFlow](../../../frontend/app-panels.jsx), [ChatPanel](../../../frontend/app-panels.jsx), [TopBar](../../../frontend/app-panels.jsx), [ScenarioRail](../../../frontend/app-panels.jsx)) gain optional props that bind real backend data when present.
 
-| Surface | MVP implementation |
+The MVP demo flow has three clicks: **Page load (auto-runs `/api/run`) → click `recommended` chip / Apply → Accept / Reject**.
+
+The demo's hand-authored scenarios (`baseline`, `10x.size`, `brooklyn`, `+2.baristas`, `tokyo`) stay as **decorative what-ifs** — never claimed to be agent-generated. The agent contributes **one** chip, `recommended`, materialised from the real `LayoutChange` returned by `OptimizationAgent`.
+
+The MVP narrative is: *typed evidence pack → real Pydantic AI agent emits a validated `LayoutChange` → existing iso twin shows the change as an editable scenario chip → user accepts → memory write to MuBit + jsonl, full Logfire trace*.
+
+| Surface | MVP implementation (existing JSX file → backend field) |
 |---|---|
-| Top bar | Product name, session/run status, real Logfire trace link when available. |
-| Observed video | Play `demo_data/annotated_before.mp4`; optional raw-data expander for cached tracks/zones. |
-| KPI/object cards | Render cached `kpi_windows.json` and `object_inventory.json`; show predicted deltas after Apply. |
-| Agent flow | Three nodes only: `evidence_pack`, `optimization_agent`, `memory_write`; animate from real `/api/run` stage events or returned timestamps. |
-| Recommendation | Button-driven, not chat. Click **Generate recommendation** and render the typed `LayoutChange` returned by the real backend agent. |
-| Twin preview | PNG crossfade between `twin_observed.png` and `twin_recommended.png`; no R3F or geometry code in MVP. |
-| Memory | Collapsible JSONL-backed memory view; MuBit is best-effort and never blocks the UI. |
-| Scenario rail | Cut from MVP; use one observed/recommended toggle in the twin panel. |
-| Chat | Cut from MVP; supported prompts and Vercel AI SDK are Tier 2. |
+| Top bar | [app-panels.jsx::TopBar](../../../frontend/app-panels.jsx) — Logfire button uses `RunResponse.logfire_trace_url`. |
+| Observed video | Not added in MVP. Optional: extend the canvas's `view` segment in [app-canvas.jsx](../../../frontend/app-canvas.jsx) with a `video` mode that swaps `<CafeScene>` for `<video src="annotated_before.mp4">`. |
+| KPI/object cards | [app-panels.jsx::AgentFlow](../../../frontend/app-panels.jsx) — baseline KPI grid binds to `kpi_windows[0]` from `GET /api/state`. The demo's invented scenario KPIs (throughput, wait, revenue, NPS) stay synthesized for the decorative chips. |
+| Agent flow | [app-panels.jsx::AgentFlow](../../../frontend/app-panels.jsx) — keep the existing 5 visual nodes (`vision`, `kpi`, `pattern`, `optimize`, `simulate`). Drive states from `RunResponse.stages[]` (3 stages: `evidence_pack` → vision/kpi/pattern; `optimization_agent` → optimize; `memory_write` → simulate, optionally relabelled `memory`). Latency badges read `ended_at - started_at`. |
+| Recommendation | [app-panels.jsx::ChatPanel](../../../frontend/app-panels.jsx) — replace the fake `optimize.layout running` ToolCall with a real one rendering `LayoutChange.title / rationale / evidence_ids / expected_kpi_delta / confidence / risk`. Add Apply / Accept / Reject buttons under the result. The chat input field stays visible but disabled (or hidden) for MVP. |
+| `recommended` scenario chip | [app-panels.jsx::ScenarioRail](../../../frontend/app-panels.jsx) and [app-state.jsx](../../../frontend/app-state.jsx) — built client-side via a new `scenarioFromLayoutChange(lc)` helper. |
+| Twin preview | [app-canvas.jsx](../../../frontend/app-canvas.jsx) + [cafe-iso.jsx](../../../frontend/cafe-iso.jsx) — keep the existing iso renderer and split-compare. On Apply, optionally apply `simulation.from_position`/`to_position` to shift one asset on the recommended pane. No PNG crossfade. No R3F. No SceneBuilderAgent in MVP. |
+| Memory | New "memories" Modal in [cafetwin.html](../../../frontend/cafetwin.html), cloned from the `session.replay` modal pattern. Reads `GET /api/memories` (MuBit+jsonl merged). |
+| "Seen before" chip | [app-panels.jsx::ChatPanel](../../../frontend/app-panels.jsx) — render when `RunResponse.prior_recommendation_count > 0`. |
+| Scenario rail | **Kept from the demo** as the existing `ScenarioRail`. The 4 decorative scenarios stay; one `recommended` chip is added by the backend. The "+ new scenario" modal stays visually but is unwired in MVP. |
+| Chat | **Kept visually** — the existing chat thread renders the recommendation as a ToolCall message. Free-form chat input is disabled in MVP and activated in Tier 2 with regex-routed supported prompts. |
+| Time scrubber, zoom, layer toggles, tweaks panel | **Kept** — these animate the existing iso scene only and are not bound to backend. |
 
-The technical proof is backend-first: fixture evidence → `CafeEvidencePack` → real Pydantic AI `OptimizationAgent` → validated `LayoutChange` → local/MuBit memory write → Logfire trace.
+The technical proof remains backend-first with **one live Pydantic AI agent**: fixture evidence → `CafeEvidencePack` → `OptimizationAgent` → validated `LayoutChange` → MuBit/jsonl memory write → Logfire trace. The frontend just plugs into the locked `RunResponse` shape from [app/schemas.py](../../../app/schemas.py). `SceneBuilderAgent` and `/api/apply` are Tier 2.
+
+### What is **not** added or modified in the existing demo
+
+- `SCENARIO_PRESETS`, `computeKpis()`, `Modal` in [app-state.jsx](../../../frontend/app-state.jsx) — keep as-is. They power the decorative scenarios.
+- [cafe-iso.jsx](../../../frontend/cafe-iso.jsx), [tweaks-panel.jsx](../../../frontend/tweaks-panel.jsx), [cafetwin.css](../../../frontend/cafetwin.css) — untouched (with the small optional addition of an `assetOverrides` prop on the iso scene to support the `simulation` shift on the recommended pane).
+- The HTML loader, the UMD React 18 bundle, the Babel-standalone tag — untouched.
+
+### What is added (additive only)
+
+- `frontend/api.js` — ~40 lines of `fetch` wrappers exporting `getState`, `postRun`, `postFeedback`, `getMemories`, `getLogfireUrl`. Loaded as a `<script>` tag in [cafetwin.html](../../../frontend/cafetwin.html) before the JSX scripts; exposes its API on `window.api`.
+- A `useBackend()` hook in [app-state.jsx](../../../frontend/app-state.jsx) that calls `/api/state` then `/api/run` on mount and returns `{ runResponse, stages, layoutChange, logfireUrl, memoryRecord, priorRecommendationCount }`.
+- A `scenarioFromLayoutChange(lc)` helper in [app-state.jsx](../../../frontend/app-state.jsx) that converts a `LayoutChange` into the demo's scenario shape.
+- New `<Modal open={openModal === "memories"}>` block in [cafetwin.html](../../../frontend/cafetwin.html), pulling from `/api/memories`.
+- New `tb-btn` for "memories" in [app-panels.jsx::TopBar](../../../frontend/app-panels.jsx).
 
 ## 2. Tier 2 Product Vision Surface — observed video + 3D twin
 
@@ -526,7 +549,7 @@ chatClient routes events
 
 ## 13. Tier 2 Build Sequence (product vision reference)
 
-Do not use this table as the current MVP schedule. The current MVP schedule lives in `overview_plan.md` and is backend-spine-first: fixture evidence, `/api/run`, typed `LayoutChange`, PNG crossfade, memory write, Logfire trace. The table below is retained as the richer Tier 2 direction once MVP is green.
+Do not use this table as the current MVP schedule. The current MVP schedule lives in [`overview_plan.md`](../../../overview_plan.md) and is backend-spine-first: fixture evidence, `/api/run`, typed `LayoutChange`, memory write, Logfire trace — all bound into the existing Babel-in-browser JSX demo (no Vite port for MVP). The table below is retained as the richer Tier 2 direction once MVP is green.
 
 | Time | Gate | Frontend deliverable | Backend deliverable |
 |---|---|---|---|

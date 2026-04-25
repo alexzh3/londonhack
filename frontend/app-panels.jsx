@@ -1,0 +1,328 @@
+// app-panels.jsx — Side panels (data-driven)
+
+const Icon = {
+  eye: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" strokeWidth="1.2"/>
+    <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2"/></svg>),
+  bar: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <path d="M3 13V8M8 13V4M13 13V10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>),
+  grid: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <rect x="2" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="9" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="2" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="9" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.2"/></svg>),
+  flask: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <path d="M6 2v4l-3 7a2 2 0 0 0 1.8 2.8h6.4A2 2 0 0 0 13 13l-3-7V2M5 2h6" stroke="currentColor" strokeWidth="1.2"/></svg>),
+  play: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <path d="M4 2v12l10-6L4 2z" fill="currentColor"/></svg>),
+  send: () => (<svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <path d="M2 8l12-6-4 12-2-5-6-1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>),
+  paperclip: () => (<svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <path d="M11 5L5.5 10.5a2 2 0 0 0 2.8 2.8l6-6a4 4 0 0 0-5.7-5.7l-6.3 6.3a6 6 0 0 0 8.5 8.5L14 13" stroke="currentColor" strokeWidth="1.1"/></svg>),
+  mic: () => (<svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <rect x="6" y="2" width="4" height="8" rx="2" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.2"/></svg>),
+  rec: () => (<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#b53a2a"/></svg>),
+  chevR: () => (<svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M3 1l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>),
+  plus: () => (<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4"/></svg>),
+};
+
+// ── Top bar ────────────────────────────────────────────────────────────────
+function TopBar({ scenarioName, onOpenSession, onOpenTrace }) {
+  return (
+    <div className="topbar">
+      <div className="topbar-left">
+        <div className="brand">
+          <span className="brand-mark">◤◢</span>
+          <span className="brand-name">cafetwin</span>
+          <span className="brand-ver">v0.4.2</span>
+        </div>
+        <div className="sep" />
+        <button className="tb-btn" onClick={onOpenSession}>
+          <span className="rec-dot"><Icon.rec /></span>
+          <span>recording · 04:12</span>
+        </button>
+        <button className="tb-btn" onClick={onOpenSession}>
+          <span className="ico"><Icon.play /></span>
+          <span>session.replay</span>
+        </button>
+        <button className="tb-btn" onClick={onOpenTrace}>
+          <span className="logfire-mark" />
+          <span>logfire ↗ trace#a4f1c0e</span>
+        </button>
+      </div>
+      <div className="topbar-right">
+        <div className="status"><span className="status-dot ok" /><span>worker:gpu-2 · 23ms</span></div>
+        <div className="status"><span className="status-dot warn" /><span>tokens 142.3k / 200k</span></div>
+        <button className="tb-btn">share · {scenarioName}</button>
+        <div className="avatar">JK</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Agent flow + controls + KPI panel ──────────────────────────────────────
+function AgentNode({ I, name, state, latency, traceId }) {
+  return (
+    <div className={`agent-node state-${state}`}>
+      <div className="an-row">
+        <span className="an-ico"><I /></span>
+        <span className="an-name">{name}</span>
+        <span className="an-state">{state}</span>
+      </div>
+      <div className="an-meta">
+        <span className="an-latency">{latency}</span>
+        <span className="an-trace">{traceId}</span>
+      </div>
+      {state === "running" && <div className="an-progress" />}
+    </div>
+  );
+}
+
+function AgentFlow({ active, base, scenario, onTweakSeats, onTweakBaristas, onTweakFootfall, onOpenKpi }) {
+  const nodes = [
+    { I: Icon.eye, name: "vision", state: "ok", latency: "1.42s", traceId: "01h9.." },
+    { I: Icon.bar, name: "kpi", state: "ok", latency: "612ms", traceId: "01h9.." },
+    { I: Icon.grid, name: "pattern", state: "ok", latency: "2.10s", traceId: "01h9.." },
+    { I: Icon.flask, name: "optimize", state: scenario.name === "baseline" ? "ok" : "running", latency: scenario.name === "baseline" ? "1.84s" : "—", traceId: "01h9.." },
+    { I: Icon.play, name: "simulate", state: "queued", latency: "—", traceId: "—" },
+  ];
+
+  const k = active.kpis;
+  const b = base.kpis;
+  return (
+    <div className="panel panel-flow">
+      <div className="panel-hd"><span className="panel-title">agent_graph</span><span className="panel-sub">5 nodes · DAG</span></div>
+      <div className="agent-flow">
+        {nodes.map((n, i) => (
+          <React.Fragment key={n.name}>
+            <AgentNode {...n} />
+            {i < nodes.length - 1 && <div className="an-edge" />}
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="panel-hd panel-hd-sub">
+        <span className="panel-title">controls</span>
+        <span className="panel-sub">edits ↦ <b className="ctrl-target">{scenario.name}</b></span>
+      </div>
+      <div className="ctrl-applies">
+        <span className="ctrl-applies-dot" />
+        <span>live edit · canvas re-flows on drag</span>
+        <span className="ctrl-applies-spacer" />
+        <span className="ctrl-applies-meta">{Math.ceil(scenario.seats / 3)} tables · {scenario.seats} chairs · {scenario.baristas} staff</span>
+      </div>
+      <div className="ctrl-grid">
+        <ControlSlider label="seats" value={scenario.seats} min={6} max={240} onChange={onTweakSeats}
+          hint={`≈ ${Math.ceil(scenario.seats / 3)} tables`} />
+        <ControlSlider label="baristas" value={scenario.baristas} min={1} max={20} onChange={onTweakBaristas}
+          hint={`${(scenario.footfall / Math.max(1, scenario.baristas)).toFixed(0)}/hr per`} />
+        <ControlSlider label="footfall.λ" value={scenario.footfall} min={0} max={600} unit="/hr" onChange={onTweakFootfall}
+          hint={scenario.footfall > 200 ? "rush" : scenario.footfall > 80 ? "steady" : "quiet"} />
+      </div>
+      <div className="panel-hd panel-hd-sub">
+        <button className="kpi-link" onClick={onOpenKpi}><span className="panel-title">kpi · {scenario.name}</span></button>
+        <span className="panel-sub">vs baseline</span>
+      </div>
+      <div className="kpi-grid">
+        <KpiCard label="throughput" value={k.throughput} unit="/hr" delta={deltaStr(k.throughput, b.throughput, "x")} up={k.throughput >= b.throughput} />
+        <KpiCard label="avg.wait"   value={k.wait} unit="m:s" delta={deltaStr(b.waitSec, k.waitSec, "pct")} up={k.waitSec <= b.waitSec} />
+        <KpiCard label="revenue/d"  value={fmtMoney(k.revenue)} unit="" delta={deltaStr(k.revenue, b.revenue, "x")} up={k.revenue >= b.revenue} />
+        <KpiCard label="seat.util"  value={`${k.seatUtil}%`} unit="" delta={deltaStr(k.seatUtil, b.seatUtil, "pp")} warn={k.seatUtil > 90} />
+        <KpiCard label="barista.util" value={`${k.baristaUtil}%`} unit="" delta={deltaStr(k.baristaUtil, b.baristaUtil, "pp")} warn={k.baristaUtil > 90} />
+        <KpiCard label="queue.len"  value={k.queueLen} unit="avg" delta={deltaStr(k.queueLen, b.queueLen)} warn={k.queueLen > 3} />
+        <KpiCard label="nps"        value={k.nps} unit="" delta={deltaStr(k.nps, b.nps)} up={k.nps >= b.nps} />
+        <KpiCard label="margin"     value={`${k.margin}%`} unit="" delta={deltaStr(k.margin, b.margin, "pp")} up={k.margin >= b.margin} />
+      </div>
+    </div>
+  );
+}
+
+function ControlSlider({ label, value, min, max, unit = "", onChange, hint }) {
+  const pct = ((Number(value) - min) / (max - min)) * 100;
+  return (
+    <div className="ctrl-row">
+      <div className="ctrl-lbl">
+        <span>{label}</span>
+        {hint && <span className="ctrl-hint">{hint}</span>}
+        <span className="ctrl-val">{value}{unit && <em>{unit}</em>}</span>
+      </div>
+      <input type="range" className="ctrl-input" min={min} max={max} value={value}
+        onChange={(e) => onChange && onChange(Number(e.target.value))} />
+      <div className="ctrl-track-vis">
+        <div className="ctrl-fill" style={{ width: `${pct}%` }} />
+        <div className="ctrl-thumb" style={{ left: `${pct}%` }} />
+      </div>
+      <div className="ctrl-scale"><span>{min}</span><span>{max}{unit}</span></div>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, unit, delta, up, warn }) {
+  const cls = "kpi-card" + (up ? " kpi-up" : "") + (warn ? " kpi-warn" : "");
+  return (
+    <div className={cls}>
+      <div className="kpi-lbl">{label}</div>
+      <div className="kpi-val">{value}<span className="kpi-unit">{unit}</span></div>
+      <div className="kpi-delta">{delta}</div>
+    </div>
+  );
+}
+
+// ── Chat ────────────────────────────────────────────────────────────────
+function ToolCall({ name, args, status, result }) {
+  return (
+    <div className={`tool-call status-${status}`}>
+      <div className="tc-hd">
+        <span className="tc-bar" /><span className="tc-name">tool · {name}</span>
+        <span className="tc-status">{status}</span>
+        {status === "running" && <span className="tc-spinner" />}
+      </div>
+      <pre className="tc-args">{args}</pre>
+      {result && <div className="tc-result">{result}</div>}
+    </div>
+  );
+}
+
+function ChatMessage({ from, time, children, traceId }) {
+  return (
+    <div className={`chat-msg from-${from}`}>
+      <div className="cm-hd">
+        <span className="cm-from">{from === "user" ? "you" : "cafetwin.agent"}</span>
+        <span className="cm-time">{time}</span>
+        {traceId && <span className="cm-trace">{traceId}</span>}
+      </div>
+      <div className="cm-body">{children}</div>
+    </div>
+  );
+}
+
+function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft }) {
+  const isBaseline = scenario.name === "baseline";
+  const args = JSON.stringify({
+    scenario_id: scenario.name,
+    seats: scenario.seats,
+    baristas: scenario.baristas,
+    footfall_per_hr: scenario.footfall,
+    style: scenario.style,
+    venue_footprint_m2: kpis.footprint,
+  }, null, 2);
+  return (
+    <div className="panel panel-chat">
+      <div className="panel-hd"><span className="panel-title">scenario.chat</span><span className="panel-sub">claude-haiku · ctx 18.2k</span></div>
+      <div className="chat-stream">
+        <div className="chat-divider"><span>session opened · 14:02:18</span></div>
+        <ChatMessage from="agent" time="14:02:21" traceId="01h9k2..">
+          <p>scanned <code>cafe_floor.mp4</code> · detected <b>{base.seats / 3 | 0} tables</b>, <b>{base.seats} chairs</b>, <b>{base.baristas} baristas</b>. footprint ≈ <b>{base.kpis.footprint} m²</b>.</p>
+        </ChatMessage>
+        {!isBaseline && (
+          <>
+            <ChatMessage from="user" time="14:03:04">
+              <p>simulate <b>{scenario.name}</b> — what changes?</p>
+            </ChatMessage>
+            <ChatMessage from="agent" time="14:03:06">
+              <p>spawning scenario · holding constraints.</p>
+            </ChatMessage>
+            <ToolCall name="scenario.spawn" status="ok" args={args}
+              result={<>✓ scenario <code>{scenario.name}</code> · {scenario.seats} seats · {scenario.baristas} baristas · footprint {kpis.footprint} m²</>} />
+            <ChatMessage from="agent" time="14:03:09">
+              <p>kpi delta: throughput <b>{deltaStr(kpis.throughput, base.kpis.throughput, "x")}</b>, wait <b>{deltaStr(base.kpis.waitSec, kpis.waitSec, "pct")}</b>, revenue/d <b>{fmtMoney(kpis.revenue)}</b>.</p>
+            </ChatMessage>
+            <ToolCall name="optimize.layout" status="running" args={JSON.stringify({
+              scenario_id: scenario.name,
+              objective: "minimize p95_wait",
+              constraints: ["seat_min=" + Math.floor(scenario.seats * 0.9), "barista_max=" + (scenario.baristas + 2)],
+            }, null, 2)} />
+            <div className="chat-thinking">
+              <span className="dot" /><span className="dot" /><span className="dot" />
+              <span>cafetwin.agent · running optimize → simulate</span>
+            </div>
+          </>
+        )}
+        {isBaseline && (
+          <ChatMessage from="agent" time="14:02:30">
+            <p>baseline locked. type a prompt below to spawn a scenario, or pick one from the rail.</p>
+          </ChatMessage>
+        )}
+      </div>
+      <div className="chat-input">
+        <div className="ci-row">
+          <input className="ci-field" value={draft} onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) { onSend(draft); } }}
+            placeholder="describe a scenario… e.g. 'cut staff by half, weekday mornings only'" />
+          <button className="ci-send" onClick={() => draft.trim() && onSend(draft)}><Icon.send /></button>
+        </div>
+        <div className="ci-tools">
+          <button className="ci-tool"><Icon.paperclip /><span>image</span></button>
+          <button className="ci-tool"><Icon.mic /><span>mic</span></button>
+          <span className="ci-spacer" />
+          <span className="ci-meta">⏎ send · ⌘⏎ run sim</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Scenario rail ──────────────────────────────────────────────────────────
+function Sparkline({ kpi, base, color }) {
+  // generate sparkline based on throughput delta
+  const ratio = kpi.throughput / Math.max(1, base.throughput);
+  const pts = Array.from({ length: 11 }, (_, i) => {
+    const baseY = 12;
+    const target = baseY - Math.min(10, (ratio - 1) * 4 + (i / 10) * 1.5);
+    const noise = ((i * 47) % 7) / 7 * 1.4 - 0.7;
+    return `${i * 8},${(target + noise).toFixed(1)}`;
+  }).join(" ");
+  return (
+    <svg viewBox="0 0 80 18" preserveAspectRatio="none" width="100%" height="18">
+      <polyline fill="none" stroke={color || "currentColor"} strokeWidth="1" points={pts} />
+    </svg>
+  );
+}
+
+function Scenario({ scn, base, active, onClick, onOpen, ghost }) {
+  const k = scn.kpis;
+  const cls = `scn ${active ? "scn-active" : ""} ${ghost ? "scn-ghost" : ""}`;
+  return (
+    <div className={cls} onClick={onClick} onDoubleClick={onOpen}>
+      <div className="scn-hd">
+        <span className={`scn-dot ${active ? "on" : ""}`} />
+        <span className="scn-name">{scn.name}</span>
+        <span className="scn-id">#{scn.id}</span>
+      </div>
+      <div className="scn-spark"><Sparkline kpi={k} base={base.kpis} /></div>
+      <div className="scn-meta">
+        <span className="scn-kpi">Δ thru</span>
+        <span className="scn-kpi-v">{scn.name === "baseline" ? "—" : deltaStr(k.throughput, base.kpis.throughput, "x")}</span>
+      </div>
+      <div className="scn-meta">
+        <span className="scn-kpi">{scn.seats}s · {scn.baristas}b</span>
+        <span className="scn-kpi-v">{fmtMoney(k.revenue)}</span>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioRail({ scenarios, base, activeName, onSelect, onOpen, onNew }) {
+  return (
+    <div className="rail">
+      <div className="rail-hd">
+        <span className="rail-title">scenarios</span>
+        <span className="rail-sub">click ↦ switch · double-click ↦ inspect · ⇧+click ↦ pin</span>
+        <span className="rail-spacer" />
+        <span className="rail-meta">{scenarios.length} of {scenarios.length} · synced</span>
+      </div>
+      <div className="rail-track">
+        {scenarios.map((s, i) => (
+          <React.Fragment key={s.name}>
+            <Scenario scn={s} base={base} active={s.name === activeName}
+              onClick={() => onSelect(s.name)} onOpen={() => onOpen(s.name)} />
+            {i < scenarios.length - 1 && <div className="rail-arrow"><Icon.chevR /></div>}
+          </React.Fragment>
+        ))}
+        <button className="scn-add" onClick={onNew}><Icon.plus /><span>new scenario</span></button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { TopBar, AgentFlow, ChatPanel, ScenarioRail });
