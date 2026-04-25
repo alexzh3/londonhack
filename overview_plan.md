@@ -48,27 +48,28 @@ flowchart TD
     J -. simulation .-> M
 ```
 
-## Recommended API Stack
+## Recommended Local Vision Stack
 
-Use hosted APIs first where they save setup time. Keep local/cached fallback paths for the live demo.
+Use local computer vision first. For this project, Ultralytics + OpenCV is doable and gives the demo a stronger "we built the pipeline" story than calling a hosted vision workflow. Cache outputs so the live demo is reliable.
 
 | Need | Default | Fallback | Why |
 |---|---|---|---|
-| Detection | Roboflow Workflows object detection | Ultralytics YOLO locally | Fastest path to a working video pipeline. |
-| Segmentation | Roboflow instance segmentation / SAM block | YOLO segmentation locally | Useful for table/chair masks and after-image edits. |
-| Tracking | Roboflow ByteTrack / Byte Tracker | Ultralytics `model.track(..., tracker="bytetrack.yaml")` | Needed for trails, dwell, path crossings. |
-| Zones | Hardcoded/manual polygons in app | Roboflow Polygon Zone / Time in Zone blocks | Hardcoded zones are fastest and most controllable. |
-| KPIs | Custom deterministic Python | Roboflow Time in Zone / Line Counter blocks | KPI math should be explainable and reproducible. |
+| Frame sampling | OpenCV `cv2.VideoCapture` | Pre-extracted frames | Simple, controllable, works offline. |
+| Detection | Ultralytics YOLO local model | Cached detections JSON | Person/table/chair boxes are enough for the main KPIs. |
+| Tracking | Ultralytics `model.track(..., tracker="bytetrack.yaml")` | Simple centroid tracker | Needed for trails, dwell, path crossings. |
+| Segmentation | YOLO segmentation model, only for furniture masks | Bounding boxes only | Stretch for table/chair footprint and after-image polish. |
+| Zones | Hardcoded/manual polygons in app | `zones.json` edited by hand | Fastest way to make spatial claims credible. |
+| KPIs | Custom deterministic Python + OpenCV geometry | Cached KPI JSON | KPI math should be explainable and reproducible. |
 | Memory | MuBit SDK | Local JSON fallback | MuBit stores compressed operational observations. |
 | Agents | Pydantic AI | Cached proposal fallback | Typed outputs make the recommendation trustworthy. |
 | Simulation | Deterministic 2D map | Pre-rendered fallback image | This is the proof mechanism. |
-| Inpainted after image | Replicate / Roboflow Stability AI Inpainting | Skip | Stretch polish, not core proof. |
+| Inpainted after image | Replicate / local diffusion if already configured | Skip | Stretch polish, not core proof. |
 
 ## Sponsor Stack Fit
 
 ```mermaid
 flowchart LR
-    A[Roboflow / Vision API] --> B[Spatial KPIs]
+    A[Local CV: OpenCV + Ultralytics] --> B[Spatial KPIs]
     B --> C[Pydantic AI typed agents]
     C --> D[MuBit memory lanes]
     D --> E[Recommendation]
@@ -121,8 +122,8 @@ flowchart TB
     end
 
     subgraph Vision[Vision Pipeline]
-        V1[Frame sampler]
-        V2[Roboflow Workflow API]
+        V1[OpenCV frame sampler]
+        V2[Ultralytics YOLO + ByteTrack]
         V3[Cached detections JSON]
     end
 
@@ -235,8 +236,6 @@ Avoid "coffees served per staff member" in the MVP unless the video makes servic
 
 ## References
 
-- Roboflow object detection model block: https://docs.roboflow.com/workflow-blocks/run-a-model/object-detection-model
-- Roboflow Byte Tracker: https://inference.roboflow.com/workflows/blocks/byte_tracker/
-- Roboflow video workflows: https://inference.roboflow.com/workflows/video_processing/overview/
-- Roboflow supported model types: https://docs.roboflow.com/deploy/supported-models
 - Ultralytics tracking mode: https://docs.ultralytics.com/modes/track/
+- Ultralytics Python usage: https://docs.ultralytics.com/usage/python/
+- OpenCV video I/O: https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html

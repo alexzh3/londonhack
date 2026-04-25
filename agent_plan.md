@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This is the detailed implementation plan for agents/engineers. It aligns with `gpt_plan.md`, which is the overview plan. Do not fork the product direction from the overview: CafeTwin is a 24h hackathon demo for overhead-camera cafe operations optimization.
+This is the detailed implementation plan for agents/engineers. It aligns with `overview_plan.md`, which is the overview plan. Do not fork the product direction from the overview: CafeTwin is a 24h hackathon demo for overhead-camera cafe operations optimization.
 
 The product loop is:
 
@@ -31,7 +31,7 @@ The demo should land this line:
 ```mermaid
 flowchart TD
     A[Seeded overhead cafe video] --> B[Frame sampler]
-    B --> C[Vision Workflow API]
+    B --> C[Local Ultralytics + OpenCV pipeline]
     C --> D[Detections / masks / tracks]
     D --> E[Zone assignment]
     E --> F[Deterministic KPI engine]
@@ -64,7 +64,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant UI as Dashboard
-    participant Vision as Vision API
+    participant Vision as Local Vision
     participant KPI as KPI Engine
     participant DB as Postgres/Cache
     participant MuBit as MuBit
@@ -88,62 +88,68 @@ sequenceDiagram
     UI->>LF: show trace link
 ```
 
-## API Choices
+## Vision Stack
 
-### Default Vision Path
+### Default Local Path
 
-Use **Roboflow Workflows** as the primary hackathon path.
+Use **Ultralytics + OpenCV** as the primary hackathon path.
 
-Reason: it can combine object detection, segmentation, tracking, zones, time-in-zone, heatmaps, and visualizations behind one hosted workflow. That is much less risky than spending the day tuning local GPU drivers.
+Reason: the team can run this locally, it avoids hosted API setup, and it gives the demo a stronger build-quality story. Cache every result to JSON so the UI can replay the pipeline even if live inference is slow.
 
-Recommended workflow blocks:
+Default components:
 
-- Object Detection Model
-- Instance Segmentation Model, if available for the chosen model
-- Byte Tracker / ByteTrack Tracker
-- Polygon Zone Visualization
-- Time in Zone
-- Heatmap Visualization or Trace Visualization
-- Optional: SAM 2 / SAM 3 for masks where the detector does not segment tables/chairs well
+- `cv2.VideoCapture` for video frame sampling.
+- Ultralytics YOLO detection model for people, tables, chairs, and coarse scene objects.
+- Ultralytics `model.track(..., tracker="bytetrack.yaml", persist=True)` for movement trails.
+- OpenCV drawing utilities for boxes, trails, zones, and heatmaps.
+- Hardcoded/manual `zones.json` polygons for queue, counter, pickup, seating, and staff path.
+- Cached `demo_data/detections.cached.json` and `demo_data/tracks.cached.json` for demo reliability.
 
-References:
-
-- https://docs.roboflow.com/workflow-blocks/run-a-model/object-detection-model
-- https://inference.roboflow.com/workflows/blocks/byte_tracker/
-- https://inference.roboflow.com/workflows/video_processing/overview/
-- https://docs.roboflow.com/deploy/supported-models
-
-### Local Fallback
-
-Use Ultralytics if Roboflow setup is blocked.
+Minimal detection/tracking runner:
 
 ```python
+import cv2
 from ultralytics import YOLO
 
 model = YOLO("yolo11n.pt")
-results = model.track(
-    source="demo_data/cafe.mp4",
-    tracker="bytetrack.yaml",
-    persist=True,
-)
+cap = cv2.VideoCapture("demo_data/cafe.mp4")
+
+while cap.isOpened():
+    ok, frame = cap.read()
+    if not ok:
+        break
+
+    results = model.track(frame, tracker="bytetrack.yaml", persist=True)
+    # Convert results to Detection/TrackPoint schemas and cache as JSON.
 ```
 
-If segmentation is needed:
+### Optional Local Segmentation
+
+Use segmentation only when it directly helps the demo:
+
+- table/chair footprint masks,
+- obstacle map for the 2D simulation,
+- cleaner inpaint masks for an optional after-image.
+
+Local segmentation option:
 
 ```python
 model = YOLO("yolo11n-seg.pt")
 ```
 
-Reference:
+Do not block the MVP on segmentation. Bounding boxes plus center points are enough for walking distance, queue proxy, path crossings, and heatmaps.
+
+References:
 
 - https://docs.ultralytics.com/modes/track/
+- https://docs.ultralytics.com/usage/python/
+- https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html
 
 ### Simulation / Image Editing
 
 MVP simulation is deterministic 2D. Optional inpainted "after" image can use:
 
 - Replicate image inpainting model
-- Roboflow Stability AI Inpainting block, if available in workflow
 - Local Stable Diffusion / ControlNet only if already configured
 
 Do not depend on video generation for judging. Generated video is stretch polish only.
@@ -518,7 +524,7 @@ GET  /api/state
 GET  /health
 ```
 
-`/analyze` may use cached detections by default. Include a UI toggle or env var for live Roboflow calls.
+`/analyze` should use cached detections by default for demo reliability. Include a UI toggle or env var such as `RUN_LIVE_VISION=1` to run local Ultralytics inference live.
 
 ## Source-Of-Truth Schema
 
@@ -574,7 +580,7 @@ Every demo run gets one `session_id`. Every processing stage gets a `run_id`.
 Logfire spans:
 
 - `sample_frames`
-- `roboflow_workflow`
+- `ultralytics_track`
 - `detect_frame`
 - `compute_kpis`
 - `compress_observation`
@@ -599,8 +605,8 @@ mubit_io.py
 logfire_setup.py
 
 vision/frame_sampler.py
-vision/roboflow_client.py
-vision/ultralytics_fallback.py
+vision/ultralytics_runner.py
+vision/centroid_tracker.py
 vision/cache.py
 
 kpi/zones.py
@@ -637,7 +643,7 @@ demo_data/zones.json
 ## Acceptance Checks
 
 - Video renders with overlays.
-- Detections/tracks load from cache if APIs fail.
+- Detections/tracks load from cache if live local inference is slow or fails.
 - Zones are visible and used in KPI calculations.
 - KPI cards show non-zero plausible values.
 - MuBit memory timeline shows compressed observations.
@@ -648,8 +654,8 @@ demo_data/zones.json
 
 ## Risk Controls
 
-- If Roboflow setup fails, use cached JSON.
-- If local YOLO fails, use hand-authored detections for the demo video.
+- If live Ultralytics inference is slow, use cached JSON.
+- If local YOLO fails entirely, use hand-authored detections/tracks for the demo video.
 - If MuBit is unavailable, write local memory JSON and keep the UI contract identical.
 - If Pydantic AI call fails, use cached typed proposal.
 - If simulation math gets shaky, show deterministic before/after geometry with conservative deltas.

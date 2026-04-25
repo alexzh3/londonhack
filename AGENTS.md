@@ -17,3 +17,5 @@ The project should prioritize:
 - Treat `.env`, `.env.*`, private keys, certificates, and `secrets/` as off-limits.
 - Commit only placeholder files such as `.env.example` or `.env.sample`.
 - Before preparing a commit or PR, check that no secret file is tracked or staged.
+- agent_plan.md contains the detailed architecture and overview_plan.md contains the general overview
+- for every change also edit the agent_plan.md and overview_plan.md to keep progress 
