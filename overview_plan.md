@@ -46,19 +46,20 @@ demo_data/
 
 ```
 load fixtures
-  → build CafeEvidencePack (typed Pydantic input bundle)
+  → MuBit recall (prior recommendations for this pattern)
+  → build CafeEvidencePack (typed Pydantic input bundle, includes prior_recommendations)
   → OptimizationAgent (Pydantic AI, live)
   → typed LayoutChange (Pydantic-validated, evidence_ids must reference pattern fixture)
-  → memory write (local jsonl always, MuBit best-effort)
+  → memory write (MuBit primary + jsonl fallback always)
   → return to UI
 ```
 
-One Logfire trace with 4 spans:
+One Logfire trace with these spans:
 
-1. `evidence_pack.build`
+1. `evidence_pack.build` → child: `mubit.recall`
 2. `optimization_agent.run`
 3. `layout_change.validate`
-4. `memory.write`
+4. `memory.write` → children: `memory.write.mubit`, `memory.write.jsonl`
 
 Single live Pydantic AI agent. (Optional add: a tiny `EvidenceSummarizerAgent` to satisfy "agentic workflow" plural — see agent_plan.md §Optional second agent.)
 
@@ -74,7 +75,7 @@ Keep the panel layout from `docs/superpowers/specs/2026-04-25-simcafe-ui-design.
 | Agent flow canvas | 3 nodes (`evidence_pack`, `optimization_agent`, `memory_write`), wired to real backend stage events (cheap SSE or stage timestamps replayed client-side) |
 | Recommendation card | Renders the real `LayoutChange` returned by `/api/run` |
 | 3D twin panel | **Prebaked PNG crossfade** between `twin_observed.png` and `twin_recommended.png`. No R3F, no geometry code. |
-| Memories panel | Collapsible expander showing the JSONL writes pretty-printed. No timeline UI. |
+| Memories panel | Collapsible expander reading `GET /api/memories` (MuBit primary, jsonl fallback). Each row shows the `mubit_id` chip when present. |
 | Scenario rail | Cut from MVP. Single observed ⇄ recommended toggle inside the twin panel. |
 | Chat panel | Cut from MVP. Replaced by a "Generate recommendation" button + the recommendation card. |
 
@@ -143,7 +144,7 @@ Upgrade the UI; backend mostly unchanged.
 
 - **Pydantic AI:** typed `OptimizationAgent` emitting validated `LayoutChange`. Optional `EvidenceSummarizerAgent`.
 - **Logfire:** single trace covering evidence pack → agent run → validation → memory write.
-- **MuBit:** memory writes for recommendation + feedback (and pattern/KPI/inventory in Tier 1). Local jsonl is a permitted fallback per AGENTS.md.
+- **MuBit:** primary memory store. MVP uses both `remember` (recommendations + feedback) and `recall` (prior recommendations on the same pattern, surfaced in the recommendation card as a "Seen before" chip). Tier 1 adds KPI/inventory/pattern lanes. Local jsonl is a hot fallback always written in parallel per AGENTS.md.
 - **Render:** hosted demo URL.
 
 ## 18h Build Plan (2-person split: A=backend, B=frontend)
@@ -166,9 +167,10 @@ If MVP is green by hour 12, A starts Tier 1 (live KPI engine on cached tracks �
 3. **Click Generate recommendation.** *"A typed Pydantic AI agent reads the evidence pack and emits a validated `LayoutChange`."* — flow canvas lights, card renders.
 4. *"It cites real evidence IDs from the operational pattern, with expected KPI deltas and a confidence."* — read the card.
 5. **Click Apply.** *"Here's the before/after preview, with the agent's predicted deltas."* — twin crossfades, deltas animate.
-6. **Click Accept.** *"Feedback writes to memory."* — memories expander updates.
-7. **Click Logfire.** *"Single trace from evidence pack to memory write."* — open in new tab.
-8. *"The perception layer is fixture-backed for demo reliability. The reasoning, typed output, validation, memory, and trace are real."*
+6. **Click Accept.** *"Feedback writes to MuBit; jsonl mirrors it as a hot fallback."* — memories expander updates with a fresh `mubit_id` chip.
+7. **Click Generate again.** *"This time the agent recalls the prior recommendation from MuBit — see the 'Seen before' chip."* — operational memory loop visible.
+8. **Click Logfire.** *"Single trace from MuBit recall to MuBit + jsonl write."* — open in new tab.
+9. *"The perception layer is fixture-backed for demo reliability. The reasoning, typed output, validation, memory recall + write, and trace are real."*
 
 ## Why This Wins The Room
 

@@ -23,7 +23,7 @@ OptimizationAgent       (Pydantic AI, live)
   ↓
 LayoutChange            (typed, post-validated, fallback to cache on failure)
   ↓
-memory.write            (local jsonl always; MuBit best-effort)
+memory.write            (MuBit primary + jsonl fallback always)
   ↓
 UI shows: recommendation card, before/after twin crossfade, KPI deltas
   ↓
@@ -207,6 +207,9 @@ class CafeEvidencePack(BaseModel):
     kpi_windows: list[KPIReport]
     pattern: OperationalPattern  # MVP: the fixture pattern. Tier 1: PatternAgent output.
     org_rules: list[str] = Field(default_factory=list)
+    prior_recommendations: list["LayoutChange"] = Field(default_factory=list)
+    # Populated by mubit.recall() on the pattern fingerprint. Empty list if
+    # MuBit unavailable or no prior runs — agent handles both cases.
 
 
 # ---------- Agent output ----------
@@ -301,6 +304,10 @@ HARD RULES — you will be rejected if you violate any of these:
 
 Prefer ONE high-confidence move. Keep rationale to 2-3 sentences citing the
 specific pattern. Do not propose multiple changes.
+
+If prior_recommendations is non-empty, briefly acknowledge in the rationale
+that this pattern has been seen before (e.g. "Repeats a prior recommendation
+that was accepted"). If empty, do not mention prior memory.
 ```
 
 ### Post-validation + fallback
@@ -367,6 +374,8 @@ If time-constrained, skip and frame the demo as "typed Pydantic AI agent with st
 
 ## Memory layer
 
+MuBit is the **primary** memory store in MVP. The local jsonl is a hot fallback that is always written so a MuBit outage at demo time degrades gracefully (no demo break). The UI reads from MuBit when available, jsonl when not.
+
 ```python
 # app/memory.py
 import json
@@ -379,28 +388,68 @@ JSONL_PATH = Path("demo_data/mubit_fallback.jsonl")
 async def write_memory(record: MemoryRecord) -> MemoryRecord:
     record.written_at = datetime.now(timezone.utc)
 
-    # 1) Local jsonl always (source of truth for UI)
-    with JSONL_PATH.open("a") as f:
-        f.write(record.model_dump_json() + "\n")
+    # 1) MuBit (primary)
+    with logfire.span("memory.write.mubit"):
+        try:
+            record.mubit_id = await _mubit_remember(record)
+        except Exception as e:
+            logfire.warn("mubit write failed; jsonl-only", error=str(e))
+            record.fallback_only = True
 
-    # 2) MuBit best-effort, fire-and-forget
-    try:
-        record.mubit_id = await _mubit_remember(record)
-    except Exception as e:
-        logfire.warn("mubit write failed; jsonl-only", error=str(e))
-        record.fallback_only = True
+    # 2) Local jsonl (always, as fallback + audit log)
+    with logfire.span("memory.write.jsonl"):
+        with JSONL_PATH.open("a") as f:
+            f.write(record.model_dump_json() + "\n")
 
     return record
+
+
+async def recall_prior_recommendations(
+    fingerprint: str | None = None,
+    pattern_id: str | None = None,
+    limit: int = 3,
+) -> list[LayoutChange]:
+    """Recall prior LayoutChange recommendations for the same pattern or
+    layout fingerprint. Used by evidence_pack.build() to give the agent
+    operational memory.
+
+    Returns [] if MuBit unavailable, key unset, or no matches.
+    """
+    with logfire.span("mubit.recall"):
+        if not _mubit_available():
+            return []
+        try:
+            hits = await _mubit_query(
+                lane="location:demo:recommendations",
+                filters={"fingerprint": fingerprint} if fingerprint else {"pattern_id": pattern_id},
+                limit=limit,
+            )
+            return [LayoutChange.model_validate(h.payload) for h in hits]
+        except Exception as e:
+            logfire.warn("mubit recall failed; returning empty", error=str(e))
+            return []
 ```
 
-UI reads from `mubit_fallback.jsonl`. MuBit writes are decorative — never block on them. If `MUBIT_API_KEY` is unset, skip step 2 entirely.
+If `MUBIT_API_KEY` is unset, both `_mubit_remember` and `_mubit_query` no-op cleanly: writes still hit jsonl, recalls return `[]`, demo still works. This is what `MemoryRecord.fallback_only` flags.
 
-MVP writes:
+### MVP writes
 
-- After successful recommendation: 1 record on lane `location:demo:recommendations`, intent `lesson`.
-- After Accept/Reject feedback: 1 record on lane `location:demo:feedback`, intent `feedback`.
+- After successful recommendation: 1 record on lane `location:demo:recommendations`, intent `lesson`. Payload includes the `LayoutChange` JSON and its `fingerprint`.
+- After Accept/Reject feedback: 1 record on lane `location:demo:feedback`, intent `feedback`. Payload includes the proposal `fingerprint` and the decision.
 
-Tier 1 adds: KPI summary, object inventory, pattern.
+### MVP reads
+
+- `evidence_pack.build()` calls `recall_prior_recommendations(pattern_id=pack.pattern.id)` before building the pack and stores results in `pack.prior_recommendations`.
+- `GET /api/memories` queries MuBit (lane: `location:demo:recommendations` + `location:demo:feedback`) and merges with jsonl entries, dedup by `mubit_id`. If MuBit unavailable, returns jsonl only.
+
+### UI surface
+
+- Memories expander row shows `[mubit_id]` chip when present (e.g. `mem_a1b2c3`), or `[local]` when fallback-only.
+- Recommendation card shows a "Seen before" chip with count when `prior_recommendations` is non-empty.
+
+### Tier 1 adds
+
+KPI summary, object inventory, and pattern writes on their own lanes (see `MemoryRecord.lane` literal). Recall is also extended to `location:demo:patterns` for pattern history.
 
 ## FastAPI routes
 
@@ -452,9 +501,12 @@ Span hierarchy for one `/api/run` call:
 ```
 run (root)
 ├── evidence_pack.build
+│   └── mubit.recall                  (returns prior_recommendations)
 ├── optimization_agent.run            (auto-instrumented by Pydantic AI)
 ├── layout_change.validate
 └── memory.write
+    ├── memory.write.mubit
+    └── memory.write.jsonl
 ```
 
 The Logfire URL exposed at `/api/logfire_url` should be the URL of the most recent `run` span. Cache it in process state when the run finishes.
@@ -541,7 +593,7 @@ R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}` retu
 |---|---|
 | Pydantic AI agent returns invalid `LayoutChange` | Post-validate, retry once with stricter prompt, fall back to `recommendation.cached.json` |
 | Anthropic API down/slow at demo time | Same fallback; keep the cached recommendation visually identical to a real one |
-| MuBit unavailable | jsonl is source of truth; MuBit writes are best-effort; UI never reads MuBit directly |
+| MuBit unavailable | Writes still hit jsonl; recall returns `[]`; UI falls back to jsonl read; "Seen before" chip simply doesn't render |
 | Logfire unavailable | Spans no-op gracefully; top-bar link disables if `/api/logfire_url` errors |
 | SSE wiring eats too much time | Replace with single POST returning stages + result; replay client-side |
 | Frontend twin panel buggy | PNG `<img>` crossfade has zero geometry; if even that breaks, single static "after" image is acceptable |
@@ -555,10 +607,12 @@ R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}` retu
 - [ ] `LayoutChange.expected_kpi_delta` has ≥ 1 entry, all keys are valid `KPIField`s.
 - [ ] After clicking Generate, the recommendation card renders with rationale, evidence, deltas, confidence.
 - [ ] Clicking Apply crossfades the twin and animates KPI deltas.
-- [ ] Clicking Accept/Reject writes a `MemoryRecord` to `mubit_fallback.jsonl`.
-- [ ] Logfire trace shows 4 spans (or 5 with summarizer) under one `run` root.
+- [ ] Clicking Accept/Reject writes a `MemoryRecord` to MuBit AND to `mubit_fallback.jsonl`.
+- [ ] When MuBit is up: Memories expander rows show `mubit_id` chips; `GET /api/memories` returns merged MuBit+jsonl data.
+- [ ] When MuBit is up and a prior recommendation with the same `pattern_id` exists, the recommendation card shows a "Seen before" chip and the agent's rationale acknowledges it.
+- [ ] Logfire trace shows the full span tree (`evidence_pack.build` → `mubit.recall`, `optimization_agent.run`, `layout_change.validate`, `memory.write` → `memory.write.mubit` + `memory.write.jsonl`).
 - [ ] If `ANTHROPIC_API_KEY` is unset or invalid, the fallback path still produces a valid recommendation card.
-- [ ] If `MUBIT_API_KEY` is unset, jsonl-only mode works end-to-end without errors.
+- [ ] If `MUBIT_API_KEY` is unset, jsonl-only mode works end-to-end without errors and the UI degrades silently (no `mubit_id` chips, no "Seen before" chip).
 
 ## Pitch copy (best-case demo recommendation)
 
@@ -567,7 +621,7 @@ Move table cluster B 0.8m left.
 
 Rationale:
 Cluster B forces the staff runner across the queue zone every trip,
-producing 18 crossings in 12 minutes and obstructing the queue for 41s.
+producing 18 crossings across three 20-second KPI windows and obstructing the queue for 41s.
 
 Evidence: mem_kpi_w1, mem_kpi_w2, mem_kpi_w3
 
@@ -584,7 +638,7 @@ Risk: low. Maintains 1.2m walkway clearance.
 - Cafe, not restaurant.
 - One seeded video, no live camera.
 - Fixture-backed perception; live agent reasoning.
-- Local jsonl is source of truth for memory; MuBit is decorative.
+- MuBit is the primary memory store; jsonl is a hot fallback always written in parallel.
 - One Pydantic AI agent live (optionally two). All other agents are non-goals until Tier 1.
 - 3D twin is a PNG crossfade. R3F is non-goal until Tier 2.
 - Evidence chain is mandatory; recommendation must cite real fixture IDs.

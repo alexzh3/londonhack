@@ -123,7 +123,7 @@ Used by `scripts/run_yolo_offline.py` to translate COCO outputs into our cafe ta
 | `person_customer` | `person` (default) | |
 | `table` | `dining table` | |
 | `chair` | `chair` | |
-| `counter`, `pickup_area`, `queue_area` | not detected — read from `zones.json` polygons | |
+| `counter` zone, `pickup` zone, `queue` zone | not detected — read from `zones.json` polygons (`Zone.kind`) | |
 
 Bounding-box centers are sufficient for KPIs. Segmentation masks are non-goals for all tiers in this build.
 
@@ -135,7 +135,7 @@ Per 20s window over cached tracks + zones:
 |---|---|
 | `staff_walk_distance_px` | Σ Euclidean distance between consecutive TrackPoints for `staff` tracks |
 | `staff_customer_crossings` | count of (staff segment) × (customer segment) intersections in same window |
-| `queue_length_peak` / `avg` | count of `customer` points inside `queue` polygon per frame; peak/avg over window |
+| `queue_length_peak` | max count of `customer` points inside `queue` polygon across frames in the window |
 | `queue_obstruction_seconds` | seconds where a staff segment intersects the queue polygon (or table mask overlaps it, if Tier 1.5 segmentation is added) |
 | `congestion_score` | normalized density in counter+queue+pickup region, 0..1 |
 | `table_detour_score` | actual staff path length / straight-line counter→nearest-seating distance |
