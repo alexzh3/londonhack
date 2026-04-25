@@ -12,6 +12,133 @@ Tier 2 = richer spectacle
 
 This document specifies **MVP** in full and gives upgrade contracts for Tier 1 / Tier 2. Anything not in MVP is a non-goal until MVP is green.
 
+## Visual Architecture (MVP — module-level)
+
+This is the engineering view of the MVP. Every node here maps to a concrete file or library used at demo time. Anything not in this diagram is non-goal until Tier 1 or Tier 2.
+
+```mermaid
+flowchart TB
+    subgraph Demo["demo_data/ (loaded at startup)"]
+        D1["zones.json<br/>list[Zone]"]
+        D2["object_inventory.json<br/>ObjectInventory"]
+        D3["kpi_windows.json<br/>list[KPIReport]"]
+        D4["pattern_fixture.json<br/>OperationalPattern"]
+        D5["annotated_before.mp4"]
+        D6["twin_observed.png<br/>twin_recommended.png"]
+        D7["recommendation.cached.json<br/>LayoutChange (fallback)"]
+        D8[("mubit_fallback.jsonl<br/>append-only")]
+    end
+
+    subgraph App["app/ (FastAPI process)"]
+        SCHEMA["schemas.py<br/>Pydantic models"]
+        EP["evidence_pack.py<br/>build() → CafeEvidencePack"]
+        OPT["agents/optimization_agent.py<br/>Pydantic AI Agent[..., LayoutChange]<br/>model: anthropic:claude-sonnet-4"]
+        FB["fallback.py<br/>load_fallback_recommendation()"]
+        VAL["validate_layout_change()<br/>(in optimization_agent.py)"]
+        MEM["memory.py<br/>write_memory() · recall_prior_recommendations()"]
+        LFS["logfire_setup.py"]
+        CFG["config.py<br/>env: ANTHROPIC_API_KEY · MUBIT_API_KEY"]
+    end
+
+    subgraph Routes["app/api/"]
+        R1["GET /api/state"]
+        R2["POST /api/run<br/>SSE: stage events + recommendation"]
+        R3["POST /api/feedback"]
+        R4["GET /api/memories"]
+        R5["GET /api/logfire_url"]
+    end
+
+    subgraph Sponsors["External sponsor services"]
+        AN[Anthropic Claude API]
+        MB[(MuBit)]
+        LF[(Logfire)]
+    end
+
+    subgraph Front["frontend/ (React + Vite)"]
+        UI1["Video panel<br/>plays D5"]
+        UI2["KPI + Object cards<br/>Tremor"]
+        UI3["Flow canvas<br/>@xyflow/react · 3 nodes"]
+        UI4["Recommendation card<br/>+ Seen-before chip"]
+        UI5["Twin panel<br/>img crossfade"]
+        UI6["Memories expander"]
+        UI7["Logfire link (top bar)"]
+    end
+
+    D1 & D2 & D3 & D4 --> EP
+    MEM -- "recall_prior_recommendations()" --> EP
+    EP -- CafeEvidencePack --> OPT
+    OPT --> AN
+    OPT -- LayoutChange --> VAL
+    D7 -. fallback .-> VAL
+    VAL -- LayoutChange --> MEM
+    MEM --> MB
+    MEM --> D8
+
+    R1 --> EP
+    R2 --> EP
+    R2 --> OPT
+    R2 --> MEM
+    R3 --> MEM
+    R4 --> MEM
+    R5 --> LFS
+
+    EP -. span .-> LFS
+    OPT -. auto-span .-> LFS
+    VAL -. span .-> LFS
+    MEM -. span .-> LFS
+    LFS --> LF
+
+    D5 --> UI1
+    D3 --> UI2
+    D2 --> UI2
+    R2 --> UI3
+    R2 --> UI4
+    D6 --> UI5
+    R4 --> UI6
+    R5 --> UI7
+
+    classDef real fill:#d4f4dd,stroke:#2d7a3e,color:#000
+    classDef mock fill:#fde8c0,stroke:#a8741a,color:#000
+    classDef store fill:#dde6f5,stroke:#345aa8,color:#000
+    classDef ext fill:#f5d6e3,stroke:#a8345a,color:#000
+    class SCHEMA,EP,OPT,VAL,MEM,LFS,CFG,FB,R1,R2,R3,R4,R5 real
+    class D1,D2,D3,D4,D5,D6,D7,UI1,UI2,UI3,UI4,UI5,UI6,UI7 mock
+    class D8,MB,LF store
+    class AN,MB,LF ext
+```
+
+### What's real (green) in MVP
+
+| Module / route | What it does | Library |
+|---|---|---|
+| `app/schemas.py` | All Pydantic models — `CafeEvidencePack`, `LayoutChange`, `MemoryRecord`, etc. | `pydantic` |
+| `app/evidence_pack.py` | Loads fixtures, calls `mubit.recall()`, builds the typed pack | stdlib + `pydantic` |
+| `app/agents/optimization_agent.py` | Live Pydantic AI agent emitting validated `LayoutChange`; post-validate + retry-once + fallback to `recommendation.cached.json` | `pydantic-ai`, `anthropic` |
+| `app/memory.py` | Dual-write (MuBit primary, jsonl fallback) + `recall_prior_recommendations()` | MuBit SDK + stdlib |
+| `app/logfire_setup.py` | Trace init + span helpers; auto-instruments Pydantic AI | `logfire` |
+| `app/api/routes.py` | 5 routes; `/api/run` streams SSE stages + recommendation | `fastapi` |
+| Optional `app/agents/evidence_summarizer.py` | Second live agent for "agentic workflow" plural framing | `pydantic-ai` |
+
+### What's mocked (amber) in MVP
+
+| Artifact / surface | How it's faked | Replacement in Tier 1 / Tier 2 |
+|---|---|---|
+| `tracks.cached.json`, `kpi_windows.json` | Hand-authored or precomputed offline numbers | Tier 1: `scripts/run_yolo_offline.py` + live KPI engine |
+| `pattern_fixture.json` | Hand-authored `OperationalPattern` with stable evidence IDs | Tier 1: `PatternAgent` (Pydantic AI) or deterministic `pattern_builder` |
+| `annotated_before.mp4` | Hand-rendered or scripted overlay video | Tier 1: `scripts/render_annotated.py` (ffmpeg + cached YOLO overlays) |
+| `twin_observed.png` / `twin_recommended.png` | Static PNGs (matplotlib isometric or Figma) | Tier 2: R3F box-prefab scene reading `twin_*.json` |
+| Flow canvas nodes | Real SSE stage events drive 3 fixed nodes; `validate` is hidden inside `optimization_agent` node | Tier 2: per-span animation tied to full Logfire span tree |
+| Memories expander | Plain list, no timeline | Tier 2: rich timeline with hover previews + lane labels |
+| Scenario rail | Cut entirely; just observed ⇄ recommended toggle | Tier 2: 2–3 prebaked concept scenarios |
+| Chat panel | Cut entirely | Tier 2: supported-prompts-only chat |
+
+### Sponsor services (pink) used at demo time
+
+- **Anthropic Claude** — drives `OptimizationAgent`. Fallback to `recommendation.cached.json` on failure.
+- **MuBit** — `remember()` for recommendations + feedback writes; `recall()` for prior recommendations on the same `pattern_id`. Degrades silently when `MUBIT_API_KEY` unset.
+- **Logfire** — auto-instruments Pydantic AI; manual spans for evidence pack build, validation, memory write, MuBit recall.
+- **Render** — backend hosting (configured at deploy time, not visible in process diagram).
+
 ## Demo loop (MVP)
 
 ```

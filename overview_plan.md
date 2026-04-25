@@ -19,6 +19,81 @@ Time remaining: **~18h**. Two- or three-person team. MVP must ship by hour 14 wi
 
 If only MVP ships, the project is still defensible: real typed agent, real evidence chain, real memory write, real Logfire trace, real before/after delta. Spectacle is honestly framed as "operations console," not "tycoon game."
 
+## Visual Architecture (MVP)
+
+```mermaid
+flowchart TB
+    subgraph Fixtures["demo_data/ (fixture-backed perception)"]
+        F1[zones.json]
+        F2[object_inventory.json]
+        F3[kpi_windows.json]
+        F4[pattern_fixture.json]
+        F5[annotated_before.mp4]
+        F6[twin_observed.png<br/>twin_recommended.png]
+        F7[recommendation.cached.json]
+    end
+
+    subgraph Backend["Real backend (FastAPI)"]
+        EP[evidence_pack.build]
+        OA[OptimizationAgent<br/>Pydantic AI · Claude]
+        VL[validate_layout_change<br/>+ retry-once + fallback]
+        MEM[memory.write<br/>MuBit + jsonl]
+        REC[mubit.recall<br/>prior recommendations]
+    end
+
+    subgraph Memory["Memory"]
+        MB[(MuBit<br/>primary)]
+        JL[(jsonl<br/>fallback)]
+    end
+
+    subgraph UI["Frontend (React shell, mostly mocked)"]
+        VID[Annotated video panel]
+        KPI[KPI + object cards]
+        FLOW[Flow canvas<br/>3 nodes]
+        CARD[Recommendation card<br/>+ Seen-before chip]
+        TWIN[Twin panel<br/>PNG crossfade]
+        MEMUI[Memories expander]
+    end
+
+    LF[Logfire trace<br/>4 spans]
+
+    F1 & F2 & F3 & F4 --> EP
+    REC --> EP
+    EP --> OA
+    OA --> VL
+    F7 -. fallback .-> VL
+    VL --> MEM
+    MEM --> MB
+    MEM --> JL
+    MB --> REC
+
+    F5 --> VID
+    F3 --> KPI
+    F2 --> KPI
+    F6 --> TWIN
+    VL --> CARD
+    MB --> MEMUI
+    JL -. fallback .-> MEMUI
+    EP -.-> FLOW
+    OA -.-> FLOW
+    MEM -.-> FLOW
+
+    EP -. span .-> LF
+    REC -. span .-> LF
+    OA -. span .-> LF
+    VL -. span .-> LF
+    MEM -. span .-> LF
+
+    classDef real fill:#d4f4dd,stroke:#2d7a3e,color:#000
+    classDef mock fill:#fde8c0,stroke:#a8741a,color:#000
+    classDef store fill:#dde6f5,stroke:#345aa8,color:#000
+    class EP,OA,VL,MEM,REC,LF real
+    class F1,F2,F3,F4,F5,F6,F7,VID,KPI,TWIN,MEMUI,FLOW,CARD mock
+    class MB,JL store
+```
+
+Legend: green = real live code in MVP. amber = fixture-backed or mocked. blue = data store.
+
 ## What MVP Must Ship
 
 A single linear demo flow with four clicks: **Load demo → Generate recommendation → Apply → Accept / Reject**.
