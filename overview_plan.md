@@ -25,27 +25,30 @@ video frame -> detections/tracks -> zones/KPIs -> MuBit memories
 flowchart TD
     A[Overhead cafe video] --> B[Frame sampler]
     B --> C[Detection + segmentation + tracking]
-    C --> D[Zone + KPI engine]
-    D --> E[Observation compressor agent]
-    E --> F[(MuBit memory)]
-    F --> G[Pattern agent]
-    G --> H[Optimization agent]
-    H --> I[Recommendation with evidence]
-    I --> J[2D before/after simulation]
-    J --> K[Manager feedback]
-    K --> F
+    C --> D[Agent-assisted zone calibration]
+    D --> E[Deterministic zone + KPI engine]
+    E --> F[Observation compressor agent]
+    F --> G[(MuBit memory)]
+    G --> H[Pattern agent]
+    H --> I[Optimization agent]
+    I --> J[Recommendation with evidence]
+    J --> K[2D before/after simulation]
+    K --> L[Manager feedback]
+    L --> G
 
-    C --> L[(Postgres or JSON cache)]
-    D --> L
-    I --> L
-    J --> L
+    C --> P[(Postgres or JSON cache)]
+    D --> P
+    E --> P
+    J --> P
+    K --> P
 
-    B -. spans .-> M[Logfire]
-    C -. spans .-> M
-    E -. Pydantic AI .-> M
-    F -. memory calls .-> M
-    H -. Pydantic AI .-> M
-    J -. simulation .-> M
+    B -. spans .-> Q[Logfire]
+    C -. spans .-> Q
+    D -. Pydantic AI .-> Q
+    F -. Pydantic AI .-> Q
+    G -. memory calls .-> Q
+    I -. Pydantic AI .-> Q
+    K -. simulation .-> Q
 ```
 
 ## Recommended Local Vision Stack
@@ -58,7 +61,7 @@ Use local computer vision first. For this project, Ultralytics + OpenCV is doabl
 | Detection | Ultralytics YOLO local model | Cached detections JSON | Person/table/chair boxes are enough for the main KPIs. |
 | Tracking | Ultralytics `model.track(..., tracker="bytetrack.yaml")` | Simple centroid tracker | Needed for trails, dwell, path crossings. |
 | Segmentation | YOLO segmentation model, only for furniture masks | Bounding boxes only | Stretch for table/chair footprint and after-image polish. |
-| Zones | Hardcoded/manual polygons in app | `zones.json` edited by hand | Fastest way to make spatial claims credible. |
+| Zones | Agent-drafted polygons + deterministic validation | `zones.json` edited by hand | Let AI draft queue/pickup/staff-path zones, then freeze polygons for explainable KPIs. |
 | KPIs | Custom deterministic Python + OpenCV geometry | Cached KPI JSON | KPI math should be explainable and reproducible. |
 | Memory | MuBit SDK | Local JSON fallback | MuBit stores compressed operational observations. |
 | Agents | Pydantic AI | Cached proposal fallback | Typed outputs make the recommendation trustworthy. |
@@ -91,13 +94,14 @@ flowchart LR
 Build only the path needed for a convincing 3-minute demo:
 
 1. Load a seeded overhead cafe video.
-2. Show detections, masks/tracks, zones, trails, and heatmap.
-3. Compute spatial KPIs.
-4. Compress KPI windows into MuBit memories.
-5. Use Pydantic AI to generate one typed layout recommendation.
-6. Show before/after 2D simulation with KPI deltas.
-7. Record feedback back into memory.
-8. Show Logfire trace.
+2. Let the zone calibration agent draft queue, pickup, seating, and staff-path zones.
+3. Show detections, masks/tracks, zones, trails, and heatmap.
+4. Compute spatial KPIs with deterministic point-in-polygon geometry.
+5. Compress KPI windows into MuBit memories.
+6. Use Pydantic AI to generate one typed layout recommendation.
+7. Show before/after 2D simulation with KPI deltas.
+8. Record feedback back into memory.
+9. Show Logfire trace.
 
 Cut from MVP:
 
@@ -125,6 +129,7 @@ flowchart TB
         V1[OpenCV frame sampler]
         V2[Ultralytics YOLO + ByteTrack]
         V3[Cached detections JSON]
+        V4[ZoneCalibrationAgent]
     end
 
     subgraph Reasoning[Reasoning Layer]
@@ -140,7 +145,7 @@ flowchart TB
         M3[Logfire]
     end
 
-    U1 --> V1 --> V2 --> V3 --> R1
+    U1 --> V1 --> V2 --> V3 --> V4 --> R1
     R1 --> R2 --> M2
     M2 --> R3 --> R4 --> U4
     R4 --> U5
@@ -156,6 +161,7 @@ flowchart TB
 
 | Lane | Contents |
 |---|---|
+| `location:demo:layout` | Floor plan, furniture, and agent-drafted/approved zones. |
 | `location:demo:scene` | Compressed 10-second scene observations. |
 | `location:demo:kpi` | Queue, walking, crossing, dwell, heatmap summaries. |
 | `location:demo:patterns` | Repeated bottlenecks with evidence IDs. |
@@ -168,16 +174,19 @@ MuBit should not store every raw frame or every raw bounding box. Store raw dete
 
 ```mermaid
 flowchart TD
-    A[Detections + tracks + KPIs] --> B[ObservationCompressorAgent]
-    B --> C[SceneObservation]
-    C --> D[PatternAgent]
-    D --> E[OperationalPattern]
-    E --> F[OptimizationAgent]
-    F --> G{Typed output}
-    G --> H[LayoutChange]
-    G --> I[StaffingAdjustment]
-    G --> J[EquipmentRepositioning]
-    G --> K[NoActionRecommended]
+    A[Representative frame + detections + tracks] --> B[ZoneCalibrationAgent]
+    B --> C[ZoneDrafts]
+    C --> D[Deterministic KPI engine]
+    D --> E[ObservationCompressorAgent]
+    E --> F[SceneObservation]
+    F --> G[PatternAgent]
+    G --> H[OperationalPattern]
+    H --> I[OptimizationAgent]
+    I --> J{Typed output}
+    J --> K[LayoutChange]
+    J --> L[StaffingAdjustment]
+    J --> N[EquipmentRepositioning]
+    J --> O[NoActionRecommended]
 ```
 
 The main hackathon output should be `LayoutChange`.
@@ -209,7 +218,7 @@ Avoid "coffees served per staff member" in the MVP unless the video makes servic
 
 | Time | Goal | Output |
 |---|---|---|
-| 0-4h | Visual proof | Video, zones, cached detections, trails. |
+| 0-4h | Visual proof | Video, agent-drafted/fallback zones, cached detections, trails. |
 | 4-8h | KPI engine | Crossings, walking distance, queue proxy, heatmap. |
 | 8-12h | Memory | MuBit observation writes and visible memory timeline. |
 | 12-16h | Recommendation | Pydantic AI emits one typed `LayoutChange`. |
@@ -219,13 +228,14 @@ Avoid "coffees served per staff member" in the MVP unless the video makes servic
 ## Demo Script
 
 1. "Restaurants optimize from POS, but POS is blind to physics."
-2. Show overhead video with tracks, zones, and heatmap.
-3. Show KPI cards: crossings, walking distance, queue obstruction.
-4. Show MuBit memory timeline.
-5. Generate recommendation: "Move table cluster B 0.8m left."
-6. Show evidence chain and expected deltas.
-7. Click simulate and show before/after map.
-8. Open Logfire trace: video -> KPI -> memory -> agent -> simulation.
+2. Show the zone calibration agent drafting queue, pickup, seating, and staff-path zones.
+3. Show overhead video with tracks, zones, and heatmap.
+4. Show KPI cards: crossings, walking distance, queue obstruction.
+5. Show MuBit memory timeline.
+6. Generate recommendation: "Move table cluster B 0.8m left."
+7. Show evidence chain and expected deltas.
+8. Click simulate and show before/after map.
+9. Open Logfire trace: video -> zone calibration -> KPI -> memory -> agent -> simulation.
 
 ## Why This Can Win
 

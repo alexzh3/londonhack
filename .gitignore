@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 !.env.sample
+.codex
 
 # Common secret material
 *.pem

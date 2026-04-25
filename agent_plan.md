@@ -9,7 +9,7 @@ The product loop is:
 ```text
 overhead video
 -> detection / segmentation / tracking
--> zones + deterministic KPIs
+-> agent-assisted zone calibration + deterministic KPIs
 -> compressed MuBit memories
 -> Pydantic AI pattern + optimization agents
 -> evidence-backed layout recommendation
@@ -33,30 +33,33 @@ flowchart TD
     A[Seeded overhead cafe video] --> B[Frame sampler]
     B --> C[Local Ultralytics + OpenCV pipeline]
     C --> D[Detections / masks / tracks]
-    D --> E[Zone assignment]
-    E --> F[Deterministic KPI engine]
-    F --> G[ObservationCompressorAgent]
-    G --> H[(MuBit memory)]
-    H --> I[PatternAgent]
-    I --> J[OptimizationAgent]
-    J --> K[Proposal store]
-    K --> L[2D simulation engine]
-    L --> M[Dashboard]
-    M --> N[Feedback]
-    N --> H
+    D --> E[ZoneCalibrationAgent]
+    E --> F[Deterministic zone assignment]
+    F --> G[Deterministic KPI engine]
+    G --> H[ObservationCompressorAgent]
+    H --> I[(MuBit memory)]
+    I --> J[PatternAgent]
+    J --> K[OptimizationAgent]
+    K --> L[Proposal store]
+    L --> M[2D simulation engine]
+    M --> N[Dashboard]
+    N --> O[Feedback]
+    O --> I
 
-    D --> O[(Postgres or JSON cache)]
-    F --> O
-    K --> O
-    L --> O
+    D --> P[(Postgres or JSON cache)]
+    E --> P[(Postgres or JSON cache)]
+    G --> P
+    L --> P
+    M --> P
 
-    B -. span .-> P[Logfire]
-    C -. span .-> P
-    F -. span .-> P
-    G -. Pydantic AI span .-> P
-    H -. memory span .-> P
-    J -. Pydantic AI span .-> P
-    L -. span .-> P
+    B -. span .-> Q[Logfire]
+    C -. span .-> Q
+    E -. Pydantic AI span .-> Q
+    G -. span .-> Q
+    H -. Pydantic AI span .-> Q
+    I -. memory span .-> Q
+    K -. Pydantic AI span .-> Q
+    M -. span .-> Q
 ```
 
 ## Runtime Sequence
@@ -68,13 +71,17 @@ sequenceDiagram
     participant KPI as KPI Engine
     participant DB as Postgres/Cache
     participant MuBit as MuBit
-    participant AI as Pydantic AI
+    participant ZoneAI as ZoneCalibrationAgent
+    participant AI as Pydantic AI Agents
     participant Sim as Simulator
     participant LF as Logfire
 
     UI->>Vision: Analyze demo video frames
     Vision->>LF: detect_frame spans
     Vision->>DB: cache detections/tracks
+    Vision->>ZoneAI: representative frame + detections + tracks
+    ZoneAI->>DB: store drafted zones
+    ZoneAI->>KPI: approved/drafted zones
     Vision->>KPI: detections + tracks
     KPI->>DB: store KPI snapshot
     KPI->>AI: compact KPI window
@@ -102,7 +109,8 @@ Default components:
 - Ultralytics YOLO detection model for people, tables, chairs, and coarse scene objects.
 - Ultralytics `model.track(..., tracker="bytetrack.yaml", persist=True)` for movement trails.
 - OpenCV drawing utilities for boxes, trails, zones, and heatmaps.
-- Hardcoded/manual `zones.json` polygons for queue, counter, pickup, seating, and staff path.
+- `ZoneCalibrationAgent` drafts `zones.json` polygons for queue, counter, pickup, seating, and staff path from a representative frame, detections, static furniture, and track heatmaps.
+- Deterministic OpenCV geometry assigns every `TrackPoint` to the approved/drafted zones.
 - Cached `demo_data/detections.cached.json` and `demo_data/tracks.cached.json` for demo reliability.
 
 Minimal detection/tracking runner:
@@ -178,6 +186,7 @@ flowchart LR
 
 | Lane | Writer | Reader | Contents |
 |---|---|---|---|
+| `location:demo:layout` | Zone calibration agent | KPI engine, dashboard, optimization agent | Floor plan, furniture, and drafted/approved zones. |
 | `location:demo:scene` | Observation compressor | Pattern agent, dashboard | 10-second scene summaries. |
 | `location:demo:kpi` | KPI engine | Pattern agent, optimization agent | KPI snapshots and window summaries. |
 | `location:demo:patterns` | Pattern agent | Optimization agent | Bottlenecks and evidence chains. |
@@ -256,23 +265,43 @@ class Zone(BaseModel):
     name: str
     kind: Literal["counter", "queue", "pickup", "seating", "staff_path", "entrance"]
     polygon: list[tuple[float, float]]
+    color_hex: str = "#64748b"
+    source: Literal["agent_drafted", "manual", "fixture"] = "agent_drafted"
+    confidence: float | None = None
+
+
+class ZoneDraft(BaseModel):
+    zones: list[Zone]
+    rationale: str
+    assumptions: list[str]
+    needs_review: bool = True
 
 
 class KPIReport(BaseModel):
     window_start_s: float
     window_end_s: float
+    frames_sampled: int
     staff_walk_distance_px: float
     staff_customer_crossings: int
     queue_length_peak: int
     queue_obstruction_seconds: float
     congestion_score: float
     table_detour_score: float
+    session_id: UUID
+    run_id: UUID
 
 
 class EvidenceRef(BaseModel):
     memory_id: str
     lane: str
     summary: str
+    kpi_field: Literal[
+        "staff_walk_distance_px",
+        "staff_customer_crossings",
+        "queue_obstruction_seconds",
+        "congestion_score",
+        "table_detour_score",
+    ] | None = None
 
 
 class SceneObservation(BaseModel):
@@ -297,7 +326,7 @@ class OperationalPattern(BaseModel):
 
 class SimulationSpec(BaseModel):
     action: Literal["move_table", "move_chair", "move_station", "change_queue_boundary"]
-    target_id: str
+    target_id: str  # FurnitureItem.id or FurnitureItem.cluster
     from_position: tuple[float, float]
     to_position: tuple[float, float]
     rotation_degrees: float = 0
@@ -309,7 +338,16 @@ class LayoutChange(BaseModel):
     target_id: str
     simulation: SimulationSpec
     evidence: list[EvidenceRef] = Field(min_length=3)
-    expected_kpi_delta: dict[str, float]
+    expected_kpi_delta: dict[
+        Literal[
+            "staff_walk_distance_px",
+            "staff_customer_crossings",
+            "queue_obstruction_seconds",
+            "congestion_score",
+            "table_detour_score",
+        ],
+        float,
+    ]
     confidence: float
     risk: Literal["low", "medium", "high"]
     fingerprint: str
@@ -344,6 +382,27 @@ OptimizationProposal = LayoutChange | StaffingAdjustment | EquipmentRepositionin
 ```
 
 ## Agent Contracts
+
+### ZoneCalibrationAgent
+
+Input:
+
+- representative frame metadata
+- static detections for furniture/counter-like objects
+- track heatmap summaries
+- optional existing `zones.json`
+
+Output:
+
+- `ZoneDraft`
+
+Rules:
+
+- Draft operational zones once per video/session, not per frame.
+- Use agent reasoning for semantic labels like "queue", "pickup", and "staff path".
+- Do not use the agent to assign individual track points to zones.
+- KPI code must still run deterministic point-in-polygon assignment against the drafted/approved polygons.
+- If confidence is low, set `needs_review=True` and fall back to fixture/manual zones for the live demo.
 
 ### ObservationCompressorAgent
 
@@ -582,6 +641,7 @@ Logfire spans:
 - `sample_frames`
 - `ultralytics_track`
 - `detect_frame`
+- `zone_calibration`
 - `compute_kpis`
 - `compress_observation`
 - `mubit_remember`
@@ -614,6 +674,7 @@ kpi/calculator.py
 kpi/heatmap.py
 
 agents/observation_compressor.py
+agents/zone_calibration.py
 agents/pattern_agent.py
 agents/optimization_agent.py
 
@@ -626,6 +687,7 @@ db/schema.sql
 
 demo_data/cafe.mp4
 demo_data/detections.cached.json
+demo_data/zone_draft.cached.json
 demo_data/zones.json
 ```
 
@@ -633,7 +695,7 @@ demo_data/zones.json
 
 | Time | Gate | Deliverable |
 |---|---|---|
-| 0-4h | Visual proof | Video, zones, cached detections/tracks, trails. |
+| 0-4h | Visual proof | Video, agent-drafted/fallback zones, cached detections/tracks, trails. |
 | 4-8h | KPI proof | Crossings, walking distance, queue proxy, heatmap. |
 | 8-12h | Memory proof | MuBit writes, recall, memory timeline. |
 | 12-16h | Agent proof | Typed Pydantic AI `LayoutChange` with evidence. |
@@ -691,7 +753,7 @@ Keep minimum 1.2m accessible walkway clearance.
 - Cafe, not full restaurant, for MVP.
 - Seeded video, not live camera.
 - Cached detections by default.
-- Hardcoded zones by default.
+- Agent-drafted zones with frozen fixture fallback by default.
 - Deterministic 2D simulation by default.
 - Generated image/video only as stretch.
 - Evidence chain is mandatory.
