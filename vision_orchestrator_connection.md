@@ -2,90 +2,105 @@
 
 ## Purpose
 
-This document defines the handshake between the **vision pipeline** (OpenCV + Ultralytics YOLO + tracker) and the **agent pipeline** (Pydantic AI agents writing to MuBit memory). It exists so the vision and agent tracks can be built in parallel without coordination, and so the mock data in `demo_data/` has a clear real-world counterpart.
+Defines the handshake between the **vision/perception layer** (whatever produces the upstream artifacts) and the **agent layer** (Pydantic AI agents writing to memory). This document is tier-aware: the contract is the same in all tiers; only the producer changes.
 
-The short version:
-
-```text
-video frames
-  -> YOLO detections (per frame)
-  -> ByteTrack track IDs (across frames)
-  -> ZoneCalibrationAgent drafts operational zones once per video
-  -> deterministic zone assignment (geometric overlay)
-  -> KPI engine (deterministic window stats)
-  -> KPIReport (+ SceneObservation) -> Pydantic AI agents -> MuBit
+```
+MVP    : producer = hand-authored or precomputed fixtures
+Tier 1 : producer = real YOLO + ByteTrack + KPI engine + (optional) PatternAgent
+Tier 2 : producer = same as Tier 1; UI consumes additional twin layout JSON
 ```
 
-Mock data in `demo_data/` is a frozen snapshot of the right side of that pipeline (`tracks.cached.json`, `kpi_windows.json`). Replace the mock data with real vision output and the agents keep working unchanged.
+The agent layer (`OptimizationAgent`, optional `EvidenceSummarizerAgent`, future `PatternAgent`) does **not change** between tiers. It only consumes a single typed Pydantic input: `CafeEvidencePack`.
 
----
+## Build philosophy reminder
 
-## What the vision layer must produce
+> MVP = real intelligence (typed agent + traced reasoning + memory),
+>       mocked spectacle (prebaked twin images, fixture-backed perception).
+> Tier 1 = realer perception. Tier 2 = richer spectacle.
 
-The pipeline boundary is **five structured artifacts**. The vision layer produces detections/tracks; the zone calibration agent produces zones; the KPI engine consumes those artifacts and emits window summaries:
+In MVP, **vision is a stack of JSON files on disk**. There is no live YOLO at demo time. Tier 1 swaps the JSON for live output without touching any agent code.
 
+## The handoff contract — `CafeEvidencePack`
 
-| Output                   | Pydantic schema | File it lands in                   | Produced by                                        |
-| ------------------------ | --------------- | ---------------------------------- | -------------------------------------------------- |
-| Per-frame detections     | `Detection`     | `demo_data/detections.cached.json` | YOLO                                               |
-| Per-frame track points   | `TrackPoint`    | `demo_data/tracks.cached.json`     | YOLO + ByteTrack                                   |
-| Zone draft metadata      | `ZoneDraft`     | `demo_data/zone_draft.cached.json` | ZoneCalibrationAgent                               |
-| Spatial zones            | `Zone`          | `demo_data/zones.json`             | ZoneCalibrationAgent, with fixture/manual fallback |
-| Per-window KPI snapshots | `KPIReport`     | `demo_data/kpi_windows.json`       | KPI engine (derived from the above)                |
+The boundary is exactly one typed Pydantic model. Everything upstream produces the parts; everything downstream consumes the bundle:
 
+```python
+class CafeEvidencePack(BaseModel):
+    session_id: UUID
+    run_id: UUID
+    zones: list[Zone]
+    object_inventory: ObjectInventory
+    kpi_windows: list[KPIReport]
+    pattern: OperationalPattern
+    org_rules: list[str]
+```
 
-Everything downstream (observations, patterns, recommendations) is generated from these artifacts. If a field isn't in one of these schemas, downstream code cannot depend on it, so vision should not waste time producing it.
+`evidence_pack.build()` constructs it. In MVP it loads from `demo_data/`. In Tier 1 it loads from running pipelines plus `demo_data/zones.json` (zones stay fixture-authored — see §Zones below).
 
----
+This is the **whole** vision↔agents contract. If a field isn't here, agents can't depend on it.
 
-## Stage-by-stage: what to ingest and why
+## Files in `demo_data/` (MVP source-of-truth)
 
-### 1. Frame sampling — `cv2.VideoCapture`
+| File | Schema | Used by MVP runtime? | Producer (MVP) | Producer (Tier 1) |
+|---|---|---|---|---|
+| `source_video.mp4` | binary | No (pitch only) | seeded clip | seeded clip |
+| `annotated_before.mp4` | binary | Yes (UI plays it) | hand-rendered or scripted | ffmpeg + cached YOLO overlays |
+| `tracks.cached.json` | `list[TrackPoint]` | No (shipped for credibility; consumed by Tier 1 KPI engine) | hand-authored | `scripts/run_yolo_offline.py` |
+| `zones.json` | `list[Zone]` | Yes (loaded into pack) | hand-drawn polygons | hand-drawn polygons (no zone agent in MVP/Tier 1) |
+| `object_inventory.json` | `ObjectInventory` | Yes (loaded into pack) | hand-authored | YOLO static-detection collapse + manual review |
+| `kpi_windows.json` | `list[KPIReport]` | Yes (loaded into pack) | precomputed plausible numbers | live KPI engine output |
+| `pattern_fixture.json` | `OperationalPattern` | Yes (loaded into pack as `pack.pattern`) | hand-authored, with stable `evidence_ids` | `PatternAgent` output OR deterministic builder |
+| `recommendation.cached.json` | `LayoutChange` | Fallback path | hand-authored | hand-authored |
+| `twin_observed.png` | image | Yes (UI image) | matplotlib/Figma | re-rendered from real layout |
+| `twin_recommended.png` | image | Yes (UI image) | matplotlib/Figma | re-rendered from real layout |
+| `twin_observed.json` | `TwinLayout` | No (Tier 2 only) | hand-authored | derived from inventory + zones |
+| `twin_recommended.json` | `TwinLayout` | No (Tier 2 only) | hand-authored | apply `LayoutChange.simulation` to baseline |
+| `mubit_fallback.jsonl` | append-only memory log | Yes (UI reads it) | created at runtime | created at runtime |
 
-**What:** Decode the overhead cafe video at a fixed sample rate (target 2 fps for MVP; the demo video is ~60 s → ~120 frames).
+## Tier-by-tier production rules
 
-**Why this rate:** Staff walking speed in a cafe is ~1 m/s. At 2 fps and ~60 px/m, a person moves ~30 px between frames — large enough for tracker association, small enough that a queue-zone crossing can't happen between samples without showing up in at least one frame.
+### MVP (the only thing being built first)
 
-**What the agents use this for:** Nothing directly. But `KPIReport.frames_sampled` and the 20 s window boundaries depend on it, so the sample rate must be stable across the whole run.
+- All upstream artifacts are hand-authored or trivially scripted.
+- Numbers in `kpi_windows.json` and `pattern_fixture.json` must be plausible and internally consistent: the pattern's `evidence` IDs must equal the `memory_id`s of the KPI windows, and the pattern's `pattern_type` must be supportable by those KPI numbers (e.g. don't claim `queue_crossing` if `staff_customer_crossings` is 0).
+- `LayoutChange.evidence_ids` returned by `OptimizationAgent` must be a subset of `pattern_fixture.evidence[*].memory_id`. This is enforced by `validate_layout_change()` in the agent layer; the fixture-author must ensure those IDs exist.
+- The annotated video doesn't need to be sync-linked to the JSON. Judges won't frame-step it. As long as overlays are visually credible, ship it.
+- No live YOLO, no live KPI, no live pattern detection.
 
-### 2. Detection — Ultralytics YOLO
+### Tier 1 (only if MVP green and stable)
 
-**What:** Run a YOLO model on each sampled frame. Map COCO classes to our cafe taxonomy:
+Upgrade producers; do **not** touch the agent layer or schemas.
 
+- **Frame sampling:** `cv2.VideoCapture` at 2 fps for ~60s.
+- **Detection:** Ultralytics YOLO (`yolo11n.pt`) on each sampled frame. Map COCO classes to our taxonomy (see §Class mapping).
+- **Tracking:** `model.track(..., tracker="bytetrack.yaml", persist=True)`. Each TrackPoint = bbox center.
+- **Role assignment:** A track is `staff` if ≥60% of its first 10s of points fall inside the `counter` zone polygon; otherwise `customer`. Stored once per `track_id`.
+- **Object inventory:** Collapse static detections (table/chair/counter) into `ObjectInventory` once per session. Hand-correct counts and positions if YOLO output is messy.
+- **KPI engine:** Deterministic Python (numpy + shapely or `cv2.pointPolygonTest`). Six KPIs per 20s window — see §KPI math below.
+- **Pattern:** Either a real `PatternAgent` (Pydantic AI, `output_type=OperationalPattern`) over recent KPI windows, or a deterministic rule-based builder. Either is fine; both produce the same typed output.
 
-| Our class                   | YOLO source                                             | Purpose in agents                                 |
-| --------------------------- | ------------------------------------------------------- | ------------------------------------------------- |
-| `person_staff`              | `person` + heuristic (apron color / near-counter dwell) | Who generates walking distance and crossings      |
-| `person_customer`           | `person` (default)                                      | Who forms the queue                               |
-| `table`                     | `dining table`                                          | Obstacle map for detours; target of layout change |
-| `chair`                     | `chair`                                                 | Obstacle map; seating cluster assignment          |
-| `counter`                   | static polygon (not detected)                           | Zone anchor                                       |
-| `pickup_area`, `queue_area` | static polygons                                         | Zone anchors                                      |
+Tier 1 adds these spans to the Logfire trace:
 
+```
+run
+├── evidence_pack.build
+│   ├── kpi_engine.compute_window  (xN windows)
+│   ├── pattern_agent.run          (or pattern_builder.run if deterministic)
+│   └── memory.write (kpi)
+│   └── memory.write (inventory)
+│   └── memory.write (pattern)
+├── optimization_agent.run
+├── layout_change.validate
+└── memory.write (recommendation)
+```
 
-**Why staff vs. customer matters:** The whole thesis — "staff detours cost throughput" — depends on distinguishing the two. Every KPI that matters (crossings, walking distance, table detour) is a function of *staff* tracks against *customer* tracks or zones. If we can't split the two roles, the recommendation collapses into generic "it's busy."
+### Tier 2 (only if Tier 1 green)
 
-**MVP heuristic for role assignment:** A `person` track is labeled `staff` if ≥60% of its points fall inside the counter zone in the first 10 s; otherwise `customer`. Stored once per `track_id` in `TrackPoint.role`.
+Vision contract unchanged. The frontend additionally consumes `twin_observed.json` and `twin_recommended.json` (`TwinLayout` schema in `agent_plan.md` §Tier 2 hooks) to render an R3F scene with box prefabs. No backend changes required.
 
-**Why MVP ignores segmentation masks:** Bounding box centers plus agent-drafted or fixture zone polygons are sufficient for all six KPIs. Segmentation is only worth the latency if we later need precise obstacle maps for the simulator. Not blocking.
+## Zones (MVP and Tier 1: hand-drawn)
 
-### 3. Tracking — Ultralytics ByteTrack (`model.track(persist=True)`)
-
-**What:** Assign a persistent `track_id` to each detection across frames, emit a `TrackPoint` per (track_id, frame). Each TrackPoint has `(x, y)` = bbox center.
-
-**Why tracking is non-negotiable:** Without stable track IDs, you cannot compute:
-
-- **walking distance** (needs ordered points per track),
-- **path crossings** (needs segments, which need consecutive points),
-- **dwell / queue length over time** (needs the same person to stay the same ID while in a zone).
-
-Single-frame detections alone tell you *how many people* are in the cafe. Tracking tells you *how they move*, which is the whole product.
-
-**Why ByteTrack specifically:** It's the default Ultralytics tracker, handles short occlusions (customers walking behind tables), and requires zero extra setup. If it loses a track for 1–2 frames we can interpolate in the KPI engine; anything more is a new track ID and that's fine for aggregate KPIs.
-
-### 4. Zone calibration — agent-assisted, then frozen
-
-**What:** A `ZoneCalibrationAgent` runs once per video/session. It looks at a representative frame, static detections/furniture, track heatmaps, and any existing fixture zones, then drafts operational polygons:
+`ZoneCalibrationAgent` is **cut from MVP and Tier 1**. Zones are hand-drawn polygons in `zones.json` for:
 
 - `counter`
 - `queue`
@@ -94,102 +109,83 @@ Single-frame detections alone tell you *how many people* are in the cafe. Tracki
 - `staff_path`
 - `entrance`
 
-It outputs `ZoneDraft`, which contains `list[Zone]`, confidence, rationale, assumptions, and `needs_review`.
+Rationale: zones are operational concepts that judges won't watch the agent draft live. Hand-authoring takes 5 minutes; agentic drafting eats 2–4h and adds a failure mode. If we're showing off agent work, the work that matters to the demo is the recommendation, not the zone polygons.
 
-**Why an agent helps:** Zones are operational concepts ("where the queue forms," "where staff should walk"), not pure visual classes. YOLO can detect people/tables/chairs, but it will not know which empty corridor is the ideal staff path. An agent can use the spatial layout + track density to propose a semantic map quickly.
+A `ZoneCalibrationAgent` may be added in a future Tier 3, never in this hackathon.
 
-**What stays deterministic:** Once zones are drafted/approved, every `TrackPoint` is assigned by geometry, not by the LLM:
+## Class mapping (Tier 1 reference)
 
-```text
-zone_id = first Zone whose polygon contains (x, y)
+Used by `scripts/run_yolo_offline.py` to translate COCO outputs into our cafe taxonomy:
+
+| Our class | YOLO source | Notes |
+|---|---|---|
+| `person_staff` | `person` + role heuristic (counter dwell) | role decided post-hoc per track |
+| `person_customer` | `person` (default) | |
+| `table` | `dining table` | |
+| `chair` | `chair` | |
+| `counter`, `pickup_area`, `queue_area` | not detected — read from `zones.json` polygons | |
+
+Bounding-box centers are sufficient for KPIs. Segmentation masks are non-goals for all tiers in this build.
+
+## KPI math (Tier 1 reference)
+
+Per 20s window over cached tracks + zones:
+
+| KPI | Computation |
+|---|---|
+| `staff_walk_distance_px` | Σ Euclidean distance between consecutive TrackPoints for `staff` tracks |
+| `staff_customer_crossings` | count of (staff segment) × (customer segment) intersections in same window |
+| `queue_length_peak` / `avg` | count of `customer` points inside `queue` polygon per frame; peak/avg over window |
+| `queue_obstruction_seconds` | seconds where a staff segment intersects the queue polygon (or table mask overlaps it, if Tier 1.5 segmentation is added) |
+| `congestion_score` | normalized density in counter+queue+pickup region, 0..1 |
+| `table_detour_score` | actual staff path length / straight-line counter→nearest-seating distance |
+
+Window of 20s is chosen so a single bottleneck shows as a peak rather than averaging out, and three windows give a `PatternAgent` enough repetition to call `severity="high"` honestly.
+
+## What the vision/perception layer does NOT produce
+
+To keep the boundary clean, vision artifacts must not contain:
+
+- Natural-language summaries (job of `EvidenceSummarizerAgent`).
+- Pattern labels like `queue_crossing` (job of `PatternAgent` in Tier 1; fixture-authored in MVP).
+- Recommendations or confidence scores (job of `OptimizationAgent`).
+- Furniture move suggestions (job of `OptimizationAgent`; the simulator previews the selected suggestion).
+- Business conclusions from object counts ("too many chairs"). Job of agents.
+- MuBit writes (job of `app/memory.py`; agents trigger writes, vision does not).
+
+If a contributor is tempted to add a field that isn't in `Detection`, `TrackPoint`, `SceneObject`, `ObjectInventory`, `Zone`, `KPIReport`, or `OperationalPattern`, that's a signal the work belongs on the agent side or the UI side — not in vision.
+
+## Acceptance test for the vision layer
+
+In any tier, the vision/perception layer is "done" when:
+
+```python
+pack: CafeEvidencePack = evidence_pack.build()
+assert pack.zones                              # at least one zone of each operational kind
+assert pack.object_inventory.counts_by_kind["table"] >= 1
+assert len(pack.kpi_windows) >= 3
+assert pack.pattern.evidence                   # has at least one EvidenceRef
+ids = {ref.memory_id for ref in pack.pattern.evidence}
+assert all(w.memory_id in ids for w in pack.kpi_windows[:3])  # IDs line up
 ```
 
-Implementation can use `cv2.pointPolygonTest`. The KPI engine must never ask an agent whether an individual point is "in the queue"; that would be slow, expensive, and non-reproducible.
+If those assertions pass, `OptimizationAgent` will run successfully end-to-end. The mock data in MVP is constructed to pass these assertions; Tier 1 just produces a fresh pack that also passes them.
 
-**Fallback:** For the live demo, keep `demo_data/zones.json` as a frozen fixture. If the agent draft is bad or slow, use the fixture. The UI can still show the agent-assisted calibration as a staged step.
+## Fallback story
 
-**Agent-side relevance:** `SceneObservation.affected_zones` and `OperationalPattern.affected_zones` both derive from zone assignment. Without zones, the agent can only say "something was bad"; with zones, it can say "staff crossed the queue zone 18 times," which is evidence.
+The demo never depends on live vision. In any tier:
 
-### 5. KPI engine — deterministic Python
+- Cached/fixture JSON is always on disk.
+- An env var `RUN_LIVE_VISION=1` (Tier 1) opts into live YOLO; default behavior is to read fixtures.
+- If anything in the perception layer fails, the cached files are served instead.
+- The agent layer cannot tell the difference and behaves identically.
 
-**What:** Aggregate detections + tracks + zones into a `KPIReport` per time window (default 20 s). Six deterministic metrics, no ML:
+This is also the reason zones stay hand-drawn even in Tier 1: zone calibration would re-introduce a failure mode for no demo gain.
 
+## References
 
-| KPI                         | How it's computed                                                                           | Why a cafe operator cares                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `staff_walk_distance_px`    | Σ Euclidean distance between consecutive TrackPoints for staff                              | Staff labor is the #1 cost line. Wasted motion = wasted payroll.                      |
-| `staff_customer_crossings`  | Count of (staff segment) × (customer segment) intersections in same window                  | Crossings are physical friction: dropped orders, spilled drinks, longer service time. |
-| `queue_length_peak` / `avg` | Count of customer TrackPoints inside `queue` zone per frame; peak/avg over window           | Queue length is the classic throughput bottleneck; directly predicts abandonment.     |
-| `queue_obstruction_seconds` | Seconds where a staff segment enters the queue zone OR a table mask overlaps queue corridor | Blocked queues are invisible to POS but visible to customers — and they leave.        |
-| `congestion_score`          | Normalized density in the counter+queue+pickup region (0..1)                                | Compact single number for the KPI card; drives the heatmap.                           |
-| `table_detour_score`        | actual staff path length / straight-line counter→seating distance                           | Detects layout friction. Score >1.3 is the signal that furniture is in the way.       |
-
-
-**Why these six, not others:** Every one of them (a) is deterministic and reproducible, (b) maps to a dollar-value operator concern, and (c) is supported by the agent schema's `KPIField` literal so the agent can emit `expected_kpi_delta` without hallucinating field names. Anything outside this set either costs money to measure (needs POS integration) or can't be justified from spatial data alone (e.g. "customer satisfaction").
-
-**Why windows of 20 s:** Short enough that a single bottleneck event shows up as a peak rather than getting averaged out; long enough that three windows cover a minute, giving `PatternAgent` repetition to aggregate across. Pattern severity needs repetition — a one-window spike is anecdote, three-in-a-row is evidence.
-
----
-
-## The handoff boundary
-
-```text
-┌─────────────── Vision pipeline ────────────────┐   ┌──── Agents pipeline ────┐
-│ video → YOLO → ByteTrack → ZoneDraft → KPI     │ → │  Pydantic AI → MuBit    │
-└────────────────────────────────────────────────┘   └─────────────────────────┘
-                         │
-                         ▼
-                kpi_windows.json
-                tracks.cached.json
-                detections.cached.json
-                zone_draft.cached.json
-                zones.json
-```
-
-**The contract is the four JSON files.** That's the whole handshake.
-
-- Vision team owns everything upstream of the JSON files.
-- Agent team owns everything downstream.
-- Neither team imports the other's modules.
-- Swapping mock data for real data is `cp real_output.json demo_data/kpi_windows.json` — no code change.
-
-This is also the fallback story: if live vision inference is slow or fails during the demo, we serve the cached JSON files and the agent loop is unaffected. The plan's `RUN_LIVE_VISION=1` env flag toggles live vs. cached.
-
----
-
-## Why the mock data represents this faithfully
-
-The files in `demo_data/` are fixtures that match what the real pipeline would produce:
-
-
-| Mock file                          | Represents                                                            | Shape must match                                                                        |
-| ---------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `demo_data/zone_draft.cached.json` | ZoneCalibrationAgent rationale and confidence                         | `ZoneDraft`                                                                             |
-| `demo_data/zones.json`             | Agent-drafted or fixture polygons (one-time setup per camera/session) | `list[Zone]` — identical schema in prod                                                 |
-| `demo_data/tracks.cached.json`     | ByteTrack output over 60 s at 2 fps                                   | `list[TrackPoint]`, ordered by `(track_id, timestamp_s)`                                |
-| `demo_data/kpi_windows.json`       | KPI engine output for 3 × 20 s windows                                | `list[KPIReport]` with stable `session_id` across windows, distinct `run_id` per window |
-| `demo_data/org_rules.json`         | Operator-configured constraints (not vision at all)                   | Loaded into MuBit `org:rules` lane on init                                              |
-
-
-The scenario encoded in the mock data is also chosen to exercise every KPI at once:
-
-- **Cluster B table placement** forces the staff runner into the queue zone → high `staff_customer_crossings` and `queue_obstruction_seconds`.
-- **Six counter→seating trips in 60 s** make `staff_walk_distance_px` non-trivial and `table_detour_score` >1.4.
-- **Five customers queueing during the same window** produce `queue_length_peak=6`.
-- **Three repeated windows** (not one) give PatternAgent the repetition it needs to emit `severity="high"` honestly.
-
-When real vision output replaces the mock data, the agents behave identically as long as the zone calibration and KPI engine hit roughly the same KPI magnitudes. The mock data is, in effect, the acceptance test for the vision layer: "produce zones and KPIs in this shape and range for the demo video, and the end-to-end loop works."
-
----
-
-## What vision does **not** produce
-
-To keep the boundary clean, the vision layer should not emit:
-
-- Natural-language summaries (that's the ObservationCompressor agent's job).
-- Pattern labels like "queue_crossing" (that's PatternAgent's job).
-- Recommendations or confidence scores (that's OptimizationAgent).
-- Furniture move suggestions (that's the simulator, fed by OptimizationAgent).
-- MuBit writes (that's the memory adapter's job — agents write, vision doesn't).
-
-If a vision engineer is tempted to add a field that isn't in `Detection`, `TrackPoint`, `Zone`, or `KPIReport`, that's a signal the work belongs on the agent side of the boundary instead. The exception is `ZoneDraft`, which is owned by the agent side but saved into the same JSON handoff so the KPI engine can stay decoupled.
+- Ultralytics tracking: https://docs.ultralytics.com/modes/track/
+- Ultralytics Python: https://docs.ultralytics.com/usage/python/
+- OpenCV video I/O: https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html
+- Pydantic AI: https://pydantic.dev/docs/ai/overview/
+- MuBit: https://docs.mubit.ai/

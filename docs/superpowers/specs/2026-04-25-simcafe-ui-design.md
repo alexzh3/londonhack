@@ -2,18 +2,45 @@
 
 **Date:** 2026-04-25
 **Project:** CafeTwin / SimCafe (London 24h hackathon)
-**Status:** Approved design, pre-implementation
-**Repo:** `/Users/samydev/londonhack/londonhack/`
+**Status:** Tier 2 product vision; MVP shell defined below
+**Repo:** `/home/dfki.uni-bremen.de/azheng/londonhack/`
 
 ## 1. Pitch
 
-**SimCafe** turns an overhead cafe video into an editable, gamified 3D digital twin. A natural-language chat panel drives a Pydantic AI agent stack that proposes, simulates, and compares cafe layout scenarios. Users can ask "what if we 10x the cafe?" or "make it Brooklyn-style with communal seating" and watch the simulation morph in real time.
+**SimCafe** turns an overhead cafe video into an annotated evidence view and an editable, gamified 3D digital twin. The initial video remains visible with detections, tracks, zones, heatmap, object counts, and KPI evidence. The 3D twin reconstructs the same observed cafe closely enough to preview layout changes with toggles and deterministic KPI deltas.
 
-> POS tells you what sold. SimCafe shows why throughput stalled — and lets you redesign it by talking to it.
+> POS tells you what sold. SimCafe shows why throughput stalled — then lets you preview a better layout in a 3D twin.
 
-## 2. Product surface — three linked canvases
+## 1.5 Scope Tiers
 
-The UI is a single page with three coupled canvases plus a chat-driven command surface, all fed by one shared state store.
+This document preserves the rich UI/product vision, but the current hackathon build must ship the MVP shell first. Treat everything involving R3F, chat threads, scenario trees, Hyper3D, drag/drop, live SSE chat, and rich memory timelines as **Tier 2** unless it is explicitly listed in the MVP shell below.
+
+### MVP UI Shell — Must Ship First
+
+The MVP UI should look like the product, but most spectacle is fixture-backed. It has one linear path: **Load demo → Generate recommendation → Apply → Accept / Reject**.
+
+| Surface | MVP implementation |
+|---|---|
+| Top bar | Product name, session/run status, real Logfire trace link when available. |
+| Observed video | Play `demo_data/annotated_before.mp4`; optional raw-data expander for cached tracks/zones. |
+| KPI/object cards | Render cached `kpi_windows.json` and `object_inventory.json`; show predicted deltas after Apply. |
+| Agent flow | Three nodes only: `evidence_pack`, `optimization_agent`, `memory_write`; animate from real `/api/run` stage events or returned timestamps. |
+| Recommendation | Button-driven, not chat. Click **Generate recommendation** and render the typed `LayoutChange` returned by the real backend agent. |
+| Twin preview | PNG crossfade between `twin_observed.png` and `twin_recommended.png`; no R3F or geometry code in MVP. |
+| Memory | Collapsible JSONL-backed memory view; MuBit is best-effort and never blocks the UI. |
+| Scenario rail | Cut from MVP; use one observed/recommended toggle in the twin panel. |
+| Chat | Cut from MVP; supported prompts and Vercel AI SDK are Tier 2. |
+
+The technical proof is backend-first: fixture evidence → `CafeEvidencePack` → real Pydantic AI `OptimizationAgent` → validated `LayoutChange` → local/MuBit memory write → Logfire trace.
+
+## 2. Tier 2 Product Vision Surface — observed video + 3D twin
+
+The Tier 2 UI is a single page with four coupled surfaces, all fed by one shared state store:
+
+1. **Observed video evidence** — the initial overhead video with annotations and tracking overlays.
+2. **Agent flow + controls** — pipeline progress, simulator toggles, object counts, and KPI cards.
+3. **3D digital twin** — an operationally faithful reconstruction of the initial video, plus the recommended after-state.
+4. **Recommendation/chat** — agent explanations, evidence chips, and apply/revert actions.
 
 ### 2.1 Layout (desktop, 1440+)
 
@@ -22,23 +49,23 @@ The UI is a single page with three coupled canvases plus a chat-driven command s
 │ TOP BAR: logo · video upload · session/run id · Logfire trace link      │
 ├──────────────┬─────────────────────────────────────┬────────────────────┤
 │              │                                     │                    │
-│ AGENT FLOW   │   3D SIMULATION CANVAS              │  💬 SCENARIO CHAT  │
-│ (React Flow) │   (R3F · isometric tycoon)          │  (Vercel AI SDK)   │
+│ OBSERVED     │   3D DIGITAL TWIN                   │  RECOMMENDATION    │
+│ VIDEO        │   (R3F · isometric tycoon)          │  CHAT / EVIDENCE   │
 │              │                                     │                    │
-│ pipeline     │   active scenario rendered here     │  per-scenario      │
-│ nodes glow   │   morphs / split-screen compare     │  thread; tool-call │
-│ as data      │                                     │  cards, evidence   │
-│ flows        │                                     │  chips             │
+│ boxes        │   observed vs recommended           │  tool-call cards   │
+│ tracks       │   layout toggles                    │  evidence chips    │
+│ zones        │   heatmap / trails / hotspots       │  recommendation    │
+│ heatmap      │                                     │  apply/revert      │
 │              │                                     │                    │
 │ ─────────    │                                     │                    │
-│ CONTROLS     │                                     │                    │
-│ (Tweakpane)  │                                     │                    │
-│ sliders for  │                                     │                    │
-│ seats, staff,│                                     │                    │
-│ machines     │                                     │                    │
+│ AGENT FLOW   │                                     │                    │
+│ + CONTROLS   │                                     │                    │
+│ toggles for  │                                     │                    │
+│ zones/tracks │                                     │                    │
+│ heatmap/delta│                                     │                    │
 │              │                                     │  ───────────────   │
-│ KPI CARDS    │                                     │  [prompt input ↵]  │
-│ (Tremor)     │                                     │  📎 image attach   │
+│ KPI + OBJECT │                                     │  [prompt input ↵]  │
+│ COUNT CARDS  │                                     │  image attach      │
 ├──────────────┴─────────────────────────────────────┴────────────────────┤
 │ 🌿 SCENARIO RAIL — [● baseline][○ 10x][○ Brooklyn][○ Tokyo][+]          │
 │ click to switch · long-press 2 chips → split-screen compare             │
@@ -47,20 +74,22 @@ The UI is a single page with three coupled canvases plus a chat-driven command s
 
 ### 2.2 Empty state (before video uploaded)
 
-- 3D canvas shows a placeholder demo cafe (stock prefab arrangement) with a translucent overlay: *"Drop an overhead cafe video to start"*.
+- Observed video panel shows a drop zone: *"Drop an overhead cafe video to start"*.
+- 3D canvas shows a placeholder demo cafe (stock prefab arrangement) with a translucent overlay: *"The video-derived twin will appear here"*.
 - Flow canvas shows nodes in dim/idle state.
-- Chat shows a welcome message: *"Hi — upload a video and I'll reconstruct it as an editable 3D twin. Then ask me anything: 'what if we add 4 seats?', 'how do we shorten the queue?', 'make it Brooklyn-style.'"*.
+- Chat shows a welcome message: *"Hi — upload a video and I'll annotate it, extract KPIs, and reconstruct it as an editable 3D twin. Then ask me how to improve flow."*.
 - Scenario rail shows only the placeholder baseline.
 
 ### 2.3 Canvas roles
 
-| Canvas | Purpose | Library |
+| Surface | Purpose | Library |
 |---|---|---|
-| **Agent Flow** (left) | Visualize Pydantic AI pipeline. Nodes light up as the backend runs each stage. Edges animate when data flows. Click a node → opens right-side drawer with logs + Logfire span link. | `@xyflow/react` |
-| **3D Simulation** (center) | The active scenario. Isometric tycoon camera. Drag furniture (raycaster + snap-to-grid), bloom + selection outlines. | `@react-three/fiber` + `drei` + `postprocessing` |
-| **Scenario Chat** (right) | Per-scenario chat thread (switching chips switches threads). Streams responses, renders tool-call cards, evidence chips, recommendation cards. | `ai` (Vercel AI SDK) + `@ai-sdk/react` |
-| **Controls + KPIs** (left lower) | Direct manipulation: sliders for seats/baristas/machines. Live KPI cards reflect current scenario. | Tweakpane + Tremor |
-| **Scenario Rail** (bottom) | Tree of all scenarios. Switch, compare, fork. Horizontal scroll; collapses to grouped pills if >12. | Custom; chips + popover |
+| **Observed Video Evidence** (left top) | Render the initial video with boxes, track trails, zones, heatmap, selected KPI events, and object-count badges. This is the ground truth surface. | `<video>` + canvas/SVG overlay |
+| **Agent Flow** (left middle) | Visualize Pydantic AI pipeline. Nodes light up as the backend runs each stage. Edges animate when data flows. Click a node → opens right-side drawer with logs + Logfire span link. | `@xyflow/react` |
+| **Controls + KPIs + Object Counts** (left lower) | Toggle zones, tracks, heatmap, hotspots, KPI deltas, observed/recommended compare mode, playback speed, and show counts for chairs/tables/counter/pickup shelf. | Tweakpane + Tremor |
+| **3D Digital Twin** (center) | Operationally faithful baseline reconstructed from the initial video. After-state applies one recommendation and keeps all simulator toggles. | `@react-three/fiber` + `drei` + `postprocessing` |
+| **Recommendation Chat** (right) | Per-scenario chat thread. Streams responses, renders tool-call cards, evidence chips, recommendation cards, and Apply/Revert controls. | `ai` (Vercel AI SDK) + `@ai-sdk/react` |
+| **Scenario Rail** (bottom) | Tree of baseline and what-if scenarios. Baseline is pinned and labeled "from video"; scenarios are labeled "estimated". | Custom; chips + popover |
 
 ## 3. Scenarios — the central abstraction
 
@@ -76,6 +105,20 @@ baseline (reconstructed from real video)
 ├── "Move counter to back wall"
 └── "Tokyo minimalist redesign"
 ```
+
+### 3.1.1 Baseline fidelity contract
+
+The baseline 3D twin should be operationally faithful to the initial video, not photorealistic.
+
+- Use the video coordinate space as the canonical 2D floor coordinate system.
+- Use a representative overhead frame as a floor/reference texture when possible.
+- Place tables, chairs, counter, pickup shelf, and blockers from `ObjectInventory`.
+- Show the same staff/customer tracks from `tracks.cached.json` as animated markers or trails.
+- Show the same zones, heatmap, and congestion hotspots as the annotated video overlay.
+- Keep object counts identical between the video evidence panel and 3D twin.
+- Only the recommended scenario may move objects; baseline is read-only and labeled "from video".
+
+This gives judges a clear mental link: the left panel proves what happened, and the center panel is the same cafe made interactive.
 
 ### 3.2 Scenario states
 
@@ -151,14 +194,17 @@ Chat is not a sidebar — it's the **command layer**. Pydantic AI agents on the 
 ### 4.1 Tools available to the LLM
 
 ```
-analyze_video(video_id)            → triggers vision pipeline, lights flow nodes
-get_kpis(scenario_id, window_s?)   → returns KPIReport for a scenario
-propose_layout(prompt)             → emits SimulationSpec, creates scenario (status=active)
-suggest_optimization()             → emits LayoutChange proposal (status=pending)
-query_mubit(lane, query)           → recall memories, render evidence chips
-generate_hero_asset(prompt, xy)    → calls Hyper3D, streams mesh into scene
-explain_pattern(pattern_id)        → returns OperationalPattern with evidence
-compare_scenarios(id_a, id_b)      → opens split-screen, returns KPI diff
+analyze_video(video_id)              → triggers vision pipeline, lights flow nodes
+get_video_annotations(video_id)      → returns VideoAnnotationSet for overlay rendering
+get_object_inventory(session_id)     → returns ObjectInventory counts and positions
+build_digital_twin(scenario_id)      → returns DigitalTwinScene from observed artifacts
+get_kpis(scenario_id, window_s?)     → returns KPIReport for a scenario
+propose_layout(prompt)               → emits SimulationSpec, creates scenario (status=active)
+suggest_optimization()               → emits LayoutChange proposal (status=pending)
+query_mubit(lane, query)             → recall memories, render evidence chips
+generate_hero_asset(prompt, xy)      → calls Hyper3D, streams mesh into scene
+explain_pattern(pattern_id)          → returns OperationalPattern with evidence
+compare_scenarios(id_a, id_b)        → opens split-screen, returns KPI diff
 ```
 
 (`adjust_slider` was cut — redundant with `propose_layout`.)
@@ -191,21 +237,26 @@ Both entry points emit the same `hero_asset_ready` SSE event so the frontend han
 ### 5.1 Composite pipeline (no single magic API does this in 24h)
 
 ```
-overhead video frame
+overhead video + representative frame
     ↓
-[vision pipeline]   detects: tables, chairs, counter, staff, customers, room outline
+[vision pipeline]   detects people, tracks, zones, furniture, counter, pickup shelf
     ↓
-[layout extractor]  converts bbox → floor coords + room polygon
+[annotated video]   boxes + tracks + zones + heatmap + KPI event markers
+    ↓
+[object inventory]  counts chairs/tables/counter/pickup shelf and stores positions
+    ↓
+[layout extractor]  converts bbox/object inventory → floor coords + room polygon
     ↓
 [asset resolver]
     ├─ common items (table, chair, wall): Quaternius Cafe Kit GLTF prefabs
     ├─ hero items (1–2 per cafe, e.g. espresso machine): Hyper3D / Rodin API (async stream)
-    └─ floor / wall textures: Poly Haven PBR or solid colors
+    └─ floor / wall textures: representative overhead frame first, PBR/solid fallback
     ↓
 [R3F scene assembly]
     walls    = extruded mesh from detected polygon
-    floor    = textured plane
-    furniture = prefabs at detected coordinates (placeholder until hero assets stream in)
+    floor    = video-aligned textured plane
+    furniture = prefabs at ObjectInventory coordinates (placeholder until hero assets stream in)
+    overlays = zones, trails, heatmap, hotspots from the observed video artifacts
     lighting = drei <Environment preset="city"> + soft shadows
     polish   = bloom + outline postprocessing
     ↓
@@ -219,7 +270,7 @@ editable, simulation-ready 3D twin
 - Photogrammetry (Luma, Polycam) produces non-editable point clouds.
 - Detection + prefab placement is how every shipped product (Planner 5D, IKEA Kreativ) actually does this. It's reliable, editable, and demo-perfect for 24h.
 
-The honest demo angle: "We don't fake a generic cafe — we reconstruct *your* cafe. Hyper3D generates the unique objects, prefabs fill the rest, and you can drag everything around."
+The honest demo angle: "We don't fake a generic cafe — the left panel shows your actual annotated video, and the center panel reconstructs that same cafe as an editable twin. Hyper3D can upgrade unique objects, prefabs fill the rest, and you can preview the fix."
 
 ### 5.3 Camera and feel
 
@@ -235,10 +286,12 @@ The honest demo angle: "We don't fake a generic cafe — we reconstruct *your* c
 
 Furniture is draggable via raycaster + snap-to-grid (no physics engine). Dropping an asset emits a `MoveAsset` op into the active scenario, recomputes KPIs, and tweens neighbors out of overlap if needed.
 
+Baseline objects are not directly edited. The presenter can drag or apply changes only inside an estimated scenario so the real-video state stays trustworthy.
+
 ### 5.5 Live agent simulation — **CUT from 24h scope**
 
 Animated walking customers/baristas were considered but cut for time. Instead:
-- Static path arrows show the most-trafficked routes from real video tracks (baseline) or path-graph estimates (scenarios).
+- Static or animated path trails show the most-trafficked routes from real video tracks (baseline) or path-graph estimates (scenarios).
 - Heatmap overlay (`drei <Sparkles>` density) shows congestion zones.
 
 This still sells the simulation feel without the perf/dev cost of agent pathfinding.
@@ -280,13 +333,20 @@ frontend/
       App.tsx                       # Layout shell
 
     components/
+      ObservedVideoPanel/           # Initial video evidence surface
+        ObservedVideoPanel.tsx
+        VideoOverlayCanvas.tsx      # Boxes, tracks, zones, heatmap
+        EventMarkers.tsx            # KPI event pins on timeline/video
+        ObjectCountBadges.tsx       # Chairs/tables/counter/pickup shelf
       SceneCanvas/                  # 3D simulation canvas
         SceneCanvas.tsx
         Walls.tsx
-        Floor.tsx
+        Floor.tsx                   # Video-aligned reference texture
         FurnitureInstance.tsx       # Wraps a GLTF prefab
         HeroAsset.tsx               # Streamed Hyper3D mesh
         PathArrows.tsx              # Static traffic arrows
+        HeatmapOverlay.tsx
+        SimulatorToggles.tsx
         SelectionOutline.tsx
         Lighting.tsx
         Effects.tsx                 # Postprocessing
@@ -309,6 +369,7 @@ frontend/
       Controls/
         ControlsPanel.tsx           # Tweakpane sliders
         KPICards.tsx                # Tremor cards (baseline-styled vs estimated-styled)
+        ObjectInventoryCards.tsx    # Chairs, tables, counters, blockers
       ScenarioRail/
         ScenarioRail.tsx
         ScenarioChip.tsx
@@ -318,7 +379,7 @@ frontend/
       EmptyState.tsx                # Pre-upload placeholder
 
     state/
-      useSimStore.ts                # Zustand: layout, scenarios, KPIs, flow state, active threads
+      useSimStore.ts                # Zustand: video evidence, layout, scenarios, KPIs, flow state, active threads
       persist.ts                    # IndexedDB middleware (cache only)
 
     lib/
@@ -331,6 +392,9 @@ frontend/
     schemas/
       simulationSpec.ts             # Mirrors backend Pydantic SimulationSpec (zod)
       scenario.ts
+      observedVideo.ts              # VideoAsset, frame annotations, overlay state
+      objectInventory.ts            # SceneObject, ObjectInventory
+      digitalTwin.ts                # DigitalTwinScene, simulator toggles
       kpi.ts
       chatEvent.ts
 ```
@@ -338,6 +402,54 @@ frontend/
 Each component owns one concern. State flows through Zustand. The backend speaks Pydantic; the frontend mirrors those schemas in TS via zod for type safety.
 
 ## 8. Data flow
+
+### 8.1 Main UI hydration loop
+
+The frontend should be able to boot from mock data before the backend is live. One `GET /api/state?session_id=...` call returns the complete demo state:
+
+```text
+video_asset
+video_annotations
+object_inventory
+zones
+tracks
+heatmap_grid
+kpi_windows
+scene_observations
+patterns
+recommendation
+digital_twin_observed
+digital_twin_recommended
+simulator_toggles
+agent_runs
+logfire_trace
+```
+
+The main render loop:
+
+1. `ObservedVideoPanel` renders `video_asset` plus `video_annotations`, `zones`, `tracks`, `heatmap_grid`, and KPI event markers.
+2. `ObjectInventoryCards` renders `object_inventory.counts_by_kind`.
+3. `KPICards` renders the selected `KPIReport` window, labeled "from video" for baseline.
+4. `SceneCanvas` renders `digital_twin_observed` by default.
+5. Clicking **Apply recommendation** switches compare mode to `split` or `recommended` and renders `digital_twin_recommended`.
+6. Simulator toggles update both the video overlay and 3D twin when possible: zones, tracks, heatmap, hotspots, KPI deltas, playback speed.
+7. Agent runs and Logfire links update `FlowCanvas`.
+
+Mock fixture targets:
+
+```text
+demo_data/video_asset.json
+demo_data/video_annotations.json
+demo_data/object_inventory.json
+demo_data/zones.json
+demo_data/tracks.cached.json
+demo_data/heatmap_grid.json
+demo_data/kpi_windows.json
+demo_data/recommendation.cached.json
+demo_data/digital_twin.observed.json
+demo_data/digital_twin.recommended.json
+demo_data/ui_state.json
+```
 
 ```
 User types in ChatPanel
@@ -361,19 +473,19 @@ chatClient routes events
 
 ## 9. Five canonical user flows
 
-1. **Ingest**: drop video → `POST /api/videos` → `POST /api/videos/{id}/analyze` → flow nodes light up sequentially via SSE → 3D scene materializes (prefabs at <10s, hero asset streams in <90s).
+1. **Ingest**: drop video → `POST /api/videos` → `POST /api/videos/{id}/analyze` → flow nodes light up sequentially via SSE → observed video gains boxes/tracks/zones/heatmap → object counts appear → 3D baseline materializes from the same artifacts.
 2. **Optimize**: ask "how do I improve flow?" or click Optimize → agent emits `LayoutChange` (pending scenario) → recommendation card with Apply → click Apply → promotes to active, scene morphs, KPI deltas count up.
-3. **Tune**: drag sliders → emits a `propose_layout` op locally → scene rebuilds + KPIs update live (debounced 250ms).
-4. **Prompt-to-scenario**: "Brooklyn-style with communal seating" → LLM emits `SimulationSpec` → new active scenario chip → scene morphs → chat narrates tradeoffs.
-5. **Compare**: long-press 2 chips → split-screen → KPI diff table → pick a winner.
+3. **Toggle evidence**: presenter toggles zones/tracks/heatmap/hotspots/KPI deltas; both the annotated video and 3D twin respond so the evidence stays linked.
+4. **Tune**: drag sliders or apply a table move → emits a `propose_layout` op locally → recommended scene rebuilds + estimated KPIs update live (debounced 250ms).
+5. **Compare**: switch observed/recommended/split mode → baseline remains labeled "from video", recommended state remains labeled "estimated" → KPI diff table picks a winner.
 
 ## 10. Demo moments
 
 ### Primary — the orchestrated narrative
 > User: *"Why is the queue so long around 11am?"*
-> AI streams: *"Let me check"* → tool-card `get_kpis(window=11:00–11:15)` → tool-card `query_mubit("location:demo:patterns")` → 3D scene auto-pans to queue zone, highlights it red.
+> AI streams: *"Let me check"* → tool-card `get_kpis(window=11:00–11:15)` → annotated video jumps to the crowded window and shows tracks crossing the queue → tool-card `query_mubit("location:demo:patterns")` → 3D scene auto-pans to the same queue zone and highlights it red.
 > AI: *"Found it — staff cross the queue 18× in 12 min because table cluster B forces detours. Want me to fix it?"*
-> User: *"yes"* → tool-card `suggest_optimization` → pending scenario chip + recommendation card → click Apply → tables tween to new positions → KPI deltas count down.
+> User: *"yes"* → tool-card `suggest_optimization` → pending scenario chip + recommendation card → click Apply → 3D twin enters split mode, table cluster B tweens to the recommended position, and KPI deltas count down.
 
 ### Stretch — parallel scenarios
 > *"Show me 2 different optimizations side-by-side."*
@@ -392,6 +504,8 @@ chatClient routes events
 - **Hyper3D fails / slow**: fall back to a curated prefab. Demo unaffected.
 - **LLM emits invalid `SimulationSpec`**: Pydantic validation rejects; chat shows "I couldn't parse that — try rewording." No scene corruption.
 - **Vision pipeline slow**: pre-cache detections for the demo video; live mode behind a toggle.
+- **Object counts are noisy**: use fixture-corrected `ObjectInventory` for the demo and mark object sources as `vision`, `manual`, or `fixture`.
+- **3D baseline alignment is imperfect**: use the representative overhead frame as a floor/reference texture and keep the annotated video visible as source of truth.
 - **MuBit unavailable**: local JSON fallback with identical UI contract.
 - **3D perf bad on judges' laptop**: `?lowend=1` URL flag drops postprocessing, drops particles, simplifies materials.
 - **Chat stream stalls**: 30s timeout, retry once, surface error in chat.
@@ -402,32 +516,39 @@ chatClient routes events
 - Live camera feed (only seeded video)
 - POS integration
 - True NeRF / gaussian splat reconstruction
+- Photorealistic whole-room reconstruction
 - Custom model training
 - Multi-user collaboration
 - Mobile / responsive layout (desktop demo only)
 - Auth / user accounts
-- Generated VIDEO previews (only generated 3D + image inpainting as stretch)
+- Generated after-video previews (3D twin is the preview; image inpainting is stretch only)
 - Accessibility / keyboard shortcuts (post-hackathon)
 
-## 13. Build sequence (mapped to 24h gates)
+## 13. Tier 2 Build Sequence (product vision reference)
+
+Do not use this table as the current MVP schedule. The current MVP schedule lives in `overview_plan.md` and is backend-spine-first: fixture evidence, `/api/run`, typed `LayoutChange`, PNG crossfade, memory write, Logfire trace. The table below is retained as the richer Tier 2 direction once MVP is green.
 
 | Time | Gate | Frontend deliverable | Backend deliverable |
 |---|---|---|---|
-| 0–4h | Visual proof | Vite + R3F skeleton, isometric scene, prefab loaded, walls/floor, mock data via `mockApi.ts` | Vision pipeline cached output + `/api/videos`, `/api/videos/{id}/analyze` |
-| 4–8h | KPI proof | KPI cards (Tremor) bound to mock data, FlowCanvas with static nodes lit by SSE | KPI engine endpoint + `/api/scenarios/{id}/kpis` |
+| 0–4h | Visual proof | ObservedVideoPanel with overlays, R3F skeleton, video-aligned floor, object count cards, mock data via `mockApi.ts` | Vision cached output + `/api/videos`, `/api/videos/{id}/analyze`, object inventory fixture |
+| 4–8h | KPI proof | KPI cards (Tremor) bound to mock windows, FlowCanvas with static nodes lit by SSE | KPI endpoint + `/api/scenarios/{id}/kpis` |
 | 8–12h | Memory proof | Evidence chips, MuBit timeline panel | MuBit reads/writes + `/api/mubit/recall` |
 | 12–16h | Agent proof | ChatPanel streaming, tool-call cards, ScenarioRail with branching, per-scenario threads | Pydantic AI agent emitting `SimulationSpec` + full SSE event set |
-| 16–20h | Simulation proof | Scene morph on scenario switch, before/after toggle, sliders driving scene | KPI estimator per scenario layout |
+| 16–20h | Simulation proof | Scene morph on scenario switch, observed/recommended/split toggle, sliders driving recommended scene | KPI estimator per scenario layout |
 | 20–24h | Demo proof | Polish: bloom, outlines, SFX, scenario compare split-screen, Logfire links | Render deploy, fallback recording |
 
 **Stretch (P2, only if ahead of schedule):** N-way compare, voice input, accessibility, generated image inpainting.
 
-## 14. Acceptance checks
+## 14. Tier 2 Acceptance checks
 
-- [ ] Drop video → prefab scene visible <10s
+For MVP acceptance, use `overview_plan.md` and `agent_plan.md`. The checks below are Tier 2/product-vision checks and should not block the first demo.
+
+- [ ] Drop video → annotated observed video visible <10s
+- [ ] Object count cards show chairs, tables, counter, pickup shelf, and movable blockers
+- [ ] Baseline 3D twin aligns visually with the annotated video frame
 - [ ] Hero asset streams in <90s (placeholder until ready)
 - [ ] Chat streams responses with tool-call cards
-- [ ] Type "what if 10x" → new scenario chip appears, scene morphs
+- [ ] Apply recommendation → new scenario chip appears, scene morphs
 - [ ] Slider drag rebuilds scene + updates KPIs in <500ms
 - [ ] Scenario rail supports switch, fork, 2-way compare
 - [ ] At least one typed `LayoutChange` recommendation card with ≥3 evidence chips
@@ -446,9 +567,20 @@ None blocking. Specifics resolved during implementation:
 
 ---
 
-## 16. Backend interface contract (for the backend dev)
+## 16. Tier 2 Backend interface contract (for the backend dev)
 
 > **Goal:** the frontend builds against `mockApi.ts` from hour 0. The backend dev implements these endpoints to the same shapes; flipping `VITE_USE_MOCK=false` swaps to live. **Decoupled, parallelizable.**
+
+For MVP, do **not** implement this full contract. MVP backend endpoints are only:
+
+```text
+GET  /api/state
+POST /api/run
+POST /api/feedback
+GET  /api/logfire_url
+```
+
+The full contract below is retained for Tier 2 when chat, scenarios, SSE tools, and hero assets come back into scope.
 
 ### 16.1 Conventions
 
@@ -469,12 +601,17 @@ None blocking. Specifics resolved during implementation:
 | `POST` | `/api/sessions` | Create demo session | — | `{ session_id, created_at }` |
 | `POST` | `/api/videos` | Upload video (multipart) | `file`, `session_id` | `{ video_id, duration_s, frame_count }` |
 | `POST` | `/api/videos/{video_id}/analyze` | Kick off vision pipeline | `{ session_id }` | `{ run_id }` |
+| `GET` | `/api/state?session_id=...` | Hydrate full UI state from live or mock data | — | `AppState` |
+| `GET` | `/api/videos/{video_id}/annotations` | Observed video overlay artifacts | — | `VideoAnnotationSet` |
+| `GET` | `/api/sessions/{session_id}/object-inventory` | Static object counts and positions | — | `ObjectInventory` |
 | `GET` | `/api/runs/{run_id}` | Pipeline status | — | `RunStatus` (see schemas) |
 | `GET` | `/api/runs/{run_id}/events` | **SSE** stream of pipeline events (for FlowCanvas) | — | SSE: `node_started`, `node_completed`, `node_error`, `run_completed` |
 | `GET` | `/api/scenarios?session_id=...` | List all scenarios | — | `Scenario[]` |
 | `GET` | `/api/scenarios/{id}` | Full scenario | — | `Scenario` |
+| `GET` | `/api/scenarios/{id}/digital-twin` | 3D scene state for observed/recommended scenario | — | `DigitalTwinScene` |
 | `POST` | `/api/scenarios` | Create scenario from spec | `SimulationSpec` | `Scenario` |
 | `POST` | `/api/scenarios/{id}/promote` | Pending → active | — | `Scenario` |
+| `PATCH` | `/api/scenarios/{id}/simulator-toggles` | Persist optional presenter toggle state | `SimulatorToggleState` | `SimulatorToggleState` |
 | `DELETE` | `/api/scenarios/{id}` | Soft-delete (status=archived) | — | `204` |
 | `GET` | `/api/scenarios/{id}/kpis` | KPI report | — | `KPIReport` |
 | `POST` | `/api/scenarios/compare` | Diff two scenarios | `{ id_a, id_b }` | `{ kpi_diff, layout_diff }` |
@@ -501,6 +638,88 @@ class Video(BaseModel):
     video_id: UUID
     duration_s: float
     frame_count: int
+    width_px: int
+    height_px: int
+    fps: float
+    path: str | None = None
+    representative_frame_path: str | None = None
+
+class VideoAnnotationFrame(BaseModel):
+    frame_idx: int
+    timestamp_s: float
+    detection_ids: list[str]
+    track_ids: list[int]
+    zone_ids: list[str]
+    heatmap_cell_ids: list[str] = Field(default_factory=list)
+    evidence_event_ids: list[str] = Field(default_factory=list)
+
+class VideoAnnotationSet(BaseModel):
+    video_id: UUID
+    session_id: UUID
+    frames: list[VideoAnnotationFrame]
+    overlay_defaults: "SimulatorToggleState"
+
+ObjectKind = Literal[
+    "table",
+    "chair",
+    "counter",
+    "pickup_shelf",
+    "queue_marker",
+    "menu_board",
+    "plant",
+    "barrier",
+]
+
+class SceneObject(BaseModel):
+    object_id: str
+    kind: ObjectKind
+    label: str
+    bbox_xyxy: tuple[float, float, float, float]
+    center_xy: tuple[float, float]
+    size_xy: tuple[float, float]
+    rotation_degrees: float = 0
+    zone_id: str | None = None
+    movable: bool = True
+    confidence: float
+    source: Literal["vision", "manual", "fixture"]
+
+class ObjectInventory(BaseModel):
+    session_id: UUID
+    run_id: UUID
+    source_frame_idx: int
+    objects: list[SceneObject]
+    counts_by_kind: dict[ObjectKind, int]
+    count_confidence: float
+    notes: list[str] = Field(default_factory=list)
+
+class SimulatorToggleState(BaseModel):
+    compare_mode: Literal["observed", "recommended", "split"] = "observed"
+    show_zones: bool = True
+    show_tracks: bool = True
+    show_heatmap: bool = True
+    show_hotspots: bool = True
+    show_kpi_deltas: bool = True
+    playback_speed: float = 1.0
+
+class DigitalTwinObject(BaseModel):
+    object_id: str
+    kind: Literal["floor", "wall", "zone", "table", "chair", "counter", "person_marker", "trail", "heatmap", "hotspot"]
+    source_id: str | None = None
+    position_xyz: tuple[float, float, float]
+    size_xyz: tuple[float, float, float]
+    rotation_y_degrees: float = 0
+    color_hex: str
+    visible_by_default: bool = True
+
+class DigitalTwinScene(BaseModel):
+    scenario_id: UUID
+    session_id: UUID
+    mode: Literal["observed", "recommended"]
+    video_coordinate_space: tuple[int, int]
+    floor_texture_path: str | None = None
+    objects: list[DigitalTwinObject]
+    source_object_inventory_id: str
+    applied_simulation: "SimulationSpec | None" = None
 
 class RunStatus(BaseModel):
     run_id: UUID
@@ -555,6 +774,20 @@ class KPIReport(BaseModel):
     queue_obstruction_seconds: float
     congestion_score: float
     table_detour_score: float
+
+class AppState(BaseModel):
+    session: Session
+    video: Video
+    annotations: VideoAnnotationSet
+    object_inventory: ObjectInventory
+    scenarios: list[Scenario]
+    active_scenario_id: UUID
+    kpi_windows: list[KPIReport]
+    digital_twin_observed: DigitalTwinScene
+    digital_twin_recommended: DigitalTwinScene | None = None
+    simulator_toggles: SimulatorToggleState
+    run_status: RunStatus | None = None
+    logfire_trace_url: str | None = None
 
 # ─── SimulationSpec / Ops ─────────────────────────────────────────────
 # (see §3.5 for the discriminated union)

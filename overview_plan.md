@@ -1,251 +1,184 @@
-# CafeTwin: Overview Plan
+# CafeTwin / SimCafe — Overview Plan
 
 ## One-Line Pitch
 
-CafeTwin turns overhead cafe video into spatial operations intelligence: it detects movement, remembers repeated bottlenecks, and recommends layout changes with evidence and predicted KPI impact.
+CafeTwin turns overhead cafe video into spatial operations intelligence: it surfaces repeated bottlenecks and recommends layout changes with evidence and predicted KPI impact.
 
 > POS tells you what sold. CafeTwin shows why throughput stalled.
 
-## What We Are Building
+## Build Philosophy (locked)
 
-For the hackathon, build a polished demo that analyzes one overhead cafe video and produces one credible recommendation:
-
-> Move table cluster B 0.8m left to reduce staff/customer crossings, lower queue obstruction, and shorten staff walking paths.
-
-The proof is not "AI says so." The proof is an evidence chain:
-
-```text
-video frame -> detections/tracks -> zones/KPIs -> MuBit memories
--> Pydantic AI recommendation -> before/after simulation -> Logfire trace
+```
+MVP    = real intelligence (typed Pydantic AI agent + traced reasoning + memory),
+         mocked spectacle (prebaked twin images, fixture-backed perception)
+Tier 1 = realer perception (live KPI engine + offline YOLO + PatternAgent or typed pattern builder)
+Tier 2 = richer spectacle (R3F twin, chat, scenario rail, hero asset)
 ```
 
-## Core Demo Loop
+Time remaining: **~18h**. Two- or three-person team. MVP must ship by hour 14 with 4h reserved for polish, deploy, and pitch rehearsal. Tier 1 and Tier 2 only land if MVP is green and stable.
 
-```mermaid
-flowchart TD
-    A[Overhead cafe video] --> B[Frame sampler]
-    B --> C[Detection + segmentation + tracking]
-    C --> D[Agent-assisted zone calibration]
-    D --> E[Deterministic zone + KPI engine]
-    E --> F[Observation compressor agent]
-    F --> G[(MuBit memory)]
-    G --> H[Pattern agent]
-    H --> I[Optimization agent]
-    I --> J[Recommendation with evidence]
-    J --> K[2D before/after simulation]
-    K --> L[Manager feedback]
-    L --> G
+If only MVP ships, the project is still defensible: real typed agent, real evidence chain, real memory write, real Logfire trace, real before/after delta. Spectacle is honestly framed as "operations console," not "tycoon game."
 
-    C --> P[(Postgres or JSON cache)]
-    D --> P
-    E --> P
-    J --> P
-    K --> P
+## What MVP Must Ship
 
-    B -. spans .-> Q[Logfire]
-    C -. spans .-> Q
-    D -. Pydantic AI .-> Q
-    F -. Pydantic AI .-> Q
-    G -. memory calls .-> Q
-    I -. Pydantic AI .-> Q
-    K -. simulation .-> Q
+A single linear demo flow with four clicks: **Load demo → Generate recommendation → Apply → Accept / Reject**.
+
+### Demo artifacts (fixture-backed)
+
+```
+demo_data/
+  source_video.mp4                # original overhead clip (seeded)
+  annotated_before.mp4            # pre-rendered overlay video (boxes/tracks/zones)
+  tracks.cached.json              # YOLO+ByteTrack output, generated offline (or hand-authored)
+  zones.json                      # hand-drawn polygons (queue/pickup/seating/staff_path/counter)
+  object_inventory.json           # chair/table/counter/pickup_shelf counts + xy
+  kpi_windows.json                # KPI engine output (precomputed for MVP, live in Tier 1)
+  pattern_fixture.json            # one OperationalPattern with evidence IDs
+  recommendation.cached.json      # deterministic LayoutChange fallback (used if agent retry fails)
+  twin_observed.png               # prebaked baseline twin (used by MVP)
+  twin_recommended.png            # prebaked recommended twin (used by MVP)
+  twin_observed.json              # structured twin layout (used by Tier 2 R3F)
+  twin_recommended.json           # structured twin layout (used by Tier 2 R3F)
+  mubit_fallback.jsonl            # local-first memory lane, created at runtime
 ```
 
-## Recommended Local Vision Stack
+### Real backend workflow (MVP)
 
-Use local computer vision first. For this project, Ultralytics + OpenCV is doable and gives the demo a stronger "we built the pipeline" story than calling a hosted vision workflow. Cache outputs so the live demo is reliable.
-
-| Need | Default | Fallback | Why |
-|---|---|---|---|
-| Frame sampling | OpenCV `cv2.VideoCapture` | Pre-extracted frames | Simple, controllable, works offline. |
-| Detection | Ultralytics YOLO local model | Cached detections JSON | Person/table/chair boxes are enough for the main KPIs. |
-| Tracking | Ultralytics `model.track(..., tracker="bytetrack.yaml")` | Simple centroid tracker | Needed for trails, dwell, path crossings. |
-| Segmentation | YOLO segmentation model, only for furniture masks | Bounding boxes only | Stretch for table/chair footprint and after-image polish. |
-| Zones | Agent-drafted polygons + deterministic validation | `zones.json` edited by hand | Let AI draft queue/pickup/staff-path zones, then freeze polygons for explainable KPIs. |
-| KPIs | Custom deterministic Python + OpenCV geometry | Cached KPI JSON | KPI math should be explainable and reproducible. |
-| Memory | MuBit SDK | Local JSON fallback | MuBit stores compressed operational observations. |
-| Agents | Pydantic AI | Cached proposal fallback | Typed outputs make the recommendation trustworthy. |
-| Simulation | Deterministic 2D map | Pre-rendered fallback image | This is the proof mechanism. |
-| Inpainted after image | Replicate / local diffusion if already configured | Skip | Stretch polish, not core proof. |
-
-## Sponsor Stack Fit
-
-```mermaid
-flowchart LR
-    A[Local CV: OpenCV + Ultralytics] --> B[Spatial KPIs]
-    B --> C[Pydantic AI typed agents]
-    C --> D[MuBit memory lanes]
-    D --> E[Recommendation]
-    E --> F[Simulation]
-    A -. observability .-> G[Logfire]
-    C -. observability .-> G
-    D -. observability .-> G
-    F -. observability .-> G
-    H[Render] --> I[Hosted demo]
+```
+load fixtures
+  → build CafeEvidencePack (typed Pydantic input bundle)
+  → OptimizationAgent (Pydantic AI, live)
+  → typed LayoutChange (Pydantic-validated, evidence_ids must reference pattern fixture)
+  → memory write (local jsonl always, MuBit best-effort)
+  → return to UI
 ```
 
-- **Pydantic AI:** typed `SceneObservation`, `OperationalPattern`, and `LayoutChange` outputs.
-- **Logfire:** one trace from video analysis to recommendation and simulation.
-- **MuBit:** operational memory across video windows and feedback.
-- **Render:** hosted demo.
+One Logfire trace with 4 spans:
 
-## MVP Scope
+1. `evidence_pack.build`
+2. `optimization_agent.run`
+3. `layout_change.validate`
+4. `memory.write`
 
-Build only the path needed for a convincing 3-minute demo:
+Single live Pydantic AI agent. (Optional add: a tiny `EvidenceSummarizerAgent` to satisfy "agentic workflow" plural — see agent_plan.md §Optional second agent.)
 
-1. Load a seeded overhead cafe video.
-2. Let the zone calibration agent draft queue, pickup, seating, and staff-path zones.
-3. Show detections, masks/tracks, zones, trails, and heatmap.
-4. Compute spatial KPIs with deterministic point-in-polygon geometry.
-5. Compress KPI windows into MuBit memories.
-6. Use Pydantic AI to generate one typed layout recommendation.
-7. Show before/after 2D simulation with KPI deltas.
-8. Record feedback back into memory.
-9. Show Logfire trace.
+### UI (rich shell, mostly mocked)
 
-Cut from MVP:
+Keep the panel layout from `docs/superpowers/specs/2026-04-25-simcafe-ui-design.md`, but render the following as cheap mocks:
+
+| Surface | MVP behavior |
+|---|---|
+| Top bar | Real Logfire trace link |
+| Observed video panel | Plays `annotated_before.mp4`. Optional: collapsible "raw data" expander showing `tracks.cached.json`. |
+| Object count + KPI cards | Real numbers from `kpi_windows.json` (precomputed), agent's predicted deltas after Apply |
+| Agent flow canvas | 3 nodes (`evidence_pack`, `optimization_agent`, `memory_write`), wired to real backend stage events (cheap SSE or stage timestamps replayed client-side) |
+| Recommendation card | Renders the real `LayoutChange` returned by `/api/run` |
+| 3D twin panel | **Prebaked PNG crossfade** between `twin_observed.png` and `twin_recommended.png`. No R3F, no geometry code. |
+| Memories panel | Collapsible expander showing the JSONL writes pretty-printed. No timeline UI. |
+| Scenario rail | Cut from MVP. Single observed ⇄ recommended toggle inside the twin panel. |
+| Chat panel | Cut from MVP. Replaced by a "Generate recommendation" button + the recommendation card. |
+
+### Interaction (4 clicks)
+
+1. **Load demo** — annotated video plays, KPI/object count cards populate from cached JSON, baseline twin image shows.
+2. **Generate recommendation** — flow canvas lights through 3 stages, recommendation card renders with rationale, evidence IDs (cited from pattern fixture), expected KPI deltas, confidence, risk.
+3. **Apply** — twin crossfades to `twin_recommended.png`, KPI delta cards animate in (numbers from `LayoutChange.expected_kpi_delta`).
+4. **Accept / Reject** — writes feedback memory (local jsonl + MuBit best-effort), toast confirms, "Memories" expander updates.
+
+Then click the Logfire link in the top bar to show the real trace.
+
+## Tier 1 — Realer Perception (only if MVP is green)
+
+Upgrade the upstream layer; UI mostly unchanged.
+
+- Run YOLO + ByteTrack offline (or on demand) on the seeded video to produce real `tracks.cached.json` + `annotated_before.mp4` (replaces hand-authored fixtures).
+- Run the deterministic KPI engine live on cached tracks + zones (replaces precomputed `kpi_windows.json`).
+- Add a second live agent — either a real `PatternAgent` or a deterministic pattern builder — so the chain is `KPI engine → PatternAgent → OptimizationAgent`.
+- Add 3 more memory writes: KPI summary, object inventory, pattern.
+- Logfire trace grows to 6–7 spans.
+
+No UI changes required. The demo looks identical; the pitch becomes "the perception layer is also real."
+
+## Tier 2 — Richer Spectacle (only if Tier 1 is green)
+
+Upgrade the UI; backend mostly unchanged.
+
+- Replace prebaked twin images with R3F isometric scene rendering `twin_observed.json` / `twin_recommended.json`. Box prefabs only — no Hyper3D, no postprocessing.
+- Add scenario rail with 2–3 prebaked concept scenarios (e.g. "Brooklyn-style"). Switching swaps prebaked layouts.
+- Add chat panel with **supported prompts only** (regex/keyword routing): "reduce crossings," "show Brooklyn concept," "compare baseline and recommendation." Anything else returns a canned reply.
+- Wire flow-node animation to real backend stage events for every span.
+- Richer memory timeline UI with hover previews and lane labels.
+- Optional: Hyper3D / prebaked GLB hero asset (single object).
+- Optional: live YOLO upload path.
+
+## Non-Goals (will not be built in 18h)
 
 - Live camera feed.
 - POS integration.
-- Full restaurant table-service complexity.
-- True predictive world model.
-- Generated video as a required feature.
+- Photorealistic 3D reconstruction.
+- Drag-and-drop on the twin.
+- Scenario forking / archiving / N-way compare.
+- Multimodal chat (image paste, voice).
 - Custom model training.
-- Real staff/customer identity.
+- Real staff/customer identity tracking.
+- Whole-scene generative 3D.
 
-## Product Architecture
+## Stack
 
-```mermaid
-flowchart TB
-    subgraph UI[Dashboard]
-        U1[Video with overlays]
-        U2[KPI cards]
-        U3[MuBit memory timeline]
-        U4[Recommendation card]
-        U5[Before/after simulation]
-    end
-
-    subgraph Vision[Vision Pipeline]
-        V1[OpenCV frame sampler]
-        V2[Ultralytics YOLO + ByteTrack]
-        V3[Cached detections JSON]
-        V4[ZoneCalibrationAgent]
-    end
-
-    subgraph Reasoning[Reasoning Layer]
-        R1[Deterministic KPI engine]
-        R2[ObservationCompressorAgent]
-        R3[PatternAgent]
-        R4[OptimizationAgent]
-    end
-
-    subgraph Memory[Memory + Audit]
-        M1[(Postgres / local cache)]
-        M2[(MuBit)]
-        M3[Logfire]
-    end
-
-    U1 --> V1 --> V2 --> V3 --> V4 --> R1
-    R1 --> R2 --> M2
-    M2 --> R3 --> R4 --> U4
-    R4 --> U5
-    V3 --> M1
-    R1 --> M1
-    R4 --> M1
-    V1 -. spans .-> M3
-    R2 -. spans .-> M3
-    R4 -. spans .-> M3
-```
-
-## MuBit Memory Lanes
-
-| Lane | Contents |
+| Concern | Choice |
 |---|---|
-| `location:demo:layout` | Floor plan, furniture, and agent-drafted/approved zones. |
-| `location:demo:scene` | Compressed 10-second scene observations. |
-| `location:demo:kpi` | Queue, walking, crossing, dwell, heatmap summaries. |
-| `location:demo:patterns` | Repeated bottlenecks with evidence IDs. |
-| `location:demo:recommendations` | Accepted/rejected recommendations and feedback. |
-| `org:rules` | Hard constraints like minimum walkway width. |
+| Backend | FastAPI + Pydantic AI (Anthropic Claude Sonnet 4.x) + Logfire |
+| Memory | local jsonl (source of truth) + MuBit (best-effort, fire-and-forget) |
+| Vision (offline only in MVP) | Ultralytics YOLO + ByteTrack + OpenCV + ffmpeg |
+| KPI engine | Deterministic Python (numpy + shapely or `cv2.pointPolygonTest`) |
+| Frontend | Vite + React 18 + TypeScript + Tailwind + shadcn/ui |
+| KPI/object cards | Tremor |
+| Flow canvas | `@xyflow/react` (3 static nodes in MVP) |
+| Twin panel (MVP) | `<img>` crossfade between two PNGs |
+| Twin panel (Tier 2) | `@react-three/fiber` + `drei` |
+| Chat (Tier 2 only) | Vercel AI SDK |
+| Hosting | Render (backend) + static frontend |
 
-MuBit should not store every raw frame or every raw bounding box. Store raw detections in Postgres/local JSON; store compressed operational memory in MuBit.
+## Sponsor-tool fit
 
-## Pydantic AI Agents
+- **Pydantic AI:** typed `OptimizationAgent` emitting validated `LayoutChange`. Optional `EvidenceSummarizerAgent`.
+- **Logfire:** single trace covering evidence pack → agent run → validation → memory write.
+- **MuBit:** memory writes for recommendation + feedback (and pattern/KPI/inventory in Tier 1). Local jsonl is a permitted fallback per AGENTS.md.
+- **Render:** hosted demo URL.
 
-```mermaid
-flowchart TD
-    A[Representative frame + detections + tracks] --> B[ZoneCalibrationAgent]
-    B --> C[ZoneDrafts]
-    C --> D[Deterministic KPI engine]
-    D --> E[ObservationCompressorAgent]
-    E --> F[SceneObservation]
-    F --> G[PatternAgent]
-    G --> H[OperationalPattern]
-    H --> I[OptimizationAgent]
-    I --> J{Typed output}
-    J --> K[LayoutChange]
-    J --> L[StaffingAdjustment]
-    J --> N[EquipmentRepositioning]
-    J --> O[NoActionRecommended]
-```
+## 18h Build Plan (2-person split: A=backend, B=frontend)
 
-The main hackathon output should be `LayoutChange`.
-
-Every recommendation must include:
-
-- title
-- rationale
-- evidence IDs
-- expected KPI deltas
-- confidence
-- risk
-- simulation spec
-
-## KPIs To Show
-
-Use metrics judges can understand instantly:
-
-- Staff walking distance.
-- Staff/customer path crossings.
-- Queue length proxy.
-- Queue obstruction time.
-- Congestion heatmap.
-- Table cluster detour score.
-
-Avoid "coffees served per staff member" in the MVP unless the video makes service events visually obvious. Use "service interactions completed" as a proxy instead.
-
-## 24h Build Plan
-
-| Time | Goal | Output |
+| Hours | Track A — backend | Track B — frontend |
 |---|---|---|
-| 0-4h | Visual proof | Video, agent-drafted/fallback zones, cached detections, trails. |
-| 4-8h | KPI engine | Crossings, walking distance, queue proxy, heatmap. |
-| 8-12h | Memory | MuBit observation writes and visible memory timeline. |
-| 12-16h | Recommendation | Pydantic AI emits one typed `LayoutChange`. |
-| 16-20h | Simulation | 2D before/after map and recomputed KPI deltas. |
-| 20-24h | Polish | Logfire trace, Render deploy, fallback recording, pitch. |
+| 0–3 | Hand-author or extract `tracks.cached.json`, `zones.json`, `object_inventory.json`, `kpi_windows.json`, `pattern_fixture.json`, `recommendation.cached.json`. Generate `annotated_before.mp4` (ffmpeg + cached overlays, or hand-rendered). Render `twin_observed.png` + `twin_recommended.png` (matplotlib isometric or Figma). | Vite+React+Tailwind shell, panel grid, top bar with Logfire-link slot, empty/loading states, video player wired to `annotated_before.mp4`. |
+| 3–7 | Pydantic schemas (`KPIReport`, `ObjectInventory`, `OperationalPattern`, `LayoutChange`, `SimulationSpec`, `CafeEvidencePack`). `OptimizationAgent` live with strict prompt requiring `evidence_ids` ⊆ pattern fixture IDs. Post-validation + retry-once + fallback to `recommendation.cached.json`. | KPI/object count cards (Tremor) reading static JSON. Recommendation card component. 3-node flow canvas (static). Twin panel with crossfade between two PNGs + observed/recommended toggle. |
+| 7–11 | FastAPI endpoints (`/api/run`, `/api/feedback`, `/api/state`, `/api/logfire_url`). Stage events (SSE or stage-timestamps). Logfire spans. MuBit writer + jsonl fallback. | Wire "Generate recommendation" button → `/api/run`, render returned stage events in flow canvas, render returned `LayoutChange` in card. Apply button → toggle twin + show KPI deltas from `expected_kpi_delta`. |
+| 11–14 | End-to-end smoke. Prompt-tune until agent reliably cites real evidence IDs. Feedback endpoint writes to jsonl + MuBit. | Accept/Reject buttons → POST feedback. Memories expander reading jsonl. Logfire link wired in top bar. Loading/error toasts. |
+| 14–16 | Render deploy backend, env wiring, fallback recording of full flow as a video. | Polish: animations, copy, empty states, demo seeding. Fallback recording. |
+| 16–18 | Pitch rehearsal. **Cut anything still risky.** Final push. | Same. |
 
-## Demo Script
+If MVP is green by hour 12, A starts Tier 1 (live KPI engine on cached tracks → live `pattern_builder` or `PatternAgent`); B starts Tier 2 prep (R3F box scaffold, scenario chips). Don't merge Tier 1/2 work into the demo branch unless it's stable and green by hour 16.
 
-1. "Restaurants optimize from POS, but POS is blind to physics."
-2. Show the zone calibration agent drafting queue, pickup, seating, and staff-path zones.
-3. Show overhead video with tracks, zones, and heatmap.
-4. Show KPI cards: crossings, walking distance, queue obstruction.
-5. Show MuBit memory timeline.
-6. Generate recommendation: "Move table cluster B 0.8m left."
-7. Show evidence chain and expected deltas.
-8. Click simulate and show before/after map.
-9. Open Logfire trace: video -> zone calibration -> KPI -> memory -> agent -> simulation.
+## Demo Script (90 seconds)
 
-## Why This Can Win
+1. *"POS tells operators what sold. CafeTwin shows why throughput stalled. Watch."* — annotated video plays.
+2. *"Real KPIs from the overhead video: 18 staff/customer crossings in this minute, queue obstructed for 41 seconds, table detour score 1.6."* — KPI cards.
+3. **Click Generate recommendation.** *"A typed Pydantic AI agent reads the evidence pack and emits a validated `LayoutChange`."* — flow canvas lights, card renders.
+4. *"It cites real evidence IDs from the operational pattern, with expected KPI deltas and a confidence."* — read the card.
+5. **Click Apply.** *"Here's the before/after preview, with the agent's predicted deltas."* — twin crossfades, deltas animate.
+6. **Click Accept.** *"Feedback writes to memory."* — memories expander updates.
+7. **Click Logfire.** *"Single trace from evidence pack to memory write."* — open in new tab.
+8. *"The perception layer is fixture-backed for demo reliability. The reasoning, typed output, validation, memory, and trace are real."*
 
-- **Build quality:** real visual pipeline plus typed agent output.
-- **Insight:** spatial bottlenecks are invisible to POS analytics.
-- **Viability:** cafes, QSR operators, franchisees, layout consultants, and ghost kitchens have clear ROI.
-- **Execution:** the demo is visual, auditable, and sponsor tools are in the core path.
+## Why This Wins The Room
+
+- **Real intelligence:** typed agent + Pydantic validation + evidence chain + memory + Logfire trace are all genuinely live and observable.
+- **Honest framing:** we explicitly say what's fixture-backed vs live. No fake-AI demo theater.
+- **Sponsor-tool depth:** Pydantic AI is the spine, MuBit is the memory, Logfire is the audit trail, Render hosts it. Every sponsor tool is on the critical demo path.
+- **Graceful degradation:** if Tier 1 doesn't land, MVP still ships. If Tier 2 doesn't land, MVP still ships. Failure modes are designed in.
 
 ## References
 
-- Ultralytics tracking mode: https://docs.ultralytics.com/modes/track/
-- Ultralytics Python usage: https://docs.ultralytics.com/usage/python/
-- OpenCV video I/O: https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html
+- Pydantic AI docs: https://pydantic.dev/docs/ai/overview/
+- MuBit docs: https://docs.mubit.ai/
+- Ultralytics tracking (Tier 1): https://docs.ultralytics.com/modes/track/

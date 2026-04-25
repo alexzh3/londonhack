@@ -1,259 +1,135 @@
-# CafeTwin Engineering Plan
+# CafeTwin / SimCafe — Engineering Plan
 
 ## Purpose
 
-This is the detailed implementation plan for agents/engineers. It aligns with `overview_plan.md`, which is the overview plan. Do not fork the product direction from the overview: CafeTwin is a 24h hackathon demo for overhead-camera cafe operations optimization.
+Detailed implementation plan for engineers. Aligns with `overview_plan.md`. Time horizon is **~18h**. Build philosophy is locked:
 
-The product loop is:
-
-```text
-overhead video
--> detection / segmentation / tracking
--> agent-assisted zone calibration + deterministic KPIs
--> compressed MuBit memories
--> Pydantic AI pattern + optimization agents
--> evidence-backed layout recommendation
--> 2D before/after simulation
--> feedback memory
--> Logfire trace
+```
+MVP    = real intelligence, mocked spectacle
+Tier 1 = realer perception
+Tier 2 = richer spectacle
 ```
 
-## Product Thesis
+This document specifies **MVP** in full and gives upgrade contracts for Tier 1 / Tier 2. Anything not in MVP is a non-goal until MVP is green.
 
-Restaurants and cafes usually optimize from POS receipts. POS tells operators what sold, not why throughput stalled. CafeTwin makes spatial friction visible: staff detours, queue crossings, pickup congestion, table blockage, and underused seating.
+## Demo loop (MVP)
 
-The demo should land this line:
-
-> POS tells you what sold. CafeTwin shows why throughput stalled.
-
-## System Architecture
-
-```mermaid
-flowchart TD
-    A[Seeded overhead cafe video] --> B[Frame sampler]
-    B --> C[Local Ultralytics + OpenCV pipeline]
-    C --> D[Detections / masks / tracks]
-    D --> E[ZoneCalibrationAgent]
-    E --> F[Deterministic zone assignment]
-    F --> G[Deterministic KPI engine]
-    G --> H[ObservationCompressorAgent]
-    H --> I[(MuBit memory)]
-    I --> J[PatternAgent]
-    J --> K[OptimizationAgent]
-    K --> L[Proposal store]
-    L --> M[2D simulation engine]
-    M --> N[Dashboard]
-    N --> O[Feedback]
-    O --> I
-
-    D --> P[(Postgres or JSON cache)]
-    E --> P[(Postgres or JSON cache)]
-    G --> P
-    L --> P
-    M --> P
-
-    B -. span .-> Q[Logfire]
-    C -. span .-> Q
-    E -. Pydantic AI span .-> Q
-    G -. span .-> Q
-    H -. Pydantic AI span .-> Q
-    I -. memory span .-> Q
-    K -. Pydantic AI span .-> Q
-    M -. span .-> Q
+```
+fixtures (loaded once)
+  ↓
+build CafeEvidencePack  (typed Pydantic input bundle)
+  ↓
+OptimizationAgent       (Pydantic AI, live)
+  ↓
+LayoutChange            (typed, post-validated, fallback to cache on failure)
+  ↓
+memory.write            (local jsonl always; MuBit best-effort)
+  ↓
+UI shows: recommendation card, before/after twin crossfade, KPI deltas
+  ↓
+user feedback           (Accept / Reject) → memory.write
 ```
 
-## Runtime Sequence
+Single Logfire trace, four spans:
 
-```mermaid
-sequenceDiagram
-    participant UI as Dashboard
-    participant Vision as Local Vision
-    participant KPI as KPI Engine
-    participant DB as Postgres/Cache
-    participant MuBit as MuBit
-    participant ZoneAI as ZoneCalibrationAgent
-    participant AI as Pydantic AI Agents
-    participant Sim as Simulator
-    participant LF as Logfire
+1. `evidence_pack.build`
+2. `optimization_agent.run`
+3. `layout_change.validate`
+4. `memory.write`
 
-    UI->>Vision: Analyze demo video frames
-    Vision->>LF: detect_frame spans
-    Vision->>DB: cache detections/tracks
-    Vision->>ZoneAI: representative frame + detections + tracks
-    ZoneAI->>DB: store drafted zones
-    ZoneAI->>KPI: approved/drafted zones
-    Vision->>KPI: detections + tracks
-    KPI->>DB: store KPI snapshot
-    KPI->>AI: compact KPI window
-    AI->>MuBit: remember SceneObservation
-    AI->>MuBit: remember OperationalPattern
-    AI->>MuBit: recall patterns/rules
-    AI->>DB: store typed LayoutChange
-    UI->>Sim: simulate proposal
-    Sim->>DB: store simulation artifact
-    UI->>MuBit: remember feedback
-    UI->>LF: show trace link
+Plus `feedback.write` when user clicks Accept/Reject.
+
+## File layout
+
+```
+app/
+  schemas.py                    # all Pydantic models (see §Schemas)
+  evidence_pack.py              # build CafeEvidencePack from demo_data/
+  agents/
+    optimization_agent.py       # the one live Pydantic AI agent
+    evidence_summarizer.py      # OPTIONAL second live agent (see §Optional second agent)
+  memory.py                     # local jsonl writer + MuBit best-effort wrapper
+  logfire_setup.py              # init + span helpers
+  api/
+    main.py                     # FastAPI app
+    routes.py                   # /api/run, /api/feedback, /api/state, /api/logfire_url
+    sse.py                      # stage event streaming
+  fallback.py                   # load recommendation.cached.json if agent fails
+  config.py                     # env vars, demo_data path
+demo_data/                      # see §Demo data contract
+frontend/                       # Vite+React shell — see overview_plan.md §UI
+scripts/
+  build_fixtures.py             # one-shot: render annotated_before.mp4 + twin PNGs
+  run_yolo_offline.py           # Tier 1 hook: produce real tracks.cached.json
 ```
 
-## Vision Stack
+## Demo data contract (MVP fixtures)
 
-### Default Local Path
+All hand-authored or precomputed offline. Loaded once at startup.
 
-Use **Ultralytics + OpenCV** as the primary hackathon path.
+| File | Schema | Notes |
+|---|---|---|
+| `demo_data/source_video.mp4` | binary | The original overhead clip. Not loaded by code; available for the pitch ("here's the raw input"). |
+| `demo_data/annotated_before.mp4` | binary | Plays in the observed video panel. Generated by `scripts/build_fixtures.py` (Tier 1: real ffmpeg+YOLO; MVP: can be hand-edited). |
+| `demo_data/tracks.cached.json` | `list[TrackPoint]` | Used by Tier 1 KPI engine. In MVP: shipped for credibility ("here's the data") but not consumed at runtime. |
+| `demo_data/zones.json` | `list[Zone]` | Hand-drawn polygons. Loaded into `CafeEvidencePack`. |
+| `demo_data/object_inventory.json` | `ObjectInventory` | Hand-authored counts + xy. Loaded into `CafeEvidencePack`. |
+| `demo_data/kpi_windows.json` | `list[KPIReport]` | Precomputed in MVP, reflecting plausible numbers. Loaded into `CafeEvidencePack`. |
+| `demo_data/pattern_fixture.json` | `OperationalPattern` | One pattern with `evidence_ids` (e.g. `mem_kpi_w1`, `mem_kpi_w2`, `mem_kpi_w3`). The agent **must** cite these IDs. |
+| `demo_data/recommendation.cached.json` | `LayoutChange` | Deterministic fallback used if the agent retries fail validation. |
+| `demo_data/twin_observed.png` | image | Used by MVP twin panel. |
+| `demo_data/twin_recommended.png` | image | Used by MVP twin panel. |
+| `demo_data/twin_observed.json` | `TwinLayout` (Tier 2 schema) | Shipped for Tier 2 R3F. Not used in MVP. |
+| `demo_data/twin_recommended.json` | `TwinLayout` (Tier 2 schema) | Shipped for Tier 2 R3F. Not used in MVP. |
+| `demo_data/mubit_fallback.jsonl` | append-only | Created at runtime. Source of truth for the "Memories" expander. |
 
-Reason: the team can run this locally, it avoids hosted API setup, and it gives the demo a stronger build-quality story. Cache every result to JSON so the UI can replay the pipeline even if live inference is slow.
+**Failure rule:** if any required fixture is missing at startup, `/api/state` returns a clear error with the missing filename. Don't paper over it.
 
-Default components:
-
-- `cv2.VideoCapture` for video frame sampling.
-- Ultralytics YOLO detection model for people, tables, chairs, and coarse scene objects.
-- Ultralytics `model.track(..., tracker="bytetrack.yaml", persist=True)` for movement trails.
-- OpenCV drawing utilities for boxes, trails, zones, and heatmaps.
-- `ZoneCalibrationAgent` drafts `zones.json` polygons for queue, counter, pickup, seating, and staff path from a representative frame, detections, static furniture, and track heatmaps.
-- Deterministic OpenCV geometry assigns every `TrackPoint` to the approved/drafted zones.
-- Cached `demo_data/detections.cached.json` and `demo_data/tracks.cached.json` for demo reliability.
-
-Minimal detection/tracking runner:
-
-```python
-import cv2
-from ultralytics import YOLO
-
-model = YOLO("yolo11n.pt")
-cap = cv2.VideoCapture("demo_data/cafe.mp4")
-
-while cap.isOpened():
-    ok, frame = cap.read()
-    if not ok:
-        break
-
-    results = model.track(frame, tracker="bytetrack.yaml", persist=True)
-    # Convert results to Detection/TrackPoint schemas and cache as JSON.
-```
-
-### Optional Local Segmentation
-
-Use segmentation only when it directly helps the demo:
-
-- table/chair footprint masks,
-- obstacle map for the 2D simulation,
-- cleaner inpaint masks for an optional after-image.
-
-Local segmentation option:
-
-```python
-model = YOLO("yolo11n-seg.pt")
-```
-
-Do not block the MVP on segmentation. Bounding boxes plus center points are enough for walking distance, queue proxy, path crossings, and heatmaps.
-
-References:
-
-- https://docs.ultralytics.com/modes/track/
-- https://docs.ultralytics.com/usage/python/
-- https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html
-
-### Simulation / Image Editing
-
-MVP simulation is deterministic 2D. Optional inpainted "after" image can use:
-
-- Replicate image inpainting model
-- Local Stable Diffusion / ControlNet only if already configured
-
-Do not depend on video generation for judging. Generated video is stretch polish only.
-
-## Data Ownership
-
-```mermaid
-flowchart LR
-    A[Raw video] --> B[Local file / object storage]
-    C[Detections + tracks] --> D[(Postgres or JSON cache)]
-    E[KPI snapshots] --> D
-    F[Compressed observations] --> G[(MuBit)]
-    H[Patterns] --> G
-    I[Recommendations] --> D
-    I --> G
-    J[Simulation artifacts] --> D
-```
-
-- Raw frames and detections stay in Postgres/local JSON cache.
-- MuBit stores compressed observations and learned patterns.
-- Logfire stores traces, timings, costs, and agent spans.
-
-## MuBit Design
-
-### Lanes
-
-| Lane | Writer | Reader | Contents |
-|---|---|---|---|
-| `location:demo:layout` | Zone calibration agent | KPI engine, dashboard, optimization agent | Floor plan, furniture, and drafted/approved zones. |
-| `location:demo:scene` | Observation compressor | Pattern agent, dashboard | 10-second scene summaries. |
-| `location:demo:kpi` | KPI engine | Pattern agent, optimization agent | KPI snapshots and window summaries. |
-| `location:demo:patterns` | Pattern agent | Optimization agent | Bottlenecks and evidence chains. |
-| `location:demo:recommendations` | Optimization agent, feedback handler | Optimization agent | Proposal outcomes and feedback. |
-| `org:rules` | Seed/admin | All agents | Hard constraints and safety rules. |
-
-### Intents
-
-Use these intent strings consistently:
-
-| Intent | Use |
-|---|---|
-| `trace` | Raw-ish pipeline events and simulation runs. |
-| `fact` | KPI snapshots. |
-| `lesson` | Scene observations and operational patterns. |
-| `rule` | Constraints and "never suggest this again" feedback. |
-| `feedback` | Manager decisions on recommendations. |
-| `tool_artifact` | Tool-call metadata and generated artifacts. |
-
-### SDK vs MCP
-
-Use MuBit SDK directly for deterministic pipeline writes:
-
-- KPI engine writes `location:demo:kpi`
-- Observation compressor writes `location:demo:scene`
-- Pattern agent writes `location:demo:patterns`
-- Feedback handler writes `location:demo:recommendations`
-
-Use MuBit MCP only if the optimization agent benefits from tool-style recall. Keep the MCP toolset small:
-
-- `recall`
-- `get_context`
-- `archive`, only for bit-exact artifacts
-
-No wildcard lanes. Register or configure explicit lanes.
-
-## Pydantic Models
+## Schemas
 
 ```python
 from datetime import datetime
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+# ---------- Vision-shaped (used as fixture inputs in MVP) ----------
 
-class Detection(BaseModel):
-    frame_idx: int
-    timestamp_s: float
-    track_id: int | None
-    class_name: Literal[
-        "person",
-        "person_staff",
-        "person_customer",
-        "table",
-        "chair",
-        "counter",
-        "pickup_area",
-        "queue_area",
-    ]
+ObjectKind = Literal[
+    "table", "chair", "counter", "pickup_shelf",
+    "queue_marker", "menu_board", "plant", "barrier",
+]
+
+
+class SceneObject(BaseModel):
+    id: str
+    kind: ObjectKind
+    label: str
     bbox_xyxy: tuple[float, float, float, float]
-    mask_polygon: list[tuple[float, float]] | None = None
+    center_xy: tuple[float, float]
+    size_xy: tuple[float, float]
+    rotation_degrees: float = 0
+    zone_id: str | None = None
+    movable: bool = True
     confidence: float
+    source: Literal["vision", "manual", "fixture"] = "fixture"
+
+
+class ObjectInventory(BaseModel):
+    session_id: UUID
+    run_id: UUID
+    source_frame_idx: int
+    source_timestamp_s: float
+    objects: list[SceneObject]
+    counts_by_kind: dict[ObjectKind, int]
+    count_confidence: float
+    notes: list[str] = Field(default_factory=list)
 
 
 class TrackPoint(BaseModel):
     track_id: int
+    role: Literal["staff", "customer", "unknown"] = "unknown"
     timestamp_s: float
     x: float
     y: float
@@ -266,15 +142,19 @@ class Zone(BaseModel):
     kind: Literal["counter", "queue", "pickup", "seating", "staff_path", "entrance"]
     polygon: list[tuple[float, float]]
     color_hex: str = "#64748b"
-    source: Literal["agent_drafted", "manual", "fixture"] = "agent_drafted"
+    source: Literal["agent_drafted", "manual", "fixture"] = "fixture"
     confidence: float | None = None
 
 
-class ZoneDraft(BaseModel):
-    zones: list[Zone]
-    rationale: str
-    assumptions: list[str]
-    needs_review: bool = True
+# ---------- KPI ----------
+
+KPIField = Literal[
+    "staff_walk_distance_px",
+    "staff_customer_crossings",
+    "queue_obstruction_seconds",
+    "congestion_score",
+    "table_detour_score",
+]
 
 
 class KPIReport(BaseModel):
@@ -289,44 +169,51 @@ class KPIReport(BaseModel):
     table_detour_score: float
     session_id: UUID
     run_id: UUID
+    memory_id: str  # e.g. "mem_kpi_w1"; cited by patterns
 
+
+# ---------- Pattern (fixture in MVP, agent in Tier 1) ----------
 
 class EvidenceRef(BaseModel):
     memory_id: str
     lane: str
     summary: str
-    kpi_field: Literal[
-        "staff_walk_distance_px",
-        "staff_customer_crossings",
-        "queue_obstruction_seconds",
-        "congestion_score",
-        "table_detour_score",
-    ] | None = None
-
-
-class SceneObservation(BaseModel):
-    location_id: str
-    window_start_s: float
-    window_end_s: float
-    kpi: KPIReport
-    notable_events: list[str]
-    evidence_frame_idxs: list[int]
-    session_id: UUID
-    run_id: UUID
+    kpi_field: KPIField | None = None
 
 
 class OperationalPattern(BaseModel):
+    id: str  # e.g. "pat_queue_crossing_001"
     title: str
     summary: str
-    pattern_type: Literal["queue_crossing", "staff_detour", "table_blockage", "pickup_congestion"]
-    evidence: list[EvidenceRef]
+    pattern_type: Literal[
+        "queue_crossing", "staff_detour", "table_blockage", "pickup_congestion"
+    ]
+    evidence: list[EvidenceRef] = Field(min_length=1)
     severity: Literal["low", "medium", "high"]
     affected_zones: list[str]
 
 
+# ---------- Agent input bundle ----------
+
+class CafeEvidencePack(BaseModel):
+    """Single typed input to OptimizationAgent.
+    Built by `evidence_pack.build()` from demo_data fixtures (MVP)
+    or live KPI engine output (Tier 1).
+    """
+    session_id: UUID = Field(default_factory=uuid4)
+    run_id: UUID = Field(default_factory=uuid4)
+    zones: list[Zone]
+    object_inventory: ObjectInventory
+    kpi_windows: list[KPIReport]
+    pattern: OperationalPattern  # MVP: the fixture pattern. Tier 1: PatternAgent output.
+    org_rules: list[str] = Field(default_factory=list)
+
+
+# ---------- Agent output ----------
+
 class SimulationSpec(BaseModel):
     action: Literal["move_table", "move_chair", "move_station", "change_queue_boundary"]
-    target_id: str  # FurnitureItem.id or FurnitureItem.cluster
+    target_id: str
     from_position: tuple[float, float]
     to_position: tuple[float, float]
     rotation_degrees: float = 0
@@ -337,424 +224,369 @@ class LayoutChange(BaseModel):
     rationale: str
     target_id: str
     simulation: SimulationSpec
-    evidence: list[EvidenceRef] = Field(min_length=3)
-    expected_kpi_delta: dict[
-        Literal[
-            "staff_walk_distance_px",
-            "staff_customer_crossings",
-            "queue_obstruction_seconds",
-            "congestion_score",
-            "table_detour_score",
-        ],
-        float,
+    evidence_ids: list[str] = Field(min_length=1)  # MUST be subset of pattern.evidence ids
+    expected_kpi_delta: dict[KPIField, float] = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    risk: Literal["low", "medium", "high"]
+    fingerprint: str
+
+
+# ---------- Memory write payloads ----------
+
+class MemoryRecord(BaseModel):
+    lane: Literal[
+        "location:demo:recommendations",
+        "location:demo:feedback",
+        # Tier 1 lanes:
+        "location:demo:kpi",
+        "location:demo:inventory",
+        "location:demo:patterns",
     ]
-    confidence: float
-    risk: Literal["low", "medium", "high"]
-    fingerprint: str
-
-
-class StaffingAdjustment(BaseModel):
-    title: str
-    rationale: str
-    evidence: list[EvidenceRef] = Field(min_length=3)
-    expected_kpi_delta: dict[str, float]
-    confidence: float
-    risk: Literal["low", "medium", "high"]
-    fingerprint: str
-
-
-class EquipmentRepositioning(BaseModel):
-    title: str
-    rationale: str
-    simulation: SimulationSpec
-    evidence: list[EvidenceRef] = Field(min_length=3)
-    expected_kpi_delta: dict[str, float]
-    confidence: float
-    risk: Literal["low", "medium", "high"]
-    fingerprint: str
-
-
-class NoActionRecommended(BaseModel):
-    reason: str
-
-
-OptimizationProposal = LayoutChange | StaffingAdjustment | EquipmentRepositioning | NoActionRecommended
+    intent: Literal["fact", "lesson", "feedback", "rule", "trace"]
+    payload: dict
+    written_at: datetime
+    mubit_id: str | None = None
+    fallback_only: bool = False
 ```
 
-## Agent Contracts
+Notes:
 
-### ZoneCalibrationAgent
+- `LayoutChange.evidence_ids` is a flat `list[str]` rather than `list[EvidenceRef]` to make the Pydantic AI prompt simpler and the post-validation trivial.
+- `expected_kpi_delta` keys are typed via `KPIField` literal, so the agent cannot hallucinate field names.
+- `confidence` is bounded `[0,1]` by `Field`.
 
-Input:
+## OptimizationAgent (live, MVP)
 
-- representative frame metadata
-- static detections for furniture/counter-like objects
-- track heatmap summaries
-- optional existing `zones.json`
+**Input:** `CafeEvidencePack`. **Output:** `LayoutChange`.
 
-Output:
+### Pydantic AI setup
 
-- `ZoneDraft`
+```python
+from pydantic_ai import Agent
+from app.schemas import CafeEvidencePack, LayoutChange
 
-Rules:
+optimization_agent: Agent[CafeEvidencePack, LayoutChange] = Agent(
+    "anthropic:claude-sonnet-4-latest",  # exact model id per Pydantic AI docs
+    output_type=LayoutChange,
+    system_prompt=OPTIMIZATION_SYSTEM_PROMPT,
+)
+```
 
-- Draft operational zones once per video/session, not per frame.
-- Use agent reasoning for semantic labels like "queue", "pickup", and "staff path".
-- Do not use the agent to assign individual track points to zones.
-- KPI code must still run deterministic point-in-polygon assignment against the drafted/approved polygons.
-- If confidence is low, set `needs_review=True` and fall back to fixture/manual zones for the live demo.
-
-### ObservationCompressorAgent
-
-Input:
-
-- `KPIReport`
-- selected detection/track summaries
-- zone definitions
-
-Output:
-
-- `SceneObservation`
-
-Rules:
-
-- Do not invent service events that are not supported by tracks/zones.
-- Name only spatial/flow events visible in the KPI window.
-- Keep output compact enough for MuBit.
-
-### PatternAgent
-
-Input:
-
-- recent `SceneObservation` memories
-- recent `KPIReport` memories
-
-Output:
-
-- `OperationalPattern[]`
-
-Rules:
-
-- Aggregate across windows.
-- Evidence must point to MuBit memory IDs.
-- Prefer deterministic patterns first: crossings, detours, queue obstruction.
-
-### OptimizationAgent
-
-Input:
-
-- `OperationalPattern[]`
-- `org:rules`
-- current layout/zones
-
-Output:
-
-- `OptimizationProposal`
-
-Rules:
-
-- Prefer one high-confidence `LayoutChange` for the demo.
-- Every concrete proposal needs at least 3 evidence refs.
-- Include measurable expected KPI deltas.
-- Return `NoActionRecommended` if evidence is weak.
-
-## KPI Computation
-
-Keep KPIs deterministic and explainable.
-
-### Staff Walking Distance
-
-For each staff track:
+### System prompt (contract)
 
 ```text
-sum(distance(track_point_i, track_point_i+1))
+You are a cafe layout optimization agent. You receive a CafeEvidencePack
+describing zones, an object inventory, KPI windows, and one OperationalPattern
+identifying a spatial bottleneck. Your job is to emit a single typed
+LayoutChange that addresses the pattern.
+
+HARD RULES — you will be rejected if you violate any of these:
+
+1. evidence_ids MUST be a non-empty subset of the memory_ids appearing in
+   the input pattern.evidence[*].memory_id. Do not invent IDs.
+2. expected_kpi_delta MUST contain at least one key from this set:
+   {staff_walk_distance_px, staff_customer_crossings,
+    queue_obstruction_seconds, congestion_score, table_detour_score}.
+   Values are signed floats representing expected change (negative = improvement
+   for distance/crossings/obstruction/congestion; lower table_detour_score is also
+   better).
+3. simulation.target_id MUST refer to an existing object in
+   object_inventory.objects[*].id, or a zone id from zones[*].id for
+   change_queue_boundary actions.
+4. simulation.from_position MUST equal the current center_xy of that object
+   (within 1px tolerance) when target is movable furniture.
+5. confidence MUST be in [0.0, 1.0] and risk MUST be one of {low, medium, high}.
+6. fingerprint MUST be a short stable hash-like string of (target_id, action,
+   to_position) so duplicates can be detected.
+
+Prefer ONE high-confidence move. Keep rationale to 2-3 sentences citing the
+specific pattern. Do not propose multiple changes.
 ```
 
-Use pixels for MVP. Real-world meters require calibration and are out of scope.
+### Post-validation + fallback
 
-### Path Crossings
+After the agent returns, we run a second-pass validator before returning to the UI:
 
-For each staff segment and customer segment in the same time window:
+```python
+def validate_layout_change(change: LayoutChange, pack: CafeEvidencePack) -> bool:
+    pattern_ids = {ref.memory_id for ref in pack.pattern.evidence}
+    if not change.evidence_ids:
+        return False
+    if not set(change.evidence_ids).issubset(pattern_ids):
+        return False
+    if not change.expected_kpi_delta:
+        return False
+    object_ids = {o.id for o in pack.object_inventory.objects}
+    zone_ids = {z.id for z in pack.zones}
+    if change.simulation.target_id not in object_ids | zone_ids:
+        return False
+    return True
 
-```text
-count(intersects(staff_segment, customer_segment))
+
+async def run_optimization(pack: CafeEvidencePack) -> tuple[LayoutChange, bool]:
+    """Returns (layout_change, used_fallback)."""
+    with logfire.span("optimization_agent.run"):
+        try:
+            result = await optimization_agent.run(pack)
+            change = result.output
+        except Exception as e:
+            logfire.warn("optimization_agent failed", error=str(e))
+            return load_fallback_recommendation(), True
+
+    with logfire.span("layout_change.validate"):
+        if validate_layout_change(change, pack):
+            return change, False
+        # Retry once with a stricter reminder
+        retry = await optimization_agent.run(
+            pack,
+            message_history=[...],  # include the original failure as a user message
+        )
+        if validate_layout_change(retry.output, pack):
+            return retry.output, False
+        logfire.warn("optimization_agent validation failed twice, using fallback")
+        return load_fallback_recommendation(), True
 ```
 
-Also count intersections with queue-zone polygon.
+`load_fallback_recommendation()` reads `demo_data/recommendation.cached.json` and returns it parsed as `LayoutChange`.
 
-### Queue Length Proxy
+## Optional second agent (recommended)
 
-For each sampled frame:
+To honestly say "agentic workflow" (plural), add `EvidenceSummarizerAgent`:
 
-```text
-count(person centers inside queue zone)
+**Input:** `CafeEvidencePack`. **Output:** a small typed model:
+
+```python
+class EvidenceSummary(BaseModel):
+    headline: str  # one sentence
+    bullets: list[str] = Field(min_length=2, max_length=4)  # 2-4 bullets citing KPIs
 ```
 
-Peak and average over the window.
+Run it before `OptimizationAgent`. Show its output above the recommendation card. Cost: ~30 minutes of code, one extra Logfire span (`evidence_summarizer.run`), one extra `MemoryRecord`. Two real Pydantic AI agents in a chain.
 
-### Queue Obstruction Seconds
+If time-constrained, skip and frame the demo as "typed Pydantic AI agent with structured output and traced reasoning" (singular). Both framings are honest.
 
-For each frame:
+## Memory layer
 
-```text
-queue obstructed if staff path segment intersects queue zone
-or table/chair mask overlaps queue corridor above threshold
+```python
+# app/memory.py
+import json
+from pathlib import Path
+from datetime import datetime, timezone
+
+JSONL_PATH = Path("demo_data/mubit_fallback.jsonl")
+
+
+async def write_memory(record: MemoryRecord) -> MemoryRecord:
+    record.written_at = datetime.now(timezone.utc)
+
+    # 1) Local jsonl always (source of truth for UI)
+    with JSONL_PATH.open("a") as f:
+        f.write(record.model_dump_json() + "\n")
+
+    # 2) MuBit best-effort, fire-and-forget
+    try:
+        record.mubit_id = await _mubit_remember(record)
+    except Exception as e:
+        logfire.warn("mubit write failed; jsonl-only", error=str(e))
+        record.fallback_only = True
+
+    return record
 ```
 
-Sum duration across sampled frames.
+UI reads from `mubit_fallback.jsonl`. MuBit writes are decorative — never block on them. If `MUBIT_API_KEY` is unset, skip step 2 entirely.
 
-### Table Detour Score
+MVP writes:
 
-MVP approximation:
+- After successful recommendation: 1 record on lane `location:demo:recommendations`, intent `lesson`.
+- After Accept/Reject feedback: 1 record on lane `location:demo:feedback`, intent `feedback`.
 
-```text
-actual staff path length / straight-line counter-to-seating distance
+Tier 1 adds: KPI summary, object inventory, pattern.
+
+## FastAPI routes
+
+```python
+# app/api/routes.py
+
+@router.get("/api/state")
+async def get_state() -> StateResponse:
+    """Returns precomputed KPIs, object counts, baseline twin URL."""
+
+@router.post("/api/run")
+async def run() -> StreamingResponse:
+    """SSE stream:
+        event: stage  data: {"stage": "evidence_pack", "status": "running"}
+        event: stage  data: {"stage": "evidence_pack", "status": "done"}
+        event: stage  data: {"stage": "optimization_agent", "status": "running"}
+        event: stage  data: {"stage": "optimization_agent", "status": "done"}
+        event: recommendation  data: <LayoutChange JSON>
+        event: stage  data: {"stage": "memory_write", "status": "done"}
+        event: done
+    """
+
+@router.post("/api/feedback")
+async def feedback(body: FeedbackRequest) -> FeedbackResponse:
+    """Writes feedback memory. body has decision (accept/reject) and proposal_id."""
+
+@router.get("/api/logfire_url")
+async def logfire_url() -> dict:
+    """Returns the current trace URL for the top-bar link."""
+
+@router.get("/api/memories")
+async def memories() -> list[MemoryRecord]:
+    """Reads mubit_fallback.jsonl and returns parsed records."""
 ```
 
-Higher values imply detours.
+If SSE is too painful to wire on day one, replace `/api/run` with a regular `POST` that returns `{stages: [{name, started_at, ended_at}], layout_change: {...}}` and the frontend replays the timestamps client-side. Same UX, no streaming complexity. Decide at hour 7 based on how the SSE wiring is going.
 
-## Simulation
+## Logfire
 
-MVP is a 2D deterministic simulation over the floor map.
-
-Inputs:
-
-- zones
-- table/chair positions
-- selected proposal
-- staff/customer track history
-
-Steps:
-
-1. Clone current layout.
-2. Apply `SimulationSpec`.
-3. Recompute obstacle map.
-4. Re-estimate shortest staff paths around obstacles.
-5. Recompute estimated path crossings and walking distance.
-6. Render before/after side by side.
-
-```mermaid
-flowchart TD
-    A[Current layout] --> B[Apply SimulationSpec]
-    B --> C[Rebuild obstacle map]
-    C --> D[Recompute path estimates]
-    D --> E[Predicted KPI deltas]
-    E --> F[Before/after dashboard]
+```python
+# app/logfire_setup.py
+import logfire
+logfire.configure(service_name="cafetwin-mvp")
+logfire.instrument_pydantic_ai()  # auto-spans agent runs
 ```
 
-The simulation is the operational proof. Inpainted/video previews are optional visual polish.
+Span hierarchy for one `/api/run` call:
 
-## Dashboard
-
-One Streamlit or lightweight React/FastAPI page.
-
-Required panels:
-
-- Video with overlays.
-- Zone map and movement trails.
-- KPI cards.
-- MuBit memory timeline.
-- Recommendation card.
-- Before/after simulation.
-- Logfire trace ID/link.
-
-Recommended visual layout:
-
-```mermaid
-flowchart LR
-    A[Video + overlays] --> B[Map / heatmap]
-    B --> C[Recommendation]
-    C --> D[Simulation]
-    E[KPI cards] --> B
-    F[MuBit memories] --> C
-    G[Logfire trace] --> D
+```
+run (root)
+├── evidence_pack.build
+├── optimization_agent.run            (auto-instrumented by Pydantic AI)
+├── layout_change.validate
+└── memory.write
 ```
 
-## Minimal Backend API
+The Logfire URL exposed at `/api/logfire_url` should be the URL of the most recent `run` span. Cache it in process state when the run finishes.
 
-```text
-POST /seed
-POST /analyze
-POST /compress
-POST /recommend
-POST /simulate/{proposal_id}
-POST /feedback/{proposal_id}
-GET  /api/state
-GET  /health
+## Frontend contract
+
+Frontend is described in `overview_plan.md` §UI. Key API touchpoints:
+
+| User action | Frontend call |
+|---|---|
+| Page load | `GET /api/state` → populate KPI/object cards, set baseline twin image |
+| Click "Generate recommendation" | Open SSE to `/api/run`; flip flow nodes on `event: stage`; render card on `event: recommendation` |
+| Click "Apply" | Frontend-only: crossfade twin PNG, animate KPI delta cards from `expected_kpi_delta` |
+| Click "Accept" / "Reject" | `POST /api/feedback {decision, fingerprint}` |
+| Click Logfire link | `GET /api/logfire_url` then `window.open` |
+| Open "Memories" expander | `GET /api/memories` |
+
+## KPI engine (Tier 1, NOT MVP)
+
+Pre-compute in MVP, ship live in Tier 1. Implementation reference (lifted from old plan):
+
+- `staff_walk_distance_px`: Σ Euclidean distance between consecutive staff TrackPoints.
+- `staff_customer_crossings`: count of (staff segment) × (customer segment) intersections per window.
+- `queue_length_peak`/`avg`: count of customer points inside `queue` zone per frame.
+- `queue_obstruction_seconds`: seconds where a staff segment enters queue zone or a table mask overlaps queue corridor.
+- `congestion_score`: normalized density in counter+queue+pickup region (0..1).
+- `table_detour_score`: actual staff path length / straight-line counter→seating distance.
+
+Window size: 20s. Run on cached `tracks.cached.json` + `zones.json`. Output overwrites `kpi_windows.json` (or returns from API directly).
+
+## Vision (Tier 1, NOT MVP)
+
+Run offline once, not at demo time. Script: `scripts/run_yolo_offline.py`:
+
+```python
+from ultralytics import YOLO
+import cv2, json
+
+model = YOLO("yolo11n.pt")
+cap = cv2.VideoCapture("demo_data/source_video.mp4")
+points = []
+frame_idx = 0
+while cap.isOpened():
+    ok, frame = cap.read()
+    if not ok: break
+    if frame_idx % 15 == 0:  # ~2 fps from 30 fps source
+        results = model.track(frame, tracker="bytetrack.yaml", persist=True)
+        # Convert to TrackPoint records, append to `points`
+        ...
+    frame_idx += 1
+
+# Heuristic role assignment: staff if >=60% of points in counter zone in first 10s
+# Save to demo_data/tracks.cached.json
 ```
 
-`/analyze` should use cached detections by default for demo reliability. Include a UI toggle or env var such as `RUN_LIVE_VISION=1` to run local Ultralytics inference live.
+Plus a separate `scripts/render_annotated.py` that uses ffmpeg + the cached detections to produce `annotated_before.mp4`. Both run offline.
 
-## Source-Of-Truth Schema
+## Tier 2 hooks (NOT MVP)
 
-Use SQLite/Postgres/local JSON depending on speed. Postgres is ideal if already wired; JSON is acceptable for the hackathon.
+The MVP explicitly ships `twin_observed.json` and `twin_recommended.json` so Tier 2 can be added without backend changes. Schema (use as-is in Tier 2):
 
-```sql
-CREATE TABLE events (
-  id UUID PRIMARY KEY,
-  session_id UUID NOT NULL,
-  run_id UUID NOT NULL,
-  kind TEXT NOT NULL,
-  ts TIMESTAMPTZ NOT NULL,
-  payload JSONB NOT NULL,
-  mubit_memory_id TEXT
-);
+```python
+class TwinAsset(BaseModel):
+    id: str
+    kind: ObjectKind
+    position: tuple[float, float]
+    rotation_degrees: float = 0
+    size_xy: tuple[float, float]
 
-CREATE TABLE proposals (
-  id UUID PRIMARY KEY,
-  session_id UUID NOT NULL,
-  fingerprint TEXT UNIQUE,
-  kind TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  evidence_ids JSONB NOT NULL,
-  expected_kpi_delta JSONB,
-  status TEXT NOT NULL,
-  simulation_artifact_id UUID,
-  created_at TIMESTAMPTZ NOT NULL
-);
 
-CREATE TABLE feedback (
-  id UUID PRIMARY KEY,
-  proposal_id UUID REFERENCES proposals(id),
-  decision TEXT NOT NULL,
-  note TEXT,
-  created_at TIMESTAMPTZ NOT NULL,
-  mubit_memory_id TEXT
-);
-
-CREATE TABLE simulation_artifacts (
-  id UUID PRIMARY KEY,
-  proposal_id UUID REFERENCES proposals(id),
-  path TEXT,
-  payload JSONB,
-  mubit_archive_id TEXT,
-  created_at TIMESTAMPTZ NOT NULL
-);
+class TwinLayout(BaseModel):
+    walls: list[tuple[float, float]]  # polygon
+    floor_image: str | None  # optional reference texture path
+    assets: list[TwinAsset]
+    zone_overlays: list[Zone]
+    track_trails: list[list[tuple[float, float]]] = Field(default_factory=list)
 ```
 
-## Observability
+R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}` returns the parsed layout. Twin panel can A/B between current MVP `<img>` rendering and R3F rendering behind a feature flag.
 
-Every demo run gets one `session_id`. Every processing stage gets a `run_id`.
+## Risk controls
 
-Logfire spans:
+| Risk | Mitigation |
+|---|---|
+| Pydantic AI agent returns invalid `LayoutChange` | Post-validate, retry once with stricter prompt, fall back to `recommendation.cached.json` |
+| Anthropic API down/slow at demo time | Same fallback; keep the cached recommendation visually identical to a real one |
+| MuBit unavailable | jsonl is source of truth; MuBit writes are best-effort; UI never reads MuBit directly |
+| Logfire unavailable | Spans no-op gracefully; top-bar link disables if `/api/logfire_url` errors |
+| SSE wiring eats too much time | Replace with single POST returning stages + result; replay client-side |
+| Frontend twin panel buggy | PNG `<img>` crossfade has zero geometry; if even that breaks, single static "after" image is acceptable |
+| Demo wifi flaky | Render-deployed backend has fallback recording (full screen capture of working flow) |
 
-- `sample_frames`
-- `ultralytics_track`
-- `detect_frame`
-- `zone_calibration`
-- `compute_kpis`
-- `compress_observation`
-- `mubit_remember`
-- `pattern_agent`
-- `optimization_agent`
-- `simulate_layout`
-- `feedback`
+## Acceptance checks (MVP)
 
-The demo should show one trace:
+- [ ] `GET /api/state` returns plausible KPI numbers and object counts.
+- [ ] `POST /api/run` streams 3 stages and a `recommendation` event.
+- [ ] `LayoutChange.evidence_ids` is non-empty and ⊆ pattern fixture's evidence IDs.
+- [ ] `LayoutChange.expected_kpi_delta` has ≥ 1 entry, all keys are valid `KPIField`s.
+- [ ] After clicking Generate, the recommendation card renders with rationale, evidence, deltas, confidence.
+- [ ] Clicking Apply crossfades the twin and animates KPI deltas.
+- [ ] Clicking Accept/Reject writes a `MemoryRecord` to `mubit_fallback.jsonl`.
+- [ ] Logfire trace shows 4 spans (or 5 with summarizer) under one `run` root.
+- [ ] If `ANTHROPIC_API_KEY` is unset or invalid, the fallback path still produces a valid recommendation card.
+- [ ] If `MUBIT_API_KEY` is unset, jsonl-only mode works end-to-end without errors.
 
-```text
-video -> detection -> KPI -> MuBit -> Pydantic AI -> simulation -> feedback
+## Pitch copy (best-case demo recommendation)
+
 ```
-
-## Suggested File Layout
-
-```text
-schemas.py
-lanes.py
-mubit_io.py
-logfire_setup.py
-
-vision/frame_sampler.py
-vision/ultralytics_runner.py
-vision/centroid_tracker.py
-vision/cache.py
-
-kpi/zones.py
-kpi/calculator.py
-kpi/heatmap.py
-
-agents/observation_compressor.py
-agents/zone_calibration.py
-agents/pattern_agent.py
-agents/optimization_agent.py
-
-simulation/layout.py
-simulation/image_edit.py
-
-dashboard/app.py
-api/main.py
-db/schema.sql
-
-demo_data/cafe.mp4
-demo_data/detections.cached.json
-demo_data/zone_draft.cached.json
-demo_data/zones.json
-```
-
-## 24h Build Plan
-
-| Time | Gate | Deliverable |
-|---|---|---|
-| 0-4h | Visual proof | Video, agent-drafted/fallback zones, cached detections/tracks, trails. |
-| 4-8h | KPI proof | Crossings, walking distance, queue proxy, heatmap. |
-| 8-12h | Memory proof | MuBit writes, recall, memory timeline. |
-| 12-16h | Agent proof | Typed Pydantic AI `LayoutChange` with evidence. |
-| 16-20h | Simulation proof | Before/after map and KPI deltas. |
-| 20-24h | Demo proof | Logfire trace, Render deploy, fallback recording. |
-
-## Acceptance Checks
-
-- Video renders with overlays.
-- Detections/tracks load from cache if live local inference is slow or fails.
-- Zones are visible and used in KPI calculations.
-- KPI cards show non-zero plausible values.
-- MuBit memory timeline shows compressed observations.
-- Optimization agent emits a typed proposal with at least 3 evidence refs.
-- Simulation visibly changes layout and recomputes deltas.
-- Feedback writes back to MuBit.
-- Logfire shows a connected trace for the demo path.
-
-## Risk Controls
-
-- If live Ultralytics inference is slow, use cached JSON.
-- If local YOLO fails entirely, use hand-authored detections/tracks for the demo video.
-- If MuBit is unavailable, write local memory JSON and keep the UI contract identical.
-- If Pydantic AI call fails, use cached typed proposal.
-- If simulation math gets shaky, show deterministic before/after geometry with conservative deltas.
-- If inpainting looks bad, skip it entirely.
-
-## Pitch Notes
-
-Avoid "staff surveillance." Say:
-
-> We analyze aggregate spatial flow to reduce wasted motion and improve service design.
-
-Best demo recommendation copy:
-
-```text
 Move table cluster B 0.8m left.
 
-Evidence:
-1. Staff crossed the queue zone 18 times in 12 minutes.
-2. Table cluster B caused repeated detours near pickup.
-3. Queue length exceeded 6 customers while pickup was blocked.
+Rationale:
+Cluster B forces the staff runner across the queue zone every trip,
+producing 18 crossings in 12 minutes and obstructing the queue for 41s.
+
+Evidence: mem_kpi_w1, mem_kpi_w2, mem_kpi_w3
 
 Expected impact:
-- Staff walking distance: -14%
-- Staff/customer crossings: -38%
-- Queue obstruction time: -31%
+- staff_customer_crossings: -38%
+- queue_obstruction_seconds: -31%
+- staff_walk_distance_px: -14%
 
-Risk:
-Keep minimum 1.2m accessible walkway clearance.
+Risk: low. Maintains 1.2m walkway clearance.
 ```
 
-## Engineering Defaults
+## Engineering defaults
 
-- Cafe, not full restaurant, for MVP.
-- Seeded video, not live camera.
-- Cached detections by default.
-- Agent-drafted zones with frozen fixture fallback by default.
-- Deterministic 2D simulation by default.
-- Generated image/video only as stretch.
-- Evidence chain is mandatory.
+- Cafe, not restaurant.
+- One seeded video, no live camera.
+- Fixture-backed perception; live agent reasoning.
+- Local jsonl is source of truth for memory; MuBit is decorative.
+- One Pydantic AI agent live (optionally two). All other agents are non-goals until Tier 1.
+- 3D twin is a PNG crossfade. R3F is non-goal until Tier 2.
+- Evidence chain is mandatory; recommendation must cite real fixture IDs.
 - Logfire trace is mandatory.
+- If anything is at risk past hour 14, cut it.
