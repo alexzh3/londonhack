@@ -53,7 +53,7 @@ Legend: `[REAL]` = live code at demo time. `[mock]` = fixture or prebaked artifa
                                             │   (4 spans + recall) │
                                             └──────────────────────┘
                                             
-  Routes used: GET /api/state, POST /api/run (SSE), POST /api/feedback, GET /api/memories, GET /api/logfire_url
+  Routes used: GET /api/state, POST /api/run, POST /api/feedback, GET /api/memories, GET /api/logfire_url
 ```
 
 ### Tier 1 — realer perception (only if MVP green)
@@ -184,7 +184,7 @@ sequenceDiagram
     participant JL as mubit_fallback.jsonl
     participant LF as Logfire
 
-    FE->>API: POST /api/run (SSE)
+    FE->>API: POST /api/run (JSON)
     API->>LF: span(run) begin
 
     API->>EP: build(CafeEvidencePack)
@@ -193,7 +193,7 @@ sequenceDiagram
     MB-->>MEM: hits (or [] if unavailable)
     MEM-->>EP: prior_recommendations
     EP-->>API: CafeEvidencePack
-    API-->>FE: event: stage evidence_pack done
+    API-->>API: record stage evidence_pack done
 
     API->>OPT: run(pack)
     OPT->>AN: chat.completions (typed, output_type=LayoutChange)
@@ -211,18 +211,18 @@ sequenceDiagram
         end
     end
     OPT-->>API: LayoutChange, used_fallback
-    API-->>FE: event: recommendation <LayoutChange>
-    API-->>FE: event: stage optimization_agent done
+    API-->>API: record recommendation <LayoutChange>
+    API-->>API: record stage optimization_agent done
 
     API->>MEM: write_memory(lesson, layout_change)
     MEM->>MB: remember()
     MB-->>MEM: mubit_id (or error → fallback_only=True)
     MEM->>JL: append jsonl line
     MEM-->>API: MemoryRecord
-    API-->>FE: event: stage memory_write done
+    API-->>API: record stage memory_write done
 
     API->>LF: span(run) end
-    API-->>FE: event: done
+    API-->>FE: 200 {stages, layout_change, memory_record}
 
     Note over FE,LF: Later: user clicks Accept/Reject<br/>→ POST /api/feedback → memory.write again
 ```
@@ -235,12 +235,12 @@ sequenceDiagram
 | 9–17 (`run` through `validate` + retry + fallback) | `optimization_agent.run` (auto) + `layout_change.validate` |
 | 20–23 (write MuBit + jsonl) | `memory.write` → children `memory.write.mubit`, `memory.write.jsonl` |
 
-### Frontend stage events → flow canvas nodes
+### Frontend stage timestamps → flow canvas nodes
 
-| SSE `event: stage` value | Flow canvas node | What lights up |
+| Stage `name` value | Flow canvas node | What lights up |
 |---|---|---|
 | `evidence_pack` | Node 1 | From start of build until pack returned (covers MuBit recall) |
-| `optimization_agent` | Node 2 | From agent start until `recommendation` event emitted (covers retry + fallback) |
+| `optimization_agent` | Node 2 | From agent start until the recommendation is recorded in the response (covers retry + fallback) |
 | `memory_write` | Node 3 | From memory write start until final `done` event |
 
 The `validate` step has no dedicated flow node — it's folded into the `optimization_agent` node so the UI stays three nodes wide. Logfire still shows it as a distinct span for engineers.
@@ -295,6 +295,11 @@ scripts/
   build_fixtures.py             # one-shot: render annotated_before.mp4 + twin PNGs
   run_yolo_offline.py           # Tier 1 hook: produce real tracks.cached.json
 ```
+
+Current scaffold exists for these boundaries: `pyproject.toml`, `app/`,
+`app/api/`, `app/agents/`, `demo_data/`, `frontend/`, `scripts/`, and
+`docs/architecture/`. The next implementation step is filling `app/schemas.py`
+and `demo_data/*.json`.
 
 ## Demo data contract (MVP fixtures)
 
@@ -694,15 +699,18 @@ async def get_state() -> StateResponse:
     """Returns precomputed KPIs, object counts, baseline twin URL."""
 
 @router.post("/api/run")
-async def run() -> StreamingResponse:
-    """SSE stream:
-        event: stage  data: {"stage": "evidence_pack", "status": "running"}
-        event: stage  data: {"stage": "evidence_pack", "status": "done"}
-        event: stage  data: {"stage": "optimization_agent", "status": "running"}
-        event: stage  data: {"stage": "optimization_agent", "status": "done"}
-        event: recommendation  data: <LayoutChange JSON>
-        event: stage  data: {"stage": "memory_write", "status": "done"}
-        event: done
+async def run() -> RunResponse:
+    """JSON response:
+        {
+          "stages": [
+            {"name": "evidence_pack", "started_at": "...", "ended_at": "..."},
+            {"name": "optimization_agent", "started_at": "...", "ended_at": "..."},
+            {"name": "memory_write", "started_at": "...", "ended_at": "..."}
+          ],
+          "layout_change": <LayoutChange JSON>,
+          "memory_record": <MemoryRecord JSON>,
+          "used_fallback": false
+        }
     """
 
 @router.post("/api/feedback")
@@ -718,7 +726,9 @@ async def memories() -> list[MemoryRecord]:
     """Reads mubit_fallback.jsonl and returns parsed records."""
 ```
 
-If SSE is too painful to wire on day one, replace `/api/run` with a regular `POST` that returns `{stages: [{name, started_at, ended_at}], layout_change: {...}}` and the frontend replays the timestamps client-side. Same UX, no streaming complexity. Decide at hour 7 based on how the SSE wiring is going.
+SSE is optional polish, not MVP. If we add it later, it should preserve the same
+stage names and response shapes so the frontend can replay either live or after
+the request completes.
 
 ## Logfire
 
@@ -751,7 +761,7 @@ Frontend is described in `overview_plan.md` §UI. Key API touchpoints:
 | User action | Frontend call |
 |---|---|
 | Page load | `GET /api/state` → populate KPI/object cards, set baseline twin image |
-| Click "Generate recommendation" | Open SSE to `/api/run`; flip flow nodes on `event: stage`; render card on `event: recommendation` |
+| Click "Generate recommendation" | `POST /api/run`; replay returned stage timestamps in flow canvas; render returned recommendation card |
 | Click "Apply" | Frontend-only: crossfade twin PNG, animate KPI delta cards from `expected_kpi_delta` |
 | Click "Accept" / "Reject" | `POST /api/feedback {decision, fingerprint}` |
 | Click Logfire link | `GET /api/logfire_url` then `window.open` |
@@ -828,14 +838,14 @@ R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}` retu
 | Anthropic API down/slow at demo time | Same fallback; keep the cached recommendation visually identical to a real one |
 | MuBit unavailable | Writes still hit jsonl; recall returns `[]`; UI falls back to jsonl read; "Seen before" chip simply doesn't render |
 | Logfire unavailable | Spans no-op gracefully; top-bar link disables if `/api/logfire_url` errors |
-| SSE wiring eats too much time | Replace with single POST returning stages + result; replay client-side |
+| Flow animation polish eats too much time | Return stages from `/api/run`; render static complete states client-side |
 | Frontend twin panel buggy | PNG `<img>` crossfade has zero geometry; if even that breaks, single static "after" image is acceptable |
 | Demo wifi flaky | Render-deployed backend has fallback recording (full screen capture of working flow) |
 
 ## Acceptance checks (MVP)
 
 - [ ] `GET /api/state` returns plausible KPI numbers and object counts.
-- [ ] `POST /api/run` streams 3 stages and a `recommendation` event.
+- [ ] `POST /api/run` returns 3 stage timestamps and a `layout_change` payload.
 - [ ] `LayoutChange.evidence_ids` is non-empty and ⊆ pattern fixture's evidence IDs.
 - [ ] `LayoutChange.expected_kpi_delta` has ≥ 1 entry, all keys are valid `KPIField`s.
 - [ ] After clicking Generate, the recommendation card renders with rationale, evidence, deltas, confidence.

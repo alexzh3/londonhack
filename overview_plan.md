@@ -113,7 +113,7 @@ Keep the panel layout from `docs/superpowers/specs/2026-04-25-simcafe-ui-design.
 | Top bar | Real Logfire trace link |
 | Observed video panel | Plays `annotated_before.mp4`. Optional: collapsible "raw data" expander showing `tracks.cached.json`. |
 | Object count + KPI cards | Real numbers from `kpi_windows.json` (precomputed), agent's predicted deltas after Apply |
-| Agent flow canvas | 3 nodes (`evidence_pack`, `optimization_agent`, `memory_write`), wired to real backend stage events (cheap SSE or stage timestamps replayed client-side) |
+| Agent flow canvas | 3 nodes (`evidence_pack`, `optimization_agent`, `memory_write`), wired to returned stage timestamps replayed client-side. SSE is optional later. |
 | Recommendation card | Renders the real `LayoutChange` returned by `/api/run` |
 | 3D twin panel | **Prebaked PNG crossfade** between `twin_observed.png` and `twin_recommended.png`. No R3F, no geometry code. |
 | Memories panel | Collapsible expander reading `GET /api/memories` (MuBit primary, jsonl fallback). Each row shows the `mubit_id` chip when present. |
@@ -194,12 +194,22 @@ Upgrade the UI; backend mostly unchanged.
 |---|---|---|
 | 0–3 | Hand-author or extract `tracks.cached.json`, `zones.json`, `object_inventory.json`, `kpi_windows.json`, `pattern_fixture.json`, `recommendation.cached.json`. Generate `annotated_before.mp4` (ffmpeg + cached overlays, or hand-rendered). Render `twin_observed.png` + `twin_recommended.png` (matplotlib isometric or Figma). | Vite+React+Tailwind shell, panel grid, top bar with Logfire-link slot, empty/loading states, video player wired to `annotated_before.mp4`. |
 | 3–7 | Pydantic schemas (`KPIReport`, `ObjectInventory`, `OperationalPattern`, `LayoutChange`, `SimulationSpec`, `CafeEvidencePack`). `OptimizationAgent` live with strict prompt requiring `evidence_ids` ⊆ pattern fixture IDs. Post-validation + retry-once + fallback to `recommendation.cached.json`. | KPI/object count cards (Tremor) reading static JSON. Recommendation card component. 3-node flow canvas (static). Twin panel with crossfade between two PNGs + observed/recommended toggle. |
-| 7–11 | FastAPI endpoints (`/api/run`, `/api/feedback`, `/api/state`, `/api/logfire_url`). Stage events (SSE or stage-timestamps). Logfire spans. MuBit writer + jsonl fallback. | Wire "Generate recommendation" button → `/api/run`, render returned stage events in flow canvas, render returned `LayoutChange` in card. Apply button → toggle twin + show KPI deltas from `expected_kpi_delta`. |
+| 7–11 | FastAPI endpoints (`/api/run`, `/api/feedback`, `/api/state`, `/api/memories`, `/api/logfire_url`). `/api/run` returns stage timestamps, Logfire spans, `LayoutChange`, and memory result as JSON. MuBit writer + jsonl fallback. | Wire "Generate recommendation" button → `/api/run`, replay returned stages in flow canvas, render returned `LayoutChange` in card. Apply button → toggle twin + show KPI deltas from `expected_kpi_delta`. |
 | 11–14 | End-to-end smoke. Prompt-tune until agent reliably cites real evidence IDs. Feedback endpoint writes to jsonl + MuBit. | Accept/Reject buttons → POST feedback. Memories expander reading jsonl. Logfire link wired in top bar. Loading/error toasts. |
 | 14–16 | Render deploy backend, env wiring, fallback recording of full flow as a video. | Polish: animations, copy, empty states, demo seeding. Fallback recording. |
 | 16–18 | Pitch rehearsal. **Cut anything still risky.** Final push. | Same. |
 
 If MVP is green by hour 12, A starts Tier 1 (live KPI engine on cached tracks → live `pattern_builder` or `PatternAgent`); B starts Tier 2 prep (R3F box scaffold, scenario chips). Don't merge Tier 1/2 work into the demo branch unless it's stable and green by hour 16.
+
+## Implementation Status
+
+Current scaffold:
+
+- `pyproject.toml` defines the uv-managed Python backend project.
+- `app/` contains the initial FastAPI, agent, memory, fallback, and evidence-pack module boundaries.
+- `demo_data/`, `frontend/`, and `scripts/` have ownership READMEs.
+- `docs/architecture/` contains short build notes for the MVP spine, project structure, and fixture contract.
+- `.venv/` is a local ignored artifact; `.env.example` is the only env template that may be tracked.
 
 ## Demo Script (90 seconds)
 

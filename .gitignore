@@ -11,3 +11,17 @@
 *.p12
 *.pfx
 secrets/
+
+# Python / uv local artifacts
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# Runtime demo output
+demo_data/mubit_fallback.jsonl

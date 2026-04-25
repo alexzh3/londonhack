@@ -577,6 +577,7 @@ For MVP, do **not** implement this full contract. MVP backend endpoints are only
 GET  /api/state
 POST /api/run
 POST /api/feedback
+GET  /api/memories
 GET  /api/logfire_url
 ```
 
