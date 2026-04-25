@@ -139,6 +139,86 @@ flowchart TB
 - **Logfire** — auto-instruments Pydantic AI; manual spans for evidence pack build, validation, memory write, MuBit recall.
 - **Render** — backend hosting (configured at deploy time, not visible in process diagram).
 
+## Sequence — one `/api/run` call
+
+What happens end-to-end when the user clicks **Generate recommendation**. Every arrow is a real function call or network hop at demo time.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as React UI
+    participant API as FastAPI /api/run
+    participant EP as evidence_pack.py
+    participant MEM as memory.py
+    participant MB as MuBit
+    participant OPT as OptimizationAgent
+    participant AN as Anthropic Claude
+    participant VAL as validate_layout_change
+    participant FB as fallback.py
+    participant JL as mubit_fallback.jsonl
+    participant LF as Logfire
+
+    FE->>API: POST /api/run (SSE)
+    API->>LF: span(run) begin
+
+    API->>EP: build(CafeEvidencePack)
+    EP->>MEM: recall_prior_recommendations(pattern_id)
+    MEM->>MB: query(lane=recommendations, filters)
+    MB-->>MEM: hits (or [] if unavailable)
+    MEM-->>EP: prior_recommendations
+    EP-->>API: CafeEvidencePack
+    API-->>FE: event: stage evidence_pack done
+
+    API->>OPT: run(pack)
+    OPT->>AN: chat.completions (typed, output_type=LayoutChange)
+    AN-->>OPT: LayoutChange
+    OPT->>VAL: validate_layout_change(change, pack)
+    alt validation passes
+        VAL-->>OPT: ok
+    else fails once
+        OPT->>AN: retry with stricter prompt
+        AN-->>OPT: LayoutChange v2
+        OPT->>VAL: validate v2
+        alt still fails
+            OPT->>FB: load_fallback_recommendation()
+            FB-->>OPT: cached LayoutChange
+        end
+    end
+    OPT-->>API: LayoutChange, used_fallback
+    API-->>FE: event: recommendation <LayoutChange>
+    API-->>FE: event: stage optimization_agent done
+
+    API->>MEM: write_memory(lesson, layout_change)
+    MEM->>MB: remember()
+    MB-->>MEM: mubit_id (or error → fallback_only=True)
+    MEM->>JL: append jsonl line
+    MEM-->>API: MemoryRecord
+    API-->>FE: event: stage memory_write done
+
+    API->>LF: span(run) end
+    API-->>FE: event: done
+
+    Note over FE,LF: Later: user clicks Accept/Reject<br/>→ POST /api/feedback → memory.write again
+```
+
+### Mapping: sequence steps → Logfire spans
+
+| Steps in diagram | Logfire span |
+|---|---|
+| 4–7 (`build` + `recall_prior_recommendations`) | `evidence_pack.build` → child `mubit.recall` |
+| 9–17 (`run` through `validate` + retry + fallback) | `optimization_agent.run` (auto) + `layout_change.validate` |
+| 20–23 (write MuBit + jsonl) | `memory.write` → children `memory.write.mubit`, `memory.write.jsonl` |
+
+### Frontend stage events → flow canvas nodes
+
+| SSE `event: stage` value | Flow canvas node | What lights up |
+|---|---|---|
+| `evidence_pack` | Node 1 | From start of build until pack returned (covers MuBit recall) |
+| `optimization_agent` | Node 2 | From agent start until `recommendation` event emitted (covers retry + fallback) |
+| `memory_write` | Node 3 | From memory write start until final `done` event |
+
+The `validate` step has no dedicated flow node — it's folded into the `optimization_agent` node so the UI stays three nodes wide. Logfire still shows it as a distinct span for engineers.
+
 ## Demo loop (MVP)
 
 ```
