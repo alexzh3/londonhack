@@ -22,32 +22,43 @@ If only MVP ships, the project is still defensible: real typed agent, real evide
 ## Visual Architecture (MVP)
 
 ```text
-  ┌──────────────────┐       ┌─────────────────────────┐       ┌────────────────┐
-  │   demo_data/     │       │   OptimizationAgent     │       │   React UI     │
-  │   fixtures       │──────▶│   (Pydantic AI)         │──────▶│   (mocked      │
-  │   [mock]         │       │   → LayoutChange        │       │    shell)      │
-  └──────────────────┘       │   [REAL]                │       │   [mock]       │
-           │                 └──────────┬──────────────┘       └───────▲────────┘
-           │                            │   ▲                          │
-           │                            │   │ recall                   │
-           │                            ▼   │                          │
-           │                 ┌─────────────────────────┐                │
-           │                 │  MuBit  +  jsonl        │────────────────┘
-           └────────────────▶│  (memory store)         │
-                             └──────────┬──────────────┘
-                                        │
-                                        ▼
-                               ┌──────────────────┐
-                               │     Logfire      │
-                               │  (one trace)     │
-                               └──────────────────┘
+   PERCEPTION (mocked)            INTELLIGENCE (real)              PRESENTATION (mocked shell)
+ ┌─────────────────────┐       ┌─────────────────────────┐       ┌────────────────────────┐
+ │   demo_data/        │       │                         │       │   React UI             │
+ │                     │       │   OptimizationAgent     │       │                        │
+ │ • zones.json        │──────▶│   (Pydantic AI)         │──────▶│ • annotated video      │
+ │ • object_inventory  │ pack  │                         │ Layout│ • KPI / object cards   │
+ │ • kpi_windows       │       │   ↳ retry-once          │ Change│ • flow canvas (3 nodes)│
+ │ • pattern_fixture   │       │   ↳ cached fallback     │       │ • recommendation card  │
+ │ • annotated.mp4     │       │                         │       │ • twin PNG crossfade   │
+ │ • twin PNGs         │       └────┬───────────▲────────┘       │ • memories expander    │
+ │ • cached LayoutChg  │            │           │                └────────────▲───────────┘
+ └──────────┬──────────┘            │ remember  │ recall                      │
+            │                       ▼           │ prior recs                  │
+            │                  ┌─────────────────────────┐                    │
+            │                  │      MEMORY             │                    │
+            │                  │   MuBit (primary)       │────────────────────┘
+            └─────────────────▶│   jsonl  (fallback)     │   /api/memories
+                               └────────────┬────────────┘
+                                            │
+                                            ▼ all spans
+                                   ┌──────────────────┐
+                                   │     Logfire      │   one trace per /api/run
+                                   │   (audit trail)  │
+                                   └──────────────────┘
 ```
 
-**Legend:** `[REAL]` = real live code at demo time. `[mock]` = fixture-backed or mocked UI.
+**Three layers, three roles:**
 
-**One-line read:** fixtures feed a real Pydantic AI agent, which reads prior recommendations from MuBit, emits a typed `LayoutChange`, writes back to MuBit (+ jsonl), and renders into a mostly-mocked React UI — all under one Logfire trace.
+| Layer | Role | What's real / mocked |
+|---|---|---|
+| **Perception** (`demo_data/`) | Provide a typed `CafeEvidencePack` to the agent | Mocked: hand-authored or precomputed fixtures |
+| **Intelligence** (`OptimizationAgent` + Memory) | Reason over the pack, recall prior decisions, emit a validated `LayoutChange`, write back to memory | **Real**: Pydantic AI + Anthropic + MuBit + Logfire |
+| **Presentation** (React UI) | Render the rich UI shell from the spec | Mocked shell: panels load fixtures, twin is a PNG crossfade, no chat / scenario rail in MVP |
 
-See `agent_plan.md §Visual Architecture` for the module-level diagram.
+**One-line read:** fixtures feed a real Pydantic AI agent, which recalls prior recommendations from MuBit, emits a typed `LayoutChange` (with retry + cached fallback), writes back to MuBit + jsonl, and renders into a mostly-mocked React UI — all under one Logfire trace.
+
+See `agent_plan.md §Visual Architecture` for module-level detail and the per-call sequence diagram.
 
 ## What MVP Must Ship
 
