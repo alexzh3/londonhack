@@ -360,9 +360,10 @@ button { font: inherit; color: inherit; cursor: default; }
   border-radius: 3px;
 }
 
-/* Tier 1D — real CCTV pane styling. Drops the iso-pane chrome look in
- * favour of a flat dark "video monitor" feel so the YOLO/ByteTrack
- * overlays read as a CV feed, not a synthetic scene.
+/* Tier 1D — annotated CCTV pane styling. Drops the iso-pane chrome look
+ * in favour of a flat dark "video monitor" feel so the perception
+ * overlays (persons + static objects + zones) read as a CV feed, not a
+ * synthetic scene.
  *
  * `flex: 1; min-width: 0` is required because the pane only contains
  * absolutely-positioned content; without explicit sizing it collapses

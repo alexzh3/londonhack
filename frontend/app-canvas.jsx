@@ -38,11 +38,11 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
           className={`cv-toggle ${realCctv ? "on" : ""} ${realCctvAvailable ? "" : "cv-toggle-disabled"}`}
           onClick={() => realCctvAvailable && setRealCctv(!realCctv)}
           title={realCctvAvailable
-            ? "Toggle annotated CCTV with YOLO/ByteTrack overlays"
-            : "No tracks.cached video for this session"}
+            ? "Toggle annotated CCTV (persons + objects + zones)"
+            : "No annotated video cached for this session"}
           disabled={!realCctvAvailable}>
           <span className="cv-toggle-dot" />
-          <span>{realCctv ? "real.on" : "real.off"}</span>
+          <span>{realCctv ? "cv.on" : "cv.off"}</span>
         </button>
       </div>
       <div className="cv-tg">
@@ -61,12 +61,16 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
   );
 }
 
-// Annotated-CCTV pane — plays the offline YOLO+ByteTrack annotated video
-// (or raw CCTV when overlays aren't available). Same outer chrome as
-// `CanvasPane` so it slots into the split-compare layout. Tier 1D: makes
-// the "perception is real" claim visible to anyone watching the demo.
-// Used for both `real_cafe` (real CCTV) and `ai_cafe_a` (AI-generated
-// CCTV processed through the same offline YOLO pipeline).
+// Annotated-CCTV pane — plays the offline annotated video produced by
+// `scripts/render_rich_annotated_video.py`, which composites three
+// perception layers onto the raw CCTV: zone polygons (counter/queue/
+// pickup/seating/staff_path/entrance), static layout objects (chairs,
+// dining tables, couches, potted plants from YOLOv8x + ObjectReviewAgent),
+// and tracked persons (YOLOv8n + ByteTrack with stable track ids). Same
+// outer chrome as `CanvasPane` so it slots into the split-compare layout.
+// Tier 1D: makes the "perception is real, not a cartoon" claim visible to
+// anyone watching the demo. Used for both `real_cafe` (real CCTV) and
+// `ai_cafe_a` (AI-generated CCTV processed through the same pipeline).
 function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -93,18 +97,18 @@ function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
       ) : (
         <div className="cv-real-empty">
           <div>no annotated CCTV asset</div>
-          <small>run <code>scripts/run_yolo_offline.py</code> to generate one</small>
+          <small>run <code>scripts/render_rich_annotated_video.py</code> to generate one</small>
         </div>
       )}
       <CanvasOverlay label={label} sub={sub} side={side}
         kpi={[
-          { l: "fps", v: hasOverlays ? "30" : "—" },
-          { l: "trk", v: hasOverlays ? "byte" : "off" },
-          { l: "src", v: hasOverlays ? "yolo" : "raw" },
+          { l: "fps", v: hasOverlays ? "12" : "—" },
+          { l: "trk", v: hasOverlays ? "on" : "off" },
+          { l: "obj", v: hasOverlays ? "on" : "off" },
         ]} />
       <div className={`cv-real-badge ${hasOverlays ? "" : "cv-real-badge-raw"}`}>
         {hasOverlays
-          ? "YOLOv8n · ByteTrack · zone polygons"
+          ? "persons · static objects · zone polygons"
           : "raw CCTV (no overlays cached)"}
       </div>
     </div>
@@ -320,7 +324,7 @@ function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, se
   const showRealLeft = !!(realCctv && realCctvUrl);
   const realLabel = sessionLabel || "CCTV";
   const realSub = realCctvHasOverlays
-    ? "tracks.cached.json · zone polygons"
+    ? "tracks · objects · zones"
     : "raw CCTV (no overlays cached)";
   return (
     <div className="canvas">

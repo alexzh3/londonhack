@@ -37,6 +37,17 @@ const Icon = {
     <path d="M3 8v4c0 .8 2.2 1.5 5 1.5s5-.7 5-1.5V8" stroke="currentColor" strokeWidth="1.2"/></svg>),
 };
 
+// Derive a sensible "tables" estimate from the scenario's seat count, taking
+// into account that the hand-tuned `baseline` and the `tokyo` scenario both
+// use 2-tops while every other procedural scenario uses 3-tops. Single
+// source of truth for the controls panel + slider hint so they don't drift.
+function tableCountFor(scenario) {
+  const seatsPerTable = (scenario.name === "baseline"
+    || scenario.name === "recommended"
+    || scenario.style === "tokyo") ? 2 : 3;
+  return Math.ceil(scenario.seats / seatsPerTable);
+}
+
 // ── Top bar ────────────────────────────────────────────────────────────────
 function TopBar({ scenarioName, onOpenSession, onOpenTrace, onOpenMemories, logfireUrl, backendStatus, sessionId, darkTheme, onToggleTheme }) {
   const traceLabel = logfireUrl
@@ -181,11 +192,11 @@ function AgentFlow({
         <span className="ctrl-applies-dot" />
         <span>live edit · canvas re-flows on drag</span>
         <span className="ctrl-applies-spacer" />
-        <span className="ctrl-applies-meta">{Math.ceil(scenario.seats / 3)} tables · {scenario.seats} chairs · {scenario.baristas} staff</span>
+        <span className="ctrl-applies-meta">{tableCountFor(scenario)} tables · {scenario.seats} chairs · {scenario.baristas} staff</span>
       </div>
       <div className="ctrl-grid">
         <ControlSlider label="seats" value={scenario.seats} min={6} max={240} onChange={onTweakSeats}
-          hint={`≈ ${Math.ceil(scenario.seats / 3)} tables`} />
+          hint={`≈ ${tableCountFor(scenario)} tables`} />
         <ControlSlider label="baristas" value={scenario.baristas} min={1} max={20} onChange={onTweakBaristas}
           hint={`${(scenario.footfall / Math.max(1, scenario.baristas)).toFixed(0)}/hr per`} />
         <ControlSlider label="footfall.λ" value={scenario.footfall} min={0} max={600} unit="/hr" onChange={onTweakFootfall}
