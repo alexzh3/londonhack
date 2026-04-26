@@ -1,14 +1,26 @@
 // api.js — thin fetch wrappers for the 6 MVP backend routes.
 //
-// The frontend ships as flat HTML and is loaded either via file:// or a
-// separate static server during dev. The backend runs on uvicorn default
-// port 8000. Override `window.CAFETWIN_API_BASE` in cafetwin.html (or before
-// this script loads) to point elsewhere — leave empty string when the same
-// origin serves both backend and frontend.
+// Hostname-aware default:
+//   - file://, localhost, or 127.0.0.1 → http://localhost:8000 (local dev)
+//   - any other hostname               → "" (same-origin; deployed Vercel
+//                                           frontend uses /api/* rewrites
+//                                           to the Render backend)
+//
+// Override `window.CAFETWIN_API_BASE` (set before this script loads) for
+// custom setups, e.g. dev backend on a different port or staging origin.
+function _defaultApiBase() {
+  if (typeof window === "undefined" || !window.location) return "";
+  const host = window.location.hostname;
+  if (!host || host === "localhost" || host === "127.0.0.1") {
+    return "http://localhost:8000";
+  }
+  return "";
+}
+
 const API_BASE =
   (typeof window !== "undefined" && typeof window.CAFETWIN_API_BASE === "string")
     ? window.CAFETWIN_API_BASE
-    : "http://localhost:8000";
+    : _defaultApiBase();
 
 async function _request(path, { method = "GET", body, query } = {}) {
   let url = API_BASE + path;

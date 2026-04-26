@@ -59,4 +59,15 @@ def test_pydantic_ai_gateway_key_enables_live_agent(monkeypatch):
     monkeypatch.setenv("PYDANTIC_AI_GATEWAY_API_KEY", "test-key")
 
     assert opt._live_agent_enabled() is True
-    assert opt._default_model_name() == "gateway/anthropic:claude-sonnet-4-5"
+    assert opt._default_model_name() == "gateway/anthropic:claude-sonnet-4-6"
+
+
+def test_pydantic_ai_gateway_route_builds_provider_model(monkeypatch):
+    monkeypatch.setenv("PYDANTIC_AI_GATEWAY_API_KEY", "test-key")
+    monkeypatch.setenv("PYDANTIC_AI_GATEWAY_ROUTE", "builtin-anthropic")
+    monkeypatch.delenv("CAFETWIN_OPTIMIZATION_MODEL", raising=False)
+
+    model = opt._agent_model_spec()
+
+    assert model.system == "anthropic"
+    assert model.model_name == "claude-sonnet-4-6"

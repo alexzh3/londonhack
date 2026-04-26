@@ -153,6 +153,7 @@ function useTweaks(defaults) {
 // is what actually hides the panel.
 function TweaksPanel({ title = 'Tweaks', children }) {
   const [open, setOpen] = React.useState(false);
+  const interactedRef = React.useRef(false);
   const dragRef = React.useRef(null);
   const offsetRef = React.useRef({ x: 16, y: 16 });
   const PAD = 16;
@@ -186,15 +187,34 @@ function TweaksPanel({ title = 'Tweaks', children }) {
   React.useEffect(() => {
     const onMsg = (e) => {
       const t = e?.data?.type;
-      if (t === '__activate_edit_mode') setOpen(true);
-      else if (t === '__deactivate_edit_mode') setOpen(false);
+      if (t === '__activate_edit_mode') {
+        interactedRef.current = true;
+        setOpen(true);
+      } else if (t === '__deactivate_edit_mode') {
+        interactedRef.current = true;
+        setOpen(false);
+      }
     };
     window.addEventListener('message', onMsg);
     window.parent.postMessage({ type: '__edit_mode_available' }, '*');
-    return () => window.removeEventListener('message', onMsg);
+
+    // Embedded preview hosts (Claude Design, Vercel preview, etc.) drive the
+    // panel via __activate_edit_mode. A standalone browser tab never gets
+    // that message, so the panel would stay invisible forever. After a brief
+    // grace window, auto-open so the controls are always reachable; if a
+    // host did respond, interactedRef is set and the timer is a no-op.
+    const timer = window.setTimeout(() => {
+      if (!interactedRef.current) setOpen(true);
+    }, 400);
+
+    return () => {
+      window.removeEventListener('message', onMsg);
+      window.clearTimeout(timer);
+    };
   }, []);
 
   const dismiss = () => {
+    interactedRef.current = true;
     setOpen(false);
     window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
   };

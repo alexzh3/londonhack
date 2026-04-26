@@ -40,6 +40,7 @@ def configure_logfire() -> None:
             send_to_logfire="if-token-present",
             console=False,
             inspect_arguments=False,
+            scrubbing=logfire.ScrubbingOptions(callback=_scrub_callback),
         )
         _configured = True
         try:
@@ -102,3 +103,19 @@ def _project_url() -> str | None:
         return logfire.DEFAULT_LOGFIRE_INSTANCE._config._project_url  # noqa: SLF001
     except Exception:
         return None
+
+
+def _scrub_callback(match: Any) -> Any:
+    if _is_safe_session_id(match.path, match.value):
+        return match.value if match.value is not None else "unset"
+    return None
+
+
+def _is_safe_session_id(path: tuple[str | int, ...], value: Any) -> bool:
+    if not path or path[-1] != "session_id":
+        return False
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    return value.replace("_", "").replace("-", "").isalnum()

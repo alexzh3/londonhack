@@ -3,8 +3,6 @@
 .env.*
 !.env.example
 !.env.sample
-.codex
-.agents/
 
 # Common secret material
 *.pem
@@ -20,13 +18,48 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 dist/
 build/
 *.egg-info/
 
-# Runtime demo output
-demo_data/mubit_fallback.json
+# Runtime demo output (memory writes accumulate here at demo time)
+demo_data/mubit_fallback.jsonl
 
+# Per-agent local config / scratch dirs
+.codex
+.agents/
 .claude/
 .factory/
-.devin/ 
+.devin/
+
+# Locally installed skills (the actual skill content lives in agent-private
+# dirs like .agents/skills/, ~/.codex/skills/, etc.) — these symlinks and the
+# lock file are local-only state.
+skills/
+skills-lock.json
+
+# Deploy artifacts (generated per environment, never committed)
+frontend/vercel.json
+frontend/.vercel/
+.vercel/
+
+# Node / JS (defensive — no JS build today, but agents and tooling sometimes drop these)
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Logs
+*.log
+logs/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.idea/

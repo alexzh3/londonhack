@@ -187,86 +187,126 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 
 What happens end-to-end when the demo loads and when the user clicks **Accept** / **Reject**. Every arrow is a real function call or network hop at demo time.
 
+The diagram below mirrors the current code (MVP). MuBit is intentionally
+omitted — `memory.py` is jsonl-only today; MuBit hops are Tier 1 and noted in
+the "Future" notes underneath.
+
 ```mermaid
 sequenceDiagram
     autonumber
     participant FE as JSX UI (Babel)
     participant API as FastAPI /api/run
-    participant EP as evidence_pack.py
     participant MEM as memory.py
-    participant MB as MuBit
-    participant OPT as OptimizationAgent
-    participant AN as Anthropic Claude
-    participant VAL as validate_layout_change
-    participant FB as fallback.py
     participant JL as mubit_fallback.jsonl
+    participant RO as run_optimization
+    participant AGT as Pydantic AI Agent
+    participant GW as Anthropic / Gateway
     participant LF as Logfire
 
-    Note over FE,API: Page load → useBackend("ai_cafe_a") fires GET /api/sessions, GET /api/state, then POST /api/run
+    Note over FE,API: Page load → useBackend("ai_cafe_a")<br/>GET /api/sessions → GET /api/state → POST /api/run
 
     FE->>API: POST /api/run {session_id: "ai_cafe_a"}
-    API->>LF: span(run) begin
+    Note over API,LF: open span api.run (Logfire root for this request)
 
-    API->>EP: build(CafeEvidencePack)
-    EP->>MEM: recall_prior_recommendations(pattern_id)
-    MEM->>MB: query(lane=recommendations, filters)
-    MB-->>MEM: hits (or [] if unavailable)
-    MEM-->>EP: prior_recommendations
-    EP-->>API: CafeEvidencePack
-    API-->>API: stage evidence_pack done
+    Note over API,LF: open span evidence_pack.build
+    API->>API: state(session_id) → fixture status, pattern.id
+    API->>MEM: recall_recommendations(session_id, pattern_id)
+    Note over MEM,LF: span memory.recall.jsonl
+    MEM->>JL: read + filter by (session_id, pattern_id)
+    JL-->>MEM: prior LayoutChange dicts
+    MEM-->>API: list[dict]
+    API->>API: build CafeEvidencePack(zones, inventory, kpis, pattern, prior_recs)
+    Note over API,LF: close span evidence_pack.build · stage evidence_pack done
 
-    API->>OPT: run(pack)
-    OPT->>AN: typed call (output_type=LayoutChange)
-    AN-->>OPT: LayoutChange
-    OPT->>VAL: validate_layout_change
-    alt validation fails twice
-        OPT->>FB: load_cached("recommendation.cached.json")
-        FB-->>OPT: LayoutChange (cached)
+    Note over API,LF: open span optimization_agent.run
+    API->>RO: run_optimization(pack, session_id)
+    RO->>RO: load_cached_recommendation(session_id) [always preloaded]
+    alt live agent enabled (LLM key present, FORCE_FALLBACK ≠ 1)
+        RO->>AGT: agent.run(prompt, deps=pack)
+        AGT->>GW: chat(output_type=LayoutChange)
+        GW-->>AGT: parsed LayoutChange
+        AGT-->>RO: change
+        RO->>RO: validate_layout_change(change, pack)
+        alt errors == []
+            RO-->>API: (change, used_fallback=False)
+        else has errors → retry once with stricter prompt
+            RO->>AGT: agent.run(retry_prompt, deps=pack)
+            AGT->>GW: chat(retry)
+            GW-->>AGT: retry_change
+            AGT-->>RO: retry_change
+            RO->>RO: validate_layout_change(retry_change, pack)
+            alt errors == []
+                RO-->>API: (retry_change, used_fallback=False)
+            else still invalid OR any exception
+                RO-->>API: (cached, used_fallback=True)
+            end
+        end
+    else fallback (no key / FORCE_FALLBACK=1 / agent ctor failed)
+        RO-->>API: (cached, used_fallback=True)
     end
-    OPT-->>API: LayoutChange
+    Note over API,LF: close span optimization_agent.run
+
+    Note over API,LF: span layout_change.validate — defensive HTTP-level check
+    API->>API: validate_layout_change(final, pack) — raises 502 if invalid
     API-->>API: stage optimization_agent done
 
-    API->>MEM: write_memory(lesson, layout_change)
-    MEM->>MB: remember()
-    MB-->>MEM: mubit_id (or fallback_only=True)
+    Note over API,LF: open span memory.write
+    API->>MEM: write_memory(MemoryRecord{lane=recommendations, payload})
+    Note over MEM,LF: span memory.write.jsonl
     MEM->>JL: append jsonl line
-    MEM-->>API: MemoryRecord
-    API-->>API: stage memory_write done
+    MEM-->>API: MemoryRecord (mubit_id=null, fallback_only=True)
+    Note over API,LF: close span memory.write · stage memory_write done
 
-    API->>LF: span(run) end
-    API-->>FE: 200 RunResponse {stages[3], layout_change, memory_record, prior_recommendation_count, used_fallback, logfire_trace_url}
+    API->>LF: trace_url_from_span(run_span)
+    LF-->>API: https://logfire.../live?query=trace_id='...'
+    Note over API,LF: close span api.run
 
-    Note over FE,API: Frontend: AgentFlow nodes light from stages[]; ChatPanel ToolCall renders the LayoutChange; recommended chip materialises in the rail; "Seen before" chip if prior_recommendation_count > 0
+    API-->>FE: 200 RunResponse{stages[3], layout_change, memory_record, prior_recommendation_count, used_fallback, logfire_trace_url}
 
-    Note over FE,API: User clicks Apply → frontend-only (split-compare on iso twin; KPI deltas animate from expected_kpi_delta; optional asset shift via simulation.from_position/to_position)
+    Note over FE: AgentFlow nodes light from stages[]<br/>ChatPanel renders LiveRecommendation<br/>"Seen before" chip if prior_recommendation_count > 0
+
+    Note over FE,API: User clicks Apply — frontend-only<br/>split-compare on iso twin · KPI deltas animate<br/>may shift one asset via simulation.from_position → to_position
 
     Note over FE,LF: User clicks Accept or Reject
 
-    FE->>API: POST /api/feedback {decision, proposal_fingerprint}
-    API->>LF: span(feedback) begin
-    API->>MEM: write_memory(feedback)
-    MEM->>MB: remember()
+    FE->>API: POST /api/feedback {session_id, pattern_id, proposal_fingerprint, decision}
+    Note over API,LF: open span feedback.write
+    API->>MEM: write_memory(MemoryRecord{lane=feedback, payload})
+    Note over MEM,LF: span memory.write.jsonl
     MEM->>JL: append jsonl line
     MEM-->>API: MemoryRecord
-    API->>LF: span(feedback) end
-    API-->>FE: 200 FeedbackResponse {decision, memory_record}
+    Note over API,LF: close span feedback.write
+
+    API-->>FE: 200 FeedbackResponse{decision, memory_record}
 ```
 
-### Mapping: sequence steps → Logfire spans
+### Mapping: sequence steps → Logfire spans (current code)
 
-`/api/run`:
+`/api/run` produces this nested tree under the root `api.run` span:
 
-| Concern | Logfire span |
+| Concern | Span (parent → children) |
 |---|---|
-| Evidence + recall | `evidence_pack.build` → child `mubit.recall` |
-| Recommendation | `optimization_agent.run` (auto) + `layout_change.validate` |
-| Memory write | `memory.write` → children `memory.write.mubit`, `memory.write.jsonl` |
+| Evidence + recall | `evidence_pack.build` → `memory.recall.jsonl` |
+| Recommendation | `optimization_agent.run` (wraps `run_optimization`; nested pydantic-ai auto-spans appear when `instrument_pydantic_ai()` is active) |
+| Validate (HTTP check) | `layout_change.validate` |
+| Memory write | `memory.write` → `memory.write.jsonl` |
 
 `/api/feedback`:
 
-| Concern | Logfire span |
+| Concern | Span (parent → children) |
 |---|---|
-| Feedback write | `feedback.write` → children `memory.write.mubit`, `memory.write.jsonl` |
+| Feedback write | `feedback.write` → `memory.write.jsonl` |
+
+Tier 1 / Tier 2 add-ons (not in MVP, sketched for context only):
+
+- `memory.write.mubit` and `memory.recall.mubit` siblings of the existing
+  jsonl spans, once `memory.py` calls MuBit's `remember` / `query`.
+- `kpi_engine.compute_window` × N (Tier 1, replacing precomputed
+  `kpi_windows.json`).
+- `pattern_agent.run` (Tier 1) between `evidence_pack.build` and
+  `optimization_agent.run`.
+- `scene_builder_agent.run` × 2 (Tier 2, on `/api/apply`) producing observed
+  + recommended `TwinLayout`s.
 
 ### Frontend stage timestamps → flow canvas nodes
 
@@ -294,11 +334,15 @@ GET /api/state?session_id=ai_cafe_a ──────────────�
   fixture status + KPI windows + zones + object inventory + pattern
   ↓
 POST /api/run {session_id: ai_cafe_a} ─────────────
-  build CafeEvidencePack(session_id)   (typed input bundle, includes prior_recommendations via MuBit recall scoped to session+pattern)
+  recall_recommendations(session_id, pattern.id)   (jsonl-only today; MuBit is Tier 1)
   ↓
-  OptimizationAgent             (Pydantic AI, typed LayoutChange, validated, cached fallback)
+  build CafeEvidencePack(session_id, prior_recommendations=...)   (typed input bundle)
   ↓
-  memory.write                  (MuBit primary + jsonl fallback always)
+  run_optimization                          (Pydantic AI, retry-once on validation, cached fallback)
+  ↓
+  validate_layout_change (defensive HTTP check) → 502 if still invalid
+  ↓
+  memory.write (lane=recommendations)       (jsonl-only; MuBit primary lands in Tier 1)
   ↓
   UI binds RunResponse: AgentFlow nodes light from stages[]; ChatPanel ToolCall
   renders the real LayoutChange; ScenarioRail materialises a `recommended` chip;
@@ -314,21 +358,25 @@ user clicks Apply (or selects the recommended chip)
 user clicks Accept / Reject
   ↓
 POST /api/feedback ─────────────────────────────────
-  memory.write (lane=feedback)
+  memory.write (lane=feedback)              (jsonl-only)
   ↓
-  UI: toast confirms; Memories modal (next open) shows the new entry with mubit_id chip
+  UI: toast confirms; Memories modal (next open) shows the new entry
+  (mubit_id stays null until Tier 1 wires MuBit primary writes)
 ```
 
-One Logfire trace per `/api/run` (4 spans):
+One Logfire trace per `/api/run`, root span `api.run` with this nested tree:
 
-1. `evidence_pack.build` (+ child `mubit.recall`)
-2. `optimization_agent.run` (auto-instrumented by Pydantic AI)
+1. `evidence_pack.build` (+ child `memory.recall.jsonl`)
+2. `optimization_agent.run` (auto-instrumented when `instrument_pydantic_ai()` is active)
 3. `layout_change.validate`
-4. `memory.write` (+ children `memory.write.mubit`, `memory.write.jsonl`)
+4. `memory.write` (+ child `memory.write.jsonl`)
 
 Plus a smaller `/api/feedback` trace:
 
-5. `feedback.write` (+ children `memory.write.mubit`, `memory.write.jsonl`)
+5. `feedback.write` (+ child `memory.write.jsonl`)
+
+Tier 1 will add sibling `memory.recall.mubit` / `memory.write.mubit` spans
+under (1) and (4)/(5) once `memory.py` calls MuBit's `query` / `remember`.
 
 ## File layout
 
@@ -663,7 +711,7 @@ from pydantic_ai import Agent
 from app.schemas import CafeEvidencePack, LayoutChange
 
 optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
-    os.getenv("CAFETWIN_OPTIMIZATION_MODEL", "anthropic:claude-sonnet-4-5"),
+    _agent_model_spec(),  # defaults to gateway/anthropic:claude-sonnet-4-6 when Gateway key exists
     deps_type=CafeEvidencePack,
     output_type=LayoutChange,
     instructions=OPTIMIZATION_INSTRUCTIONS,
@@ -671,8 +719,13 @@ optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
 )
 ```
 
-`CAFETWIN_OPTIMIZATION_MODEL` stays overrideable for demo tuning. Before the
-live demo, verify the default Anthropic model id or set the env var explicitly.
+`CAFETWIN_OPTIMIZATION_MODEL` stays overrideable for demo tuning. Per the
+Pydantic AI Gateway docs, the Gateway string form is
+`gateway/<api_format>:<model_name>`, e.g.
+`gateway/anthropic:claude-sonnet-4-6`. If the Pydantic/Logfire org uses a custom
+provider/routing-group name, set `PYDANTIC_AI_GATEWAY_ROUTE` or
+`CAFETWIN_GATEWAY_ROUTE`; the backend will build an explicit Gateway provider
+with `gateway_provider("anthropic", route=...)`.
 
 ### System prompt (contract)
 
@@ -935,13 +988,18 @@ api.run (root)
 
 The Logfire URL is returned inline as `RunResponse.logfire_trace_url` (and also exposed at `/api/logfire_url` for the top-bar link to refresh independently). Cache it in process state when the run finishes.
 
-Current verification: with `LOGFIRE_TOKEN` and `LOGFIRE_PROJECT_URL` in local
-`.env`, a forced-fallback `/api/run` smoke returns a non-empty
-`logfire_trace_url`, writes jsonl memory, and flushes spans. Live Pydantic AI
-Gateway calls reach Gateway but currently fail with `Route not found: anthropic.
-You do not have any providers configured.` Configure an Anthropic provider/route
-in the Pydantic/Logfire org or override `CAFETWIN_OPTIMIZATION_MODEL` to a
-configured Gateway route.
+Current verification: with `LOGFIRE_TOKEN`, `LOGFIRE_PROJECT_URL`, and Pydantic
+AI Gateway env in local `.env`, a live `/api/run` smoke returns
+`used_fallback=false`, a validated `LayoutChange`, a non-empty
+`logfire_trace_url`, and a jsonl memory write. Latest observed live fingerprint:
+`move_table_center_1_reduce_pickup_pinch_v1`.
+
+Logfire's default scrub patterns redact keys containing `session`, so
+`app/logfire_setup.py` installs a `ScrubbingOptions.callback` that allowlists
+only simple public fixture `session_id` values such as `ai_cafe_a`. Optional
+`session_id=None` arguments are reported as `unset` because Logfire's callback
+API treats a returned `None` as "redact". Real session cookies, API keys, tokens,
+and other sensitive values still use Logfire's default redaction.
 
 ## Frontend contract
 
@@ -1071,6 +1129,7 @@ Runtime checks:
 - [x] `MemoryRecord.payload` for the recommendation includes the correct `session_id` + `pattern_id`.
 - [x] `OptimizationAgent` semantic validation retries once with a stricter prompt before falling back.
 - [x] `GET /api/memories?session_id=ai_cafe_a` filters jsonl records server-side by `payload.session_id`.
+- [x] Live Pydantic AI Gateway `/api/run` path returns `used_fallback=false` with a semantically valid `LayoutChange`.
 - [x] On page load, `ChatPanel` ToolCall renders the real `LayoutChange`.
 - [x] `AgentFlow` node states animate from real stage timestamps.
 - [ ] `ScenarioRail` shows a `recommended` chip.

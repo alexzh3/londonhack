@@ -1,0 +1,64 @@
+# render.yaml — Infrastructure-as-Code config for Render.com.
+#
+# Declares the CafeTwin FastAPI backend as a single Python web service.
+# Render reads this when you create a new Blueprint from the connected repo.
+#
+# To deploy:
+#   1. Push this repo (with render.yaml) to GitHub.
+#   2. https://dashboard.render.com → New → Blueprint → connect repo.
+#   3. Render provisions the `cafetwin-backend` web service from this file.
+#   4. In the service Environment tab, set the secrets listed below
+#      (sync: false means "value lives in the dashboard, not in git").
+#
+# After deploy, the public URL (e.g. https://cafetwin-backend.onrender.com)
+# becomes CAFETWIN_RENDER_URL — set it in .env, then run
+# ./scripts/deploy_vercel.sh to ship the frontend.
+#
+# Reference: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: cafetwin-backend
+    runtime: python
+    plan: free
+    region: oregon
+
+    # Render auto-detects pyproject.toml and runs `pip install .`. The build
+    # command below is explicit so future readers don't have to guess.
+    buildCommand: pip install --upgrade pip && pip install .
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+
+    healthCheckPath: /api/sessions
+
+    envVars:
+      # Pin Python so behaviour matches local dev.
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+      # Safe default: live agent disabled until Anthropic provider is
+      # configured in the Pydantic AI Gateway org. Flip to "" in the
+      # dashboard once the provider exists.
+      - key: CAFETWIN_FORCE_FALLBACK
+        value: "1"
+
+      - key: CAFETWIN_OPTIMIZATION_MODEL
+        value: gateway/anthropic:claude-sonnet-4-6
+
+      - key: LOGFIRE_SERVICE_NAME
+        value: cafetwin-mvp
+      - key: LOGFIRE_ENVIRONMENT
+        value: production
+
+      # Secrets — set in dashboard, never in git.
+      - key: LOGFIRE_TOKEN
+        sync: false
+      - key: LOGFIRE_PROJECT_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYDANTIC_AI_GATEWAY_API_KEY
+        sync: false
+      - key: PYDANTIC_AI_GATEWAY_ROUTE
+        sync: false
+      - key: MUBIT_API_KEY
+        sync: false

@@ -1,5 +1,10 @@
 // app-canvas.jsx — Center canvas with split compare + sim time scrubber
 
+// Layer toggles wired to actual overlay rendering. Other entries in the chip
+// row (geom/people/paths) flip state but have no visible effect yet — they
+// are kept as design intent for Tier 2 and visually marked as stubs.
+const ACTIVE_LAYERS = new Set(["heat", "grid"]);
+
 function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom }) {
   const toggle = (k) => setLayers({ ...layers, [k]: !layers[k] });
   return (
@@ -7,17 +12,22 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom }) {
       <div className="cv-tg">
         <span className="cv-lbl">view</span>
         <div className="cv-seg">
-          <button className="active">iso</button>
-          <button>plan</button>
-          <button>3d</button>
+          <button className="active" title="isometric view">iso</button>
+          <button className="cv-stub" disabled title="plan view — not implemented in MVP">plan</button>
+          <button className="cv-stub" disabled title="3D view — not implemented in MVP">3d</button>
         </div>
       </div>
       <div className="cv-tg">
         <span className="cv-lbl">layer</span>
         <div className="cv-chips">
-          {["geom", "people", "heat", "paths", "grid"].map((k) => (
-            <span key={k} className={`cv-chip ${layers[k] ? "on" : ""}`} onClick={() => toggle(k)}>{k}</span>
-          ))}
+          {["geom", "people", "heat", "paths", "grid"].map((k) => {
+            const wired = ACTIVE_LAYERS.has(k);
+            const cls = `cv-chip ${layers[k] ? "on" : ""}${wired ? "" : " cv-chip-stub"}`;
+            const tip = wired ? `${k} layer` : `${k} layer — preview only (no overlay yet)`;
+            return (
+              <span key={k} className={cls} onClick={() => toggle(k)} title={tip}>{k}</span>
+            );
+          })}
         </div>
       </div>
       <span className="cv-spacer" />

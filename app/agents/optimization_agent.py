@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from app import config as _config  # noqa: F401  # load .env before agent construction
 from app.fallback import load_cached_recommendation, validate_layout_change
 from app.schemas import CafeEvidencePack, LayoutChange
 
@@ -21,15 +22,36 @@ Return exactly one LayoutChange. Constraints:
 
 def _default_model_name() -> str:
     if os.getenv("PYDANTIC_AI_GATEWAY_API_KEY") or os.getenv("PAIG_API_KEY"):
-        return "gateway/anthropic:claude-sonnet-4-5"
-    return "anthropic:claude-sonnet-4-5"
+        return "gateway/anthropic:claude-sonnet-4-6"
+    return "anthropic:claude-sonnet-4-6"
+
+
+def _agent_model_spec():
+    model_name = os.getenv("CAFETWIN_OPTIMIZATION_MODEL") or _default_model_name()
+    route = os.getenv("CAFETWIN_GATEWAY_ROUTE") or os.getenv("PYDANTIC_AI_GATEWAY_ROUTE")
+    if not route or not model_name.startswith("gateway/"):
+        return model_name
+
+    provider_format, upstream_model = model_name.removeprefix("gateway/").split(":", 1)
+    if provider_format == "anthropic":
+        from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.gateway import gateway_provider
+
+        return AnthropicModel(upstream_model, provider=gateway_provider("anthropic", route=route))
+    if provider_format in {"openai", "openai-chat", "chat"}:
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.gateway import gateway_provider
+
+        return OpenAIChatModel(upstream_model, provider=gateway_provider("openai", route=route))
+
+    return model_name
 
 
 try:
     from pydantic_ai import Agent
 
     optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
-        os.getenv("CAFETWIN_OPTIMIZATION_MODEL") or _default_model_name(),
+        _agent_model_spec(),
         deps_type=CafeEvidencePack,
         output_type=LayoutChange,
         instructions=INSTRUCTIONS,

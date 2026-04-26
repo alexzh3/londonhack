@@ -25,10 +25,15 @@ const Icon = {
   rec: () => (<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#b53a2a"/></svg>),
   chevR: () => (<svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M3 1l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>),
   plus: () => (<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4"/></svg>),
+  sun: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M8 1.5v1.8M8 12.7v1.8M2.6 8h1.8M11.6 8h1.8M3.7 3.7l1.3 1.3M11 11l1.3 1.3M3.7 12.3l1.3-1.3M11 5l1.3-1.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>),
+  moon: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <path d="M13.4 9.6A5.6 5.6 0 0 1 6.4 2.6a5.6 5.6 0 1 0 7 7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>),
 };
 
 // ── Top bar ────────────────────────────────────────────────────────────────
-function TopBar({ scenarioName, onOpenSession, onOpenTrace, logfireUrl, backendStatus, sessionId }) {
+function TopBar({ scenarioName, onOpenSession, onOpenTrace, logfireUrl, backendStatus, sessionId, darkTheme, onToggleTheme }) {
   const traceLabel = logfireUrl
     ? `logfire ↗ trace#${logfireUrl.split("/").pop().slice(-8)}`
     : "logfire ↗ no trace yet";
@@ -74,6 +79,13 @@ function TopBar({ scenarioName, onOpenSession, onOpenTrace, logfireUrl, backendS
       <div className="topbar-right">
         <div className="status"><span className={`status-dot ${statusClass}`} /><span>session:{sessionId || "?"} · {statusLabel}</span></div>
         <div className="status"><span className="status-dot warn" /><span>tokens 142.3k / 200k</span></div>
+        <button className={`tb-btn tb-theme ${darkTheme ? "tb-theme-dark" : ""}`}
+          onClick={() => onToggleTheme && onToggleTheme(!darkTheme)}
+          title={darkTheme ? "switch to light theme" : "switch to dark theme"}
+          aria-label={darkTheme ? "switch to light theme" : "switch to dark theme"}>
+          <span className="ico">{darkTheme ? <Icon.sun /> : <Icon.moon />}</span>
+          <span>{darkTheme ? "light" : "dark"}</span>
+        </button>
         <button className="tb-btn">share · {scenarioName}</button>
         <div className="avatar">JK</div>
       </div>

@@ -22,6 +22,29 @@
   --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Dark theme — applied via <html data-theme="dark">. Same hue rotations as
+ * the warm-paper light theme, luminance inverted, accents brightened so they
+ * stay readable on dark surfaces. The TweaksPanel's own glass styling lives
+ * in tweaks-panel.jsx and is theme-agnostic. */
+:root[data-theme="dark"] {
+  --bg: #1a1814;
+  --bg-1: #211e18;
+  --bg-2: #272318;
+  --bg-3: #2e2a1f;
+  --line: #3a3527;
+  --line-2: #4d4733;
+  --fg: #f4ede0;
+  --fg-1: #d4ccba;
+  --fg-2: #a89e89;
+  --fg-3: #6f6857;
+  --accent: #8fc24a;
+  --accent-2: #5dc4a8;
+  --warn: #d99c4d;
+  --danger: #d96b5b;
+  --info: #6fa3d8;
+  --violet: #9b7bd1;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--fg); }
 body {
@@ -842,7 +865,7 @@ button { font: inherit; color: inherit; cursor: default; }
 
 /* ── Live OptimizationAgent recommendation card ────────────────────────── */
 .tool-call.status-error { border-color: rgba(160,40,40,0.5); }
-.status-error .tc-status { background: rgba(160,40,40,0.14); color: #a02828; }
+.status-error .tc-status { background: rgba(160,40,40,0.14); color: var(--danger); }
 
 .rec-card {
   display: flex; flex-direction: column; gap: 7px;
@@ -864,7 +887,7 @@ button { font: inherit; color: inherit; cursor: default; }
 }
 .rec-risk-low { background: rgba(74,124,42,0.14); color: var(--accent); border-color: rgba(74,124,42,0.4); }
 .rec-risk-medium { background: rgba(160,106,20,0.14); color: var(--warn); border-color: rgba(160,106,20,0.4); }
-.rec-risk-high { background: rgba(160,40,40,0.14); color: #a02828; border-color: rgba(160,40,40,0.4); }
+.rec-risk-high { background: rgba(160,40,40,0.14); color: var(--danger); border-color: rgba(160,40,40,0.4); }
 .rec-conf { color: var(--accent-2); border-color: rgba(45,107,90,0.4); background: rgba(45,107,90,0.10); }
 .rec-prior { color: var(--violet); border-color: rgba(106,74,150,0.4); background: rgba(106,74,150,0.10); }
 .rec-fallback { color: var(--fg-2); }
@@ -891,7 +914,7 @@ button { font: inherit; color: inherit; cursor: default; }
 }
 .rec-delta b { font-variant-numeric: tabular-nums; color: var(--fg); }
 .rec-delta.good b { color: var(--accent); }
-.rec-delta.bad b { color: #a02828; }
+.rec-delta.bad b { color: var(--danger); }
 
 .rec-meta {
   display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
@@ -917,22 +940,42 @@ button { font: inherit; color: inherit; cursor: default; }
 .rec-btn:disabled { opacity: 0.5; cursor: default; }
 .rec-btn-accept { color: var(--accent); border-color: rgba(74,124,42,0.4); }
 .rec-btn-accept:hover:not(:disabled) { background: rgba(74,124,42,0.10); }
-.rec-btn-reject { color: #a02828; border-color: rgba(160,40,40,0.4); }
+.rec-btn-reject { color: var(--danger); border-color: rgba(160,40,40,0.4); }
 .rec-btn-reject:hover:not(:disabled) { background: rgba(160,40,40,0.08); }
 
 .rec-done { font-size: 10.5px; }
 .rec-done.rec-accept .rec-done-label { color: var(--accent); }
-.rec-done.rec-reject .rec-done-label { color: #a02828; }
+.rec-done.rec-reject .rec-done-label { color: var(--danger); }
 .rec-done code { color: var(--violet); background: rgba(106,74,150,0.10); padding: 1px 5px; border-radius: 2px; }
 
-.rec-err { color: #a02828; font-size: 10px; }
+.rec-err { color: var(--danger); font-size: 10px; }
 
 /* TopBar additions for backend status + Logfire trace button */
-.status-dot.bad { background: #a02828; box-shadow: 0 0 0 2px rgba(160,40,40,0.18); }
+.status-dot.bad { background: var(--danger); box-shadow: 0 0 0 2px rgba(160,40,40,0.18); }
 .tb-btn-disabled { opacity: 0.55; }
 .tb-btn-disabled:hover { background: transparent; }
 
 /* AgentNode error state — paired with the running /api/run failure path */
 .agent-node.state-error { border-color: rgba(160,40,40,0.5); box-shadow: 0 0 0 1px rgba(160,40,40,0.18) inset; }
-.state-error .an-state { color: #a02828; background: rgba(160,40,40,0.12); }
+.state-error .an-state { color: var(--danger); background: rgba(160,40,40,0.12); }
+
+/* Canvas-toolbar stubs: view modes / layer chips that are visual intent only.
+ * Kept in the design but marked as not-yet-implemented so users do not
+ * expect them to do anything. */
+.cv-seg button.cv-stub {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+.cv-seg button.cv-stub:hover { background: transparent; color: var(--fg-3); }
+.cv-chip.cv-chip-stub {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.cv-chip.cv-chip-stub.on {
+  /* Even when toggled "on", make it clear nothing renders. */
+  background: rgba(151,145,126,0.10);
+  color: var(--fg-2);
+  border-color: var(--line-2);
+}
 
