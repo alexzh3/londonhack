@@ -377,7 +377,12 @@ button { font: inherit; color: inherit; cursor: default; }
 .cv-real-video {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
-  object-fit: contain;
+  /* `cover` crop-fills the pane so the video edges meet the pane edges
+   * even when their aspect ratios don't match. Avoids the black-bar
+   * letterboxing that `contain` produces — viewers see only footage,
+   * never the void around it. The crop is centred so the cafe's main
+   * action (counter + dining floor) stays in frame. */
+  object-fit: cover;
   background: #000;
 }
 .cv-real-empty {
