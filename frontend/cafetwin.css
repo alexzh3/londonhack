@@ -374,16 +374,40 @@ button { font: inherit; color: inherit; cursor: default; }
   flex: 1;
   min-width: 0;
 }
+/* Foreground video — the actual annotated CCTV the viewer reads. We use
+ * `contain` so the whole annotated frame is visible (no crop), even when
+ * the pane's aspect ratio doesn't match the video's. The letterbox area
+ * that `contain` would otherwise leave as pure black is filled by the
+ * `cv-real-video-bg` element below. */
 .cv-real-video {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
-  /* `cover` crop-fills the pane so the video edges meet the pane edges
-   * even when their aspect ratios don't match. Avoids the black-bar
-   * letterboxing that `contain` produces — viewers see only footage,
-   * never the void around it. The crop is centred so the cafe's main
-   * action (counter + dining floor) stays in frame. */
+  object-fit: contain;
+  background: transparent;
+  z-index: 1;
+}
+
+/* Blurred backdrop video — second <video> element playing the same src
+ * as the foreground. Uses `cover` + heavy blur so it crop-fills the
+ * pane behind the foreground, turning the letterbox void into a soft
+ * ambient colour echo of the frame. `transform: scale(1.1)` hides the
+ * blur-softened edges that would otherwise bleed in from outside the
+ * pane. Muted + paused-time-sync via JS keeps it in step with the
+ * foreground. */
+.cv-real-video-bg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
   object-fit: cover;
-  background: #000;
+  /* Heavy blur turns the video into a soft colour smear; we give it a
+   * gentle boost (the source CCTV is brown-on-brown wood and reads as
+   * near-black after blur otherwise) and a slight desat so the smear
+   * never competes with the foreground. `transform: scale(1.15)` over-
+   * scans so the blur-softened edges never bleed inside the pane. */
+  filter: blur(24px) brightness(1.15) saturate(0.85);
+  transform: scale(1.15);
+  background: #050608;
+  z-index: 0;
+  pointer-events: none;
 }
 .cv-real-empty {
   position: absolute; inset: 0;

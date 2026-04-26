@@ -75,28 +75,65 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
 // to anyone watching the demo. Used for both `real_cafe` (real CCTV)
 // and `ai_cafe_a` (AI-generated CCTV processed through the same pipeline).
 function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
-  const ref = React.useRef(null);
+  const fgRef = React.useRef(null);
+  const bgRef = React.useRef(null);
   React.useEffect(() => {
-    const v = ref.current;
-    if (!v || !src) return;
+    const fg = fgRef.current, bg = bgRef.current;
+    if (!fg || !src) return;
     // Loop is set via attribute, but Safari/iOS sometimes pauses on tab
     // switches; nudge play() on src change to recover.
-    v.play().catch(() => {});
+    fg.play().catch(() => {});
+    if (bg) bg.play().catch(() => {});
+  }, [src]);
+  // Keep the blurred backdrop in near-lockstep with the main video. Two
+  // <video> elements playing the same muted src drift only a few frames
+  // over a short loop, which is invisible under a 32-px blur, but a
+  // `timeupdate`-driven nudge catches any larger slippage after tab
+  // switches / throttled background tabs.
+  React.useEffect(() => {
+    const fg = fgRef.current, bg = bgRef.current;
+    if (!fg || !bg) return;
+    const resync = () => {
+      if (Math.abs(fg.currentTime - bg.currentTime) > 0.25) {
+        bg.currentTime = fg.currentTime;
+      }
+    };
+    fg.addEventListener("timeupdate", resync);
+    return () => fg.removeEventListener("timeupdate", resync);
   }, [src]);
   return (
     <div className="cv-pane cv-real-pane">
       <div className="cv-axes"><span>x →</span><span>↓ y</span><span>CCTV</span></div>
       {src ? (
-        <video
-          ref={ref}
-          className="cv-real-video"
-          src={src}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-        />
+        <>
+          {/* Blurred cover-fill backdrop so the pane never shows pure
+              black letterbox bars when the video's aspect ratio doesn't
+              match the pane. The foreground video uses object-fit: contain
+              (shows the entire annotated frame); the backdrop uses
+              object-fit: cover + heavy blur + dim so it reads as a soft
+              ambient glow rather than extra content. */}
+          <video
+            ref={bgRef}
+            className="cv-real-video-bg"
+            src={src}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            aria-hidden="true"
+          />
+          <video
+            ref={fgRef}
+            className="cv-real-video"
+            src={src}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+          />
+        </>
       ) : (
         <div className="cv-real-empty">
           <div>no annotated CCTV asset</div>
