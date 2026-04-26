@@ -9,3 +9,6 @@ os.environ.setdefault("PAIG_API_KEY", "")
 os.environ.setdefault("PYDANTIC_AI_GATEWAY_ROUTE", "")
 os.environ.setdefault("CAFETWIN_GATEWAY_ROUTE", "")
 os.environ.setdefault("CAFETWIN_OPTIMIZATION_MODEL", "")
+os.environ["MUBIT_API_KEY"] = ""
+os.environ["MUBIT_ENDPOINT"] = ""
+os.environ["MUBIT_HTTP_ENDPOINT"] = ""

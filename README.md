@@ -54,7 +54,7 @@ on the demo fixtures.
 | `CAFETWIN_OPTIMIZATION_MODEL` | e.g. `gateway/anthropic:claude-sonnet-4-6` (default) or `anthropic:claude-sonnet-4-5`. |
 | `CAFETWIN_FORCE_FALLBACK=1` | Skip the live agent; always return the cached recommendation. Useful for offline demos. |
 | `LOGFIRE_TOKEN` + `LOGFIRE_PROJECT_URL` | Real Logfire spans + clickable trace URL on the top bar. |
-| `MUBIT_API_KEY` | Reserved for the MuBit primary-memory writer (Tier 1). |
+| `MUBIT_API_KEY` | Enables MuBit primary memory writes/recall; jsonl remains the always-on fallback. |
 | `CAFETWIN_RENDER_URL` | Set after Render deploy; consumed by `scripts/deploy_vercel.sh`. |
 | `RENDER_DEPLOY_HOOK` | Optional; lets `scripts/deploy_render.sh` trigger redeploys without the dashboard. |
 
@@ -69,8 +69,8 @@ The page works in three honest modes depending on which keys are populated:
 | **Full** (all keys set) | Full pipeline + live agent + clickable Logfire trace per `/api/run`. | Pitch demo. |
 
 Reload after **Accept** in any mode to see the "seen N× before" chip — that's
-the real memory recall path against `demo_data/mubit_fallback.jsonl` (jsonl is
-the only writer until MuBit lands).
+the real memory recall path against MuBit when configured, with
+`demo_data/mubit_fallback.jsonl` as the local mirror/fallback.
 
 ## Deploy
 

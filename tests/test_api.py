@@ -2,6 +2,8 @@ import anyio
 
 from app import config
 from app.api import routes
+from app import memory
+from app.fallback import load_cached_recommendation
 from app.schemas import FeedbackRequest, RunRequest
 
 
@@ -95,3 +97,102 @@ def test_run_endpoint_caches_logfire_trace_url(monkeypatch, tmp_path):
 
     assert response.logfire_trace_url == trace_url
     assert cached.url == trace_url
+
+
+def test_run_endpoint_marks_memory_as_mubit_backed(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAFETWIN_FORCE_FALLBACK", "1")
+    monkeypatch.setenv("MUBIT_API_KEY", "test-mubit-key")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+
+    async def fake_remember(record):
+        return "mem_test_123"
+
+    async def fake_query(*, lane, filters, limit, semantic_fallback=True):
+        return []
+
+    monkeypatch.setattr(memory, "_mubit_remember", fake_remember)
+    monkeypatch.setattr(memory, "_mubit_query", fake_query)
+
+    response = anyio.run(routes.run, RunRequest(session_id="ai_cafe_a"))
+
+    assert response.memory_record.mubit_id == "mem_test_123"
+    assert response.memory_record.fallback_only is False
+    assert "mem_test_123" in config.MEMORY_JSONL_PATH.read_text(encoding="utf-8")
+
+
+def test_recall_recommendations_merges_mubit_and_jsonl(monkeypatch, tmp_path):
+    monkeypatch.setenv("MUBIT_API_KEY", "test-mubit-key")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+    change = load_cached_recommendation("ai_cafe_a")
+    record = memory.new_memory_record(
+        lane="location:demo:recommendations",
+        intent="lesson",
+        payload={
+            "session_id": "ai_cafe_a",
+            "pattern_id": "pattern_queue_counter_crossing",
+            "layout_change": change.model_dump(mode="json"),
+        },
+    )
+
+    async def fake_query(*, lane, filters, limit, semantic_fallback=True):
+        assert lane == "location:demo:recommendations"
+        assert filters == {
+            "session_id": "ai_cafe_a",
+            "pattern_id": "pattern_queue_counter_crossing",
+        }
+        assert limit == 3
+        return [record]
+
+    monkeypatch.setattr(memory, "_mubit_query", fake_query)
+
+    hits = anyio.run(
+        memory.recall_recommendations,
+        "ai_cafe_a",
+        "pattern_queue_counter_crossing",
+    )
+
+    assert [hit["fingerprint"] for hit in hits] == ["ai_cafe_a_open_pickup_lane_v1"]
+
+
+def test_memories_endpoint_returns_merged_mubit_and_jsonl(monkeypatch, tmp_path):
+    monkeypatch.setenv("MUBIT_API_KEY", "test-mubit-key")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+
+    async def fake_remember(record):
+        return None
+
+    monkeypatch.setattr(memory, "_mubit_remember", fake_remember)
+
+    local = anyio.run(
+        routes.feedback,
+        FeedbackRequest(
+            session_id="ai_cafe_a",
+            pattern_id="pattern_queue_counter_crossing",
+            proposal_fingerprint="local_feedback",
+            decision="accept",
+        ),
+    ).memory_record
+    remote = local.model_copy(
+        update={
+            "mubit_id": "mem_remote_456",
+            "fallback_only": False,
+            "payload": {**local.payload, "proposal_fingerprint": "remote_feedback"},
+        }
+    )
+
+    async def fake_query(*, lane, filters, limit, semantic_fallback=True):
+        assert lane is None
+        assert filters == {"session_id": "ai_cafe_a"}
+        assert semantic_fallback is False
+        return [remote]
+
+    monkeypatch.setattr(memory, "_mubit_query", fake_query)
+
+    response = anyio.run(routes.memories, "ai_cafe_a")
+
+    assert response.source == "merged"
+    assert {record.payload["proposal_fingerprint"] for record in response.records} == {
+        "local_feedback",
+        "remote_feedback",
+    }
+    assert any(record.mubit_id == "mem_remote_456" for record in response.records)

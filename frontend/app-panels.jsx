@@ -273,10 +273,21 @@ function LiveRecommendation({
   loading,
   error,
   onSubmitFeedback,
+  onDecision,
 }) {
   const [feedback, setFeedback] = React.useState(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState(null);
+
+  // Reset internal feedback state when a fresh recommendation arrives so the
+  // accept/reject buttons re-appear (and the iso scene's pending overlay
+  // re-shows). Without this, a successful submit would lock the card on the
+  // first fingerprint forever.
+  const fingerprint = layoutChange && layoutChange.fingerprint;
+  React.useEffect(() => {
+    setFeedback(null);
+    setSubmitError(null);
+  }, [fingerprint]);
 
   const submit = async (decision) => {
     if (!onSubmitFeedback || submitting) return;
@@ -284,11 +295,15 @@ function LiveRecommendation({
     setSubmitError(null);
     try {
       const res = await onSubmitFeedback({ decision });
+      const final = (res && res.decision) || decision;
       setFeedback({
-        decision: (res && res.decision) || decision,
+        decision: final,
         mubitId: res && res.memory_record && res.memory_record.mubit_id,
         fallbackOnly: !!(res && res.memory_record && res.memory_record.fallback_only),
       });
+      // Tell the parent so the iso canvas can switch from "pending overlay"
+      // to "apply animation" (accept) or "stay put, hide overlay" (reject).
+      if (onDecision) onDecision(final);
     } catch (e) {
       setSubmitError((e && e.message) || String(e));
     } finally {
@@ -388,7 +403,7 @@ function LiveRecommendation({
 
 function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
     layoutChange, priorRecommendationCount, usedFallback,
-    backendLoading, backendError, onSubmitFeedback }) {
+    backendLoading, backendError, onSubmitFeedback, onRecDecision }) {
   const isBaseline = scenario.name === "baseline";
   const args = JSON.stringify({
     scenario_id: scenario.name,
@@ -417,6 +432,7 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
           loading={backendLoading}
           error={backendError}
           onSubmitFeedback={onSubmitFeedback}
+          onDecision={onRecDecision}
         />
 
         {!isBaseline && (

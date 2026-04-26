@@ -64,7 +64,7 @@ function CanvasOverlay({ label, sub, side, kpi }) {
   );
 }
 
-function CanvasPane({ scn, side, zoom, layers, simTime, running, speed }) {
+function CanvasPane({ scn, side, zoom, layers, simTime, running, speed, recommendation }) {
   const k = scn.kpis;
   return (
     <div className="cv-pane">
@@ -74,7 +74,8 @@ function CanvasPane({ scn, side, zoom, layers, simTime, running, speed }) {
       <div className="cv-stage" style={{ transform: `scale(${zoom})` }}>
         <CafeScene seats={scn.seats} baristas={scn.baristas} style={scn.style}
           scenarioName={scn.name} footfall={scn.footfall}
-          simTime={simTime} running={running} speed={speed} />
+          simTime={simTime} running={running} speed={speed}
+          recommendation={recommendation} />
       </div>
       {layers.heat && <div className="cv-heat" />}
       {layers.grid && <div className="cv-grid-overlay" />}
@@ -158,7 +159,12 @@ function TimeBar({ simTime, setSimTime, running, setRunning, speed, setSpeed, da
 }
 
 function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, setZoom,
-                     simTime, setSimTime, running, setRunning, speed, setSpeed, dayLength }) {
+                     simTime, setSimTime, running, setRunning, speed, setSpeed, dayLength,
+                     recommendation }) {
+  // The agent's LayoutChange is always rendered against the *active*
+  // scenario (right pane in split mode, the only pane otherwise). The
+  // baseline pane stays untouched so the user can see "before vs proposed"
+  // without the proposal contaminating the baseline frame.
   return (
     <div className="canvas">
       <CanvasToolbar split={split} setSplit={setSplit} layers={layers} setLayers={setLayers} zoom={zoom} setZoom={setZoom} />
@@ -169,11 +175,13 @@ function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, se
               simTime={simTime} running={running} speed={speed} />
             <div className="cv-divider"><div className="cv-divider-handle"><span>‖</span></div></div>
             <CanvasPane scn={active} side="right" zoom={zoom} layers={layers}
-              simTime={simTime} running={running} speed={speed} />
+              simTime={simTime} running={running} speed={speed}
+              recommendation={recommendation} />
           </>
         ) : (
           <CanvasPane scn={active} side="right" zoom={zoom} layers={layers}
-            simTime={simTime} running={running} speed={speed} />
+            simTime={simTime} running={running} speed={speed}
+            recommendation={recommendation} />
         )}
       </div>
       <TimeBar simTime={simTime} setSimTime={setSimTime}

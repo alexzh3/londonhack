@@ -130,7 +130,8 @@ async def feedback(body: FeedbackRequest) -> FeedbackResponse:
 
 @router.get("/api/memories")
 async def memories(session_id: str | None = None) -> MemoriesResponse:
-    return MemoriesResponse(records=await list_memories(session_id=session_id), source="jsonl")
+    records, source = await list_memories(session_id=session_id)
+    return MemoriesResponse(records=records, source=source)
 
 
 @router.get("/api/logfire_url")

@@ -19,8 +19,8 @@ The project should prioritize:
 - Before preparing a commit or PR, check that no secret file is tracked or staged.
 - agent_plan.md contains the detailed architecture and overview_plan.md contains the general overview
 - for every change also edit the agent_plan.md and overview_plan.md to keep progress 
-- mubit documentation, if writing mubit code: https://docs.mubit.ai/
-- pydantic documentation if writing pydantic code: https://pydantic.dev/docs/ai/overview/
+- mubit documentation, if planning or writing mubit code use the docs: https://docs.mubit.ai/
+- pydantic documentation if planning or writing with pydantic code, use the docs: https://pydantic.dev/docs/ai/overview/
 
 ## Multi-Agent Handoff (optional)
 

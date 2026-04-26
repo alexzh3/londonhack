@@ -487,8 +487,118 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
   return { state: stateRef.current, tick };
 }
 
+// ── Recommendation helpers ────────────────────────────────────────────────
+// The OptimizationAgent emits LayoutChange.simulation with from_position /
+// to_position in *camera-frame pixels* (see object_inventory.json for the
+// canonical coordinate system). The procedural iso scene works in *tile
+// units* and doesn't share IDs with the fixture (no `table_center_1` here).
+// To bridge: hash target_id -> deterministic table index, and convert the
+// pixel delta to a clamped tile delta so the visible shift is meaningful
+// without flying off-canvas if the agent emits an extreme move.
+function _recHashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function _recClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+const REC_PX_PER_TILE = 80;
+const REC_MAX_TILES = 2.0;
+
+function recInfoFromLayout(layout, recommendation) {
+  if (!recommendation || !layout || !layout.tablePositions || !layout.tablePositions.length) {
+    return null;
+  }
+  const idx = _recHashStr(recommendation.targetId || "") % layout.tablePositions.length;
+  const fromX = (recommendation.fromPosition && recommendation.fromPosition[0]) || 0;
+  const fromY = (recommendation.fromPosition && recommendation.fromPosition[1]) || 0;
+  const toX = (recommendation.toPosition && recommendation.toPosition[0]) || 0;
+  const toY = (recommendation.toPosition && recommendation.toPosition[1]) || 0;
+  const dxTile = _recClamp((toX - fromX) / REC_PX_PER_TILE, -REC_MAX_TILES, REC_MAX_TILES);
+  const dyTile = _recClamp((toY - fromY) / REC_PX_PER_TILE, -REC_MAX_TILES, REC_MAX_TILES);
+  return { idx, dxTile, dyTile, target: layout.tablePositions[idx] };
+}
+
+// Smooth scalar tween: animates the current value toward `target` over
+// `durationMs` whenever target changes. When `key` changes (e.g. a fresh
+// recommendation fingerprint), jump instantly without animating so a stale
+// in-flight tween from the previous recommendation can't bleed into the new
+// one. Uses cubic ease-out — feels like a confident snap into place rather
+// than a sluggish drift.
+function useScalarTween(target, durationMs = 700, key = "") {
+  const [v, setV] = React.useState(target);
+  const vRef = React.useRef(target);
+  const targetRef = React.useRef(target);
+  const fromRef = React.useRef(target);
+  const keyRef = React.useRef(key);
+
+  React.useEffect(() => { vRef.current = v; }, [v]);
+
+  React.useEffect(() => {
+    if (key !== keyRef.current) {
+      keyRef.current = key;
+      targetRef.current = target;
+      fromRef.current = target;
+      vRef.current = target;
+      setV(target);
+      return;
+    }
+    if (target === targetRef.current) return;
+    fromRef.current = vRef.current;
+    targetRef.current = target;
+    const start = performance.now();
+    let raf;
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const loop = (now) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const next = fromRef.current + (target - fromRef.current) * ease(t);
+      setV(next);
+      if (t < 1) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => { if (raf) cancelAnimationFrame(raf); };
+  }, [target, key, durationMs]);
+
+  return v;
+}
+
+// Pulsing ring at the original table + dashed ghost at the proposed
+// destination + direction arrow with "AI · proposed shift" label. Rendered
+// only while status is "pending" (no decision yet); disappears once the
+// user clicks accept (animation takes over) or reject (table stays put).
+function RecOverlay({ recInfo }) {
+  const a = ISO.toScreen(recInfo.target.x, recInfo.target.y);
+  const b = ISO.toScreen(recInfo.target.x + recInfo.dxTile, recInfo.target.y + recInfo.dyTile);
+  const rxA = ISO.tileW * 0.7, ryA = ISO.tileH * 0.7;
+  const rxB = ISO.tileW * 0.65, ryB = ISO.tileH * 0.65;
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <ellipse cx={a.sx} cy={a.sy} rx={rxA} ry={ryA}
+        fill="none" stroke="#f4a73e" strokeWidth="2">
+        <animate attributeName="rx" values={`${rxA};${rxA * 1.25};${rxA}`}
+          dur="1.6s" repeatCount="indefinite" />
+        <animate attributeName="ry" values={`${ryA};${ryA * 1.25};${ryA}`}
+          dur="1.6s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.95;0.45;0.95"
+          dur="1.6s" repeatCount="indefinite" />
+      </ellipse>
+      <ellipse cx={b.sx} cy={b.sy} rx={rxB} ry={ryB}
+        fill="rgba(244,167,62,0.18)" stroke="#f4a73e" strokeWidth="1.5"
+        strokeDasharray="4 3" />
+      <line x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy}
+        stroke="#f4a73e" strokeWidth="2.2" strokeLinecap="round"
+        markerEnd="url(#rec-arrow-head)" opacity="0.9" />
+      <text x={(a.sx + b.sx) / 2} y={Math.min(a.sy, b.sy) - 14}
+        fill="#7a4a18" fontSize="10" fontWeight="600" textAnchor="middle">
+        AI · proposed shift
+      </text>
+    </g>
+  );
+}
+
 // ── Renderer ──────────────────────────────────────────────────────────────
-function CafeLayout({ layout, sim }) {
+function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
   const s = STYLES[layout.style] || STYLES.default;
   const floor = [];
   for (let y = -1; y <= layout.floorH; y++) {
@@ -508,11 +618,20 @@ function CafeLayout({ layout, sim }) {
   objects.push({ key: "p1", sortY: layout.floorH, el: <Plant x={-1} y={layout.floorH - 1} /> });
   objects.push({ key: "p2", sortY: layout.floorH, el: <Plant x={layout.floorW - 1} y={layout.floorH - 1} /> });
 
-  // tables + chairs
+  // tables + chairs — when a recommendation is being applied, the target
+  // table (and the chairs orbiting it) translate together by recTween *
+  // (dxTile, dyTile). Other tables stay put. recTween is 0 while pending,
+  // animates to 1 on accept; this layer doesn't care which.
+  const tableOffset = (i) => {
+    if (!recInfo || i !== recInfo.idx) return { dx: 0, dy: 0 };
+    return { dx: recInfo.dxTile * recTween, dy: recInfo.dyTile * recTween };
+  };
   layout.tablePositions.forEach((t, i) => {
-    objects.push({ key: `t${i}`, sortY: t.x + t.y, el: <RoundTable x={t.x} y={t.y} /> });
+    const off = tableOffset(i);
+    const tx = t.x + off.dx, ty = t.y + off.dy;
+    objects.push({ key: `t${i}`, sortY: tx + ty, el: <RoundTable x={tx} y={ty} /> });
     layout.chairOffsets.forEach((co, j) => {
-      const cx = t.x + co.dx, cy = t.y + co.dy;
+      const cx = tx + co.dx, cy = ty + co.dy;
       objects.push({ key: `c${i}_${j}`, sortY: cx + cy - 0.01, el: <Chair x={cx} y={cy} /> });
     });
   });
@@ -526,13 +645,22 @@ function CafeLayout({ layout, sim }) {
               action={b.action} walking={walking} t={sim.state.time} /> });
     });
 
-    // customers
+    // customers — seated customers at the target table travel with it so
+    // they don't end up floating where the table used to be. Walking
+    // customers head for the original sim target (the procedural sim
+    // doesn't know about the visual offset); for a 700ms apply animation
+    // this is invisible enough.
     sim.state.customers.forEach((c) => {
       if (c.state === "done") return;
       const walking = c.state === "walk_in" || c.state === "walk_to_seat" || c.state === "leaving"
         || c.state === "queue" || c.state === "ordering";
-      objects.push({ key: `cu${c.id}`, sortY: c.x + c.y + (c.state === "seated" ? 0.4 : 0),
-        el: <Person x={c.x} y={c.y} shirt={c.shirt}
+      let cx = c.x, cy = c.y;
+      if (recInfo && c.state === "seated" && c.seatedTable === recInfo.idx) {
+        cx += recInfo.dxTile * recTween;
+        cy += recInfo.dyTile * recTween;
+      }
+      objects.push({ key: `cu${c.id}`, sortY: cx + cy + (c.state === "seated" ? 0.4 : 0),
+        el: <Person x={cx} y={cy} shirt={c.shirt}
               action={c.action} walking={walking} t={sim.state.time} /> });
     });
   }
@@ -547,7 +675,8 @@ function CafeLayout({ layout, sim }) {
 }
 
 function CafeScene({ seats = 18, baristas = 2, style = "default", scenarioName = "baseline",
-                    footfall = 42, running = true, simTime = null, speed = 1 }) {
+                    footfall = 42, running = true, simTime = null, speed = 1,
+                    recommendation = null }) {
   const layout = React.useMemo(() => generateLayout({
     seats, baristas, style, name: scenarioName,
     chairsPerTable: scenarioName === "tokyo" ? 2 : 3,
@@ -556,6 +685,27 @@ function CafeScene({ seats = 18, baristas = 2, style = "default", scenarioName =
   const scenarioKey = `${scenarioName}|${seats}|${baristas}|${style}`;
   const sim = useCafeSim({ layout, footfall, scenarioKey, running,
     externalTime: simTime, speed });
+
+  // Recommendation overlay + apply animation. recInfo is derived from the
+  // (target_id, from_position, to_position) triple emitted by the agent;
+  // recTween is the eased 0→1 scalar that drives the visible shift when
+  // the user clicks accept. The fingerprint is fed in as the tween "key"
+  // so a fresh recommendation can't inherit the previous tween's state.
+  const recKey = recommendation ? recommendation.fingerprint || "" : "";
+  const recInfo = React.useMemo(
+    () => recInfoFromLayout(layout, recommendation),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layout, recKey,
+     recommendation && recommendation.targetId,
+     recommendation && recommendation.fromPosition && recommendation.fromPosition.join(","),
+     recommendation && recommendation.toPosition && recommendation.toPosition.join(",")]
+  );
+  const recTween = useScalarTween(
+    recommendation && recommendation.status === "accept" ? 1 : 0,
+    700,
+    recKey
+  );
+  const showOverlay = !!recInfo && recommendation && recommendation.status === "pending";
 
   const halfW = (layout.floorW + 2) * (ISO.tileW / 2);
   const minX = -halfW;
@@ -572,8 +722,13 @@ function CafeScene({ seats = 18, baristas = 2, style = "default", scenarioName =
           <stop offset="0%" stopColor="rgba(0,0,0,0)" />
           <stop offset="100%" stopColor="rgba(70,55,30,0.15)" />
         </radialGradient>
+        <marker id="rec-arrow-head" viewBox="0 0 8 8" refX="6" refY="4"
+          markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#f4a73e" />
+        </marker>
       </defs>
-      <CafeLayout layout={layout} sim={sim} />
+      <CafeLayout layout={layout} sim={sim} recInfo={recInfo} recTween={recTween} />
+      {showOverlay && <RecOverlay recInfo={recInfo} />}
       <rect x={minX} y={minY} width={w} height={h} fill="url(#iso-vignette)" pointerEvents="none" />
     </svg>
   );
