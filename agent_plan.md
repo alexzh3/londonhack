@@ -240,20 +240,23 @@ sequenceDiagram
     Note over API,LF: open span optimization_agent.run
     API->>RO: run_optimization(pack, session_id)
     RO->>RO: load_cached_recommendation(session_id) [always preloaded]
+    RO->>RO: generate_layout_candidates(pack) [scored geometry-safe shifts]
     alt live agent enabled (LLM key present, FORCE_FALLBACK ≠ 1)
         RO->>AGT: agent.run(prompt, deps=pack)
-        AGT->>GW: chat(output_type=LayoutChange)
-        GW-->>AGT: parsed LayoutChange
-        AGT->>AGT: @output_validator validate_layout_change(change, ctx.deps)
+        AGT->>GW: chat(output_type=OptimizationChoice)
+        GW-->>AGT: parsed OptimizationChoice(selected_candidate_id, rationale, evidence_ids)
+        AGT->>AGT: @output_validator validate_optimization_choice(choice, ctx.deps)
         alt semantic validation passes
-            AGT-->>RO: validated LayoutChange
+            AGT-->>RO: validated OptimizationChoice
+            RO->>RO: materialize_layout_change(choice, candidate)
             RO-->>API: (change, used_fallback=False)
         else semantic validation fails
             AGT-->>GW: raise ModelRetry(validation errors)
-            GW-->>AGT: corrected LayoutChange
+            GW-->>AGT: corrected OptimizationChoice
             AGT->>AGT: @output_validator validates corrected output
             alt retry passes
-                AGT-->>RO: validated corrected LayoutChange
+                AGT-->>RO: validated corrected OptimizationChoice
+                RO->>RO: materialize_layout_change(choice, candidate)
                 RO-->>API: (change, used_fallback=False)
             else retry exhausted OR any exception
                 RO-->>API: (cached, used_fallback=True)
@@ -381,8 +384,11 @@ POST /api/run {session_id: ai_cafe_a} ─────────────
   ↓
   build CafeEvidencePack(session_id, prior_recommendation_memories=..., pattern=...)   (typed input bundle)
   ↓
-  run_optimization                          (OptimizationAgent: Pydantic AI output_validator
-                                            + ModelRetry; cached recommendation fallback)
+  generate_layout_candidates                (deterministic geometry-safe shifts:
+                                            bounds, allowed zones, fixed-object collision)
+  ↓
+  run_optimization                          (OptimizationAgent selects OptimizationChoice;
+                                            backend materializes LayoutChange; cached fallback)
   ↓
   validate_layout_change (defensive HTTP check) → 502 if still invalid
   ↓
@@ -398,7 +404,7 @@ user clicks Apply (or selects the recommended chip)
   ↓
   Frontend-only: iso twin enters split-compare; KPI delta cards on the
   recommended chip animate from LayoutChange.expected_kpi_delta;
-  optionally one asset visibly shifts using simulation.from_position/to_position
+  known table IDs shift explicitly, queue/station moves render marker arrows
   ↓
 user clicks Accept / Reject
   ↓
@@ -518,12 +524,14 @@ annotated still images; benchmark/prototype-only scripts and weights were
 removed after archiving the results.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
-MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
-`ModelRetry` for semantic validation failures before using the cached
-recommendation, and `/api/memories?session_id=...`
-filters local jsonl records server-side by `payload.session_id`. `tests/`
-covers the fixture contract, route response models, agent semantic retry, and
-memory filtering (`pytest` 10 passed; `ruff check app tests` passed). `.agents/`
+MVP routes. `app/layout_candidates.py` now precomputes scored geometry-safe
+candidate shifts, `OptimizationAgent` selects one typed `OptimizationChoice`
+with Pydantic AI `@output_validator` + `ModelRetry`, and the backend
+materialises it to `LayoutChange` before using the cached recommendation as a
+fallback. `/api/memories?session_id=...` filters local jsonl records server-side
+by `payload.session_id`. `tests/` covers the fixture contract, route response
+models, candidate geometry validation, agent semantic retry, and memory
+filtering. `.agents/`
 is local-only coordination/skills state and is ignored; `.agents/handoff.md`
 should be read and updated during multi-agent work but not committed.
 
@@ -751,7 +759,7 @@ class LayoutSimulation(BaseModel):
 
 
 class LayoutChange(BaseModel):
-    """Pure agent output — does NOT carry session_id / pattern_id. The
+    """Pure API/memory recommendation output — does NOT carry session_id / pattern_id. The
     orchestrator wraps it in `RecommendationMemoryPayload` (below) when
     persisting, so recall scoping stays out of the LLM's schema.
     """
@@ -764,6 +772,32 @@ class LayoutChange(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     risk: Literal["low", "medium", "high"]
     fingerprint: str
+
+
+class LayoutCandidate(BaseModel):
+    """Deterministic backend-generated candidate. The LLM may select one but
+    cannot invent coordinates."""
+    candidate_id: str
+    fingerprint: str
+    action: Literal["move_table", "move_chair", "move_station", "change_queue_boundary"]
+    target_id: str
+    target_kind: ObjectKind
+    from_position: tuple[float, float]
+    to_position: tuple[float, float]
+    rotation_degrees: float = 0
+    expected_kpi_delta: dict[KPIField, float]
+    score: float
+    reasons: list[str] = Field(default_factory=list)
+
+
+class OptimizationChoice(BaseModel):
+    """The live Pydantic AI output. Backend code turns this into LayoutChange."""
+    selected_candidate_id: str
+    title: str
+    rationale: str
+    evidence_ids: list[str] = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    risk: Literal["low", "medium", "high"]
 
 
 # ---------- Memory write payloads ----------
@@ -803,7 +837,8 @@ class MemoryRecord(BaseModel):
 
 Notes:
 
-- `LayoutChange` stays a pure agent-output type; `session_id` / `pattern_id` ride on the `RecommendationMemoryPayload` wrapper, so the LLM never has to copy them and recall stays correctly scoped.
+- `LayoutChange` stays a pure recommendation/output type; `session_id` / `pattern_id` ride on the `RecommendationMemoryPayload` wrapper, so recall stays correctly scoped.
+- Live `OptimizationAgent` now outputs `OptimizationChoice`, not freeform coordinates. `LayoutCandidate` generation in `app/layout_candidates.py` owns geometry, action-kind compatibility, max shift distance, frame bounds, allowed-zone checks, fixed-object collision checks, and deterministic expected KPI deltas. The orchestrator materialises the selected candidate into `LayoutChange`.
 - `PriorRecommendationMemory` is not a raw write payload. It is the derived recall view built by joining recommendation and feedback records. This is the object the optimizer should reason over for "accepted before" / "rejected before" behavior.
 - `evidence_ids` is a flat `list[str]` rather than `list[EvidenceRef]` to make the Pydantic AI prompt simpler and semantic validation trivial.
 - `expected_kpi_delta` keys are typed via `KPIField` literal, so the agent cannot hallucinate field names.
@@ -811,22 +846,23 @@ Notes:
 
 ## OptimizationAgent (live, MVP)
 
-**Input:** `CafeEvidencePack`. **Output:** `LayoutChange`.
+**Input:** `CafeEvidencePack` plus backend-generated `LayoutCandidate`s. **Live agent output:** `OptimizationChoice`. **API/memory output:** materialised `LayoutChange`.
 
 ### Pydantic AI setup
 
 ```python
 import os
 from pydantic_ai import Agent, ModelRetry, RunContext
-from app.schemas import CafeEvidencePack, LayoutChange
+from app.layout_candidates import validate_optimization_choice
+from app.schemas import CafeEvidencePack, OptimizationChoice
 
-optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
+optimization_agent: Agent[CafeEvidencePack, OptimizationChoice] | None = Agent(
     _agent_model_spec(),  # defaults to gateway/anthropic:claude-sonnet-4-6 when Gateway key exists
     deps_type=CafeEvidencePack,
-    output_type=LayoutChange,
+    output_type=OptimizationChoice,
     instructions=OPTIMIZATION_INSTRUCTIONS,
     retries=1,         # request/tool level retry budget
-    output_retries=1,  # semantic LayoutChange retry via output_validator
+    output_retries=1,  # semantic OptimizationChoice retry via output_validator
     defer_model_check=True,  # tests/imports work when live provider keys are absent
 )
 
@@ -834,11 +870,11 @@ optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
 @optimization_agent.output_validator
 async def validate_agent_output(
     ctx: RunContext[CafeEvidencePack],
-    output: LayoutChange,
-) -> LayoutChange:
-    errors = validate_layout_change(output, ctx.deps)
+    output: OptimizationChoice,
+) -> OptimizationChoice:
+    errors = validate_optimization_choice(output, ctx.deps)
     if errors:
-        raise ModelRetry("Fix these LayoutChange validation errors:\n- " + "\n- ".join(errors))
+        raise ModelRetry("Fix these OptimizationChoice validation errors:\n- " + "\n- ".join(errors))
     return output
 ```
 
@@ -854,31 +890,24 @@ with `gateway_provider("anthropic", route=...)`.
 
 ```text
 You are a cafe layout optimization agent. You receive a CafeEvidencePack
-describing zones, an object inventory, KPI windows, and one OperationalPattern
-identifying a spatial bottleneck. Your job is to emit a single typed
-LayoutChange that addresses the pattern.
+describing zones, an object inventory, KPI windows, one OperationalPattern, and
+candidate_shifts generated by backend geometry checks. Your job is to emit a
+single typed OptimizationChoice selecting one candidate.
 
 HARD RULES — you will be rejected if you violate any of these:
 
-1. evidence_ids MUST be a non-empty subset of the memory_ids appearing in
+1. selected_candidate_id MUST equal one candidate_shifts[*].candidate_id.
+   Do not invent coordinates or candidate IDs.
+2. evidence_ids MUST be a non-empty subset of the memory_ids appearing in
    the input pattern.evidence[*].memory_id. Do not invent IDs.
-2. expected_kpi_delta MUST contain at least one key from this set:
-   {staff_walk_distance_px, staff_customer_crossings,
-    queue_obstruction_seconds, congestion_score, table_detour_score}.
-   Values are signed floats representing expected change (negative = improvement
-   for distance/crossings/obstruction/congestion; lower table_detour_score is also
-   better).
-3. simulation.target_id MUST refer to an existing object in
-   object_inventory.objects[*].id, or a zone id from zones[*].id for
-   change_queue_boundary actions.
-4. simulation.from_position MUST equal the current center_xy of that object
-   (within 1px tolerance) when target is movable furniture.
-5. confidence MUST be in [0.0, 1.0] and risk MUST be one of {low, medium, high}.
-6. fingerprint MUST be a short stable hash-like string of (target_id, action,
-   to_position) so duplicates can be detected.
+3. confidence MUST be in [0.0, 1.0] and risk MUST be one of {low, medium, high}.
+4. Prefer a high-scoring candidate that directly improves the KPI fields cited
+   by the pattern evidence without reducing seating.
+5. Keep rationale to 2-3 concise sentences. Do not quote candidate scores or
+   numeric KPI deltas; the backend materializes those exact numbers from the
+   selected candidate.
 
-Prefer ONE high-confidence move. Keep rationale to 2-3 sentences citing the
-specific pattern. Do not propose multiple changes.
+Prefer ONE high-confidence move. Do not propose multiple changes.
 
 Use prior_recommendation_memories as decision-aware memory:
 
@@ -893,35 +922,35 @@ Use prior_recommendation_memories as decision-aware memory:
 
 ### Pydantic AI output validation + fallback
 
-Pydantic AI validates the raw JSON/schema shape via `output_type=LayoutChange`.
+Pydantic AI validates the raw JSON/schema shape via `output_type=OptimizationChoice`.
 CafeTwin's evidence-aware semantic checks run inside an `@agent.output_validator`.
 When those checks fail, the validator raises `ModelRetry`, so the same Pydantic
-AI run asks the model for one corrected `LayoutChange` with the validation
-errors. The API still runs a final defensive `layout_change.validate` span before
-returning to the UI.
+AI run asks the model for one corrected `OptimizationChoice` with the validation
+errors. The selected candidate is then materialised into `LayoutChange`, and the
+API still runs a final defensive `layout_change.validate` span before returning
+to the UI.
 
 ```python
 def validate_layout_change(change: LayoutChange, pack: CafeEvidencePack) -> list[str]:
-    pattern_ids = {ref.memory_id for ref in pack.pattern.evidence}
     errors = []
-    if not change.evidence_ids:
-        errors.append("missing evidence_ids")
-    if not set(change.evidence_ids).issubset(pattern_ids):
-        errors.append("evidence_ids outside pattern evidence")
-    if not change.expected_kpi_delta:
-        errors.append("missing expected_kpi_delta")
-    object_ids = {o.id for o in pack.object_inventory.objects}
-    if change.simulation.target_id not in object_ids:
-        errors.append("simulation target not in inventory")
+    errors.extend(validate_evidence_ids(change.evidence_ids, pack))
+    errors.extend(validate_layout_geometry(change, pack))
+    errors.extend(validate_expected_kpi_delta(change, pack))
     return errors
 
 
 async def run_optimization(pack: CafeEvidencePack, session_id: str) -> tuple[LayoutChange, bool]:
     """Returns (layout_change, used_fallback)."""
     with logfire.span("optimization_agent.run", session_id=pack.session_id):
+        candidates = generate_layout_candidates(pack)
+        if not candidates:
+            return load_cached_recommendation(session_id), True
         try:
-            result = await optimization_agent.run(_optimization_prompt(pack), deps=pack)
-            return result.output, False
+            result = await optimization_agent.run(
+                _optimization_prompt(pack, candidates),
+                deps=pack,
+            )
+            return materialize_layout_change(result.output, pack, candidates), False
         except Exception as e:
             logfire.warn("optimization_agent failed", error=str(e))
             return load_cached_recommendation(session_id), True
@@ -1150,8 +1179,8 @@ The MVP frontend is the existing `frontend/cafetwin.html` Babel-in-browser demo 
 | Page load | `GET /api/sessions`, then `GET /api/state?session_id=...` and `POST /api/run {session_id}` for the active session (defaults to `ai_cafe_a`) | `useBackend(sessionId)` hook in `app-state.jsx`; results threaded down through `App()` in `cafetwin.html` |
 | Switch session | `cafetwin.html?session=real_cafe` re-runs `GET /api/state` + `POST /api/run` with the real-video `session_id` on load | Tier 1A fast selector is URL-based; richer dropdown remains optional. |
 | (Auto on response) | — | `AgentFlow` node states from `RunResponse.stages[]`; `ChatPanel` ToolCall rendering the real `LayoutChange`; `ScenarioRail` materialising a `recommended` chip; KPI cards from `kpi_windows`; "Seen before" chip from `prior_recommendation_count` |
-| Click `recommended` chip / Apply | Frontend-only | Iso twin enters split-compare; the target asset visibly shifts via `simulation.from_position`/`to_position` (delivered — see `recInfoFromLayout` + `useScalarTween` in `cafe-iso.jsx`) |
-| Click Accept on rec card | `POST /api/feedback` writes feedback memory; frontend flips `recommendation.status` to `accept` | Iso scene tween fires (target table + chairs + seated customers translate together over 700ms); `KPIDeltaStrip` fades in inside the right `CanvasPane` and counts each `expected_kpi_delta` up from `0 → delta` over the same 700ms with matching cubic ease-out (only on the right `active` pane — the baseline pane stays clean for honest before/after) |
+| Click `recommended` chip / Apply | Frontend-only | Iso twin enters split-compare; known table targets shift via `simulation.from_position`/`to_position`, while queue-boundary/station targets render a marker arrow (delivered — see `recInfoFromLayout` + `useScalarTween` in `cafe-iso.jsx`) |
+| Click Accept on rec card | `POST /api/feedback` writes feedback memory; frontend flips `recommendation.status` to `accept` | Iso scene tween fires for table moves (target table + chairs + seated customers translate together over 700ms); non-table moves keep the marker/impact presentation truthful; `KPIDeltaStrip` fades in inside the right `CanvasPane` and counts each `expected_kpi_delta` up from `0 → delta` over the same 700ms with matching cubic ease-out (only on the right `active` pane — the baseline pane stays clean for honest before/after) |
 | Click "Accept" / "Reject" | `POST /api/feedback {session_id, pattern_id, proposal_fingerprint, decision}` | Toast confirmation; Memories modal refreshes on next open |
 | Click Logfire link in `TopBar` | `window.open(logfire_trace_url)` (URL already returned by `/api/run`; `/api/logfire_url` is the manual-refresh path) | Existing TopBar button at `frontend/app-panels.jsx` |
 | Open Memories modal | `GET /api/memories` | New modal cloning the `session.replay` modal pattern in `cafetwin.html` |
@@ -1159,7 +1188,7 @@ The MVP frontend is the existing `frontend/cafetwin.html` Babel-in-browser demo 
 ### What does **not** change in the existing demo
 
 - `SCENARIO_PRESETS` and `computeKpis()` in `app-state.jsx` stay as-is. They power `baseline`, `10x.size`, `brooklyn`, `+2.baristas`, `tokyo` — all decorative and never claimed to be agent output.
-- `cafe-iso.jsx`, `app-canvas.jsx` — extended (not rewritten) to surface the agent recommendation: `CafeScene` accepts a `recommendation` prop derived from `LayoutChange.simulation`; `CafeLayout` translates the hashed-target table+chairs+seated-customers by a tween-driven offset; `RecOverlay` renders the pre-Apply pulsing-halo + arrow + dashed destination ghost. `app-canvas.jsx` adds a `KPIDeltaStrip` component that mounts inside the right `CanvasPane` only when `recommendation.status === 'accept'` and `side === 'right'`; it animates each `expected_kpi_delta` from `0 → delta` over 700ms (cubic ease-out, matching the iso scene tween) using a local `useState` count-up — `useScalarTween` can't be reused here because it initialises `v = target` so the strip would render full deltas instantly. `MainCanvas`/`CanvasPane` thread `recommendation` (now carrying `expectedKpiDelta` from `cafetwin.html`) to the right pane only — the baseline pane stays clean for honest split-compare. `cafetwin.css` fixes the chat-panel grid track (`minmax(0, 1fr)` + `.chat-stream { min-height: 0; overflow-y: auto; }`) AND adds `.chat-stream > * { flex: 0 0 auto }` so the flex-column children (`tool-call`, `chat-msg`, etc.) don't shrink to fit the panel — without that rule the rec-card's intrinsic ~700px collapses to ~250px and `.tool-call { overflow: hidden }` clips the accept/reject buttons. `cafetwin.css` also adds `.cv-rec-impact` with violet AI accent (matches the recommended chip + "seen Nx before" pill) and a `cv-rec-impact-in` keyframe for a 280ms fade+slide-up entrance. `ChatPanel` adds an auto-scroll effect keyed on `layoutChange.fingerprint` that aligns the rec-card's top to the chat-stream's top whenever a new recommendation arrives, so the user sees title + buttons without manual scrolling. `cafetwin.html` defaults the active scenario to `baseline`, exposes `useScalarTween` on `window` for cross-module reuse, and bumps local asset query strings to `v=12` (CSS) / `v=13` (JSX) so browsers fetch the latest assets.
+- `cafe-iso.jsx`, `app-canvas.jsx` — extended (not rewritten) to surface the agent recommendation: `CafeScene` accepts a `recommendation` prop derived from `LayoutChange.simulation`; `CafeLayout` translates explicitly mapped table targets (and chairs + seated customers) by a tween-driven offset; non-table actions render queue-boundary/station marker arrows instead of hashing arbitrary IDs into random tables. `RecOverlay` renders the pre-Apply pulsing-halo/marker + arrow + dashed destination ghost. `app-canvas.jsx` adds a `KPIDeltaStrip` component that mounts inside the right `CanvasPane` only when `recommendation.status === 'accept'` and `side === 'right'`; it animates each `expected_kpi_delta` from `0 → delta` over 700ms (cubic ease-out, matching the iso scene tween) using a local `useState` count-up — `useScalarTween` can't be reused here because it initialises `v = target` so the strip would render full deltas instantly. `MainCanvas`/`CanvasPane` thread `recommendation` (now carrying `expectedKpiDelta` from `cafetwin.html`) to the right pane only — the baseline pane stays clean for honest split-compare. `cafetwin.css` fixes the chat-panel grid track (`minmax(0, 1fr)` + `.chat-stream { min-height: 0; overflow-y: auto; }`) AND adds `.chat-stream > * { flex: 0 0 auto }` so the flex-column children (`tool-call`, `chat-msg`, etc.) don't shrink to fit the panel — without that rule the rec-card's intrinsic ~700px collapses to ~250px and `.tool-call { overflow: hidden }` clips the accept/reject buttons. `cafetwin.css` also adds `.cv-rec-impact` with violet AI accent (matches the recommended chip + "seen Nx before" pill) and a `cv-rec-impact-in` keyframe for a 280ms fade+slide-up entrance. `ChatPanel` adds an auto-scroll effect keyed on `layoutChange.fingerprint` that aligns the rec-card's top to the chat-stream's top whenever a new recommendation arrives, so the user sees title + buttons without manual scrolling. `cafetwin.html` defaults the active scenario to `baseline`, exposes `useScalarTween` on `window` for cross-module reuse, and bumps local asset query strings so browsers fetch the latest assets.
 - The HTML loader, the UMD React bundle, the Babel-standalone tag — untouched.
 
 ### What is added (additive only)

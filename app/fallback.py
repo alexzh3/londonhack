@@ -10,6 +10,7 @@ from app.schemas import (
     OperationalPattern,
     PatternEvidenceBundle,
 )
+from app.layout_candidates import validate_expected_kpi_delta, validate_layout_geometry
 from app.sessions import session_dir
 
 
@@ -40,6 +41,8 @@ def validate_layout_change(change: LayoutChange, pack: CafeEvidencePack) -> list
         errors.append(f"target_id {change.target_id!r} is not in object_inventory")
     if change.simulation.target_id != change.target_id:
         errors.append("simulation.target_id must match target_id")
+    errors.extend(validate_layout_geometry(change, pack))
+    errors.extend(validate_expected_kpi_delta(change, pack))
 
     return errors
 

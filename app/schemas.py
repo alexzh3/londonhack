@@ -207,7 +207,7 @@ class LayoutSimulation(StrictModel):
 
 
 class LayoutChange(StrictModel):
-    """Pure agent output. Does NOT carry session_id / pattern_id; the
+    """Pure recommendation output. Does NOT carry session_id / pattern_id; the
     orchestrator wraps it in :class:`RecommendationMemoryPayload` when
     persisting, so recall scoping stays out of the LLM's schema.
     """
@@ -221,6 +221,29 @@ class LayoutChange(StrictModel):
     confidence: float = Field(ge=0.0, le=1.0)
     risk: RiskLevel
     fingerprint: str
+
+
+class LayoutCandidate(StrictModel):
+    candidate_id: str
+    fingerprint: str
+    action: SimulationAction
+    target_id: str
+    target_kind: ObjectKind
+    from_position: tuple[float, float]
+    to_position: tuple[float, float]
+    rotation_degrees: float = 0
+    expected_kpi_delta: dict[KPIField, float] = Field(min_length=1)
+    score: float
+    reasons: list[str] = Field(default_factory=list)
+
+
+class OptimizationChoice(StrictModel):
+    selected_candidate_id: str
+    title: str
+    rationale: str
+    evidence_ids: list[str] = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    risk: RiskLevel
 
 
 class PriorRecommendationMemory(StrictModel):

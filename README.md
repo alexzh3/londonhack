@@ -1,9 +1,10 @@
 # CafeTwin / SimCafe
 
 Hackathon MVP that turns overhead cafe video evidence into typed layout
-recommendations. One real Pydantic AI agent emits a validated `LayoutChange`,
-memory recall surfaces a "seen before" chip, Logfire records the trace, and
-an existing Babel-in-browser JSX demo binds it all into a clickable UI.
+recommendations. The backend generates geometry-safe candidate shifts, a real
+Pydantic AI agent selects one, the API materialises a validated `LayoutChange`,
+memory recall surfaces a "seen before" chip, Logfire records the trace, and an
+existing Babel-in-browser JSX demo binds it all into a clickable UI.
 
 > POS tells operators what sold. CafeTwin shows why throughput stalled.
 
@@ -24,10 +25,11 @@ flowchart LR
     end
 
     evidence["Typed CafeEvidencePack<br/>zones + inventory + KPIs + pattern + prior memories"]
+    candidates["Geometry-safe LayoutCandidates<br/>bounds + zones + collisions"]
 
     subgraph agents["Pydantic AI reasoning"]
         pattern["PatternAgent<br/>OperationalPattern"]
-        optimize["OptimizationAgent<br/>validated LayoutChange"]
+        optimize["OptimizationAgent<br/>selects OptimizationChoice"]
     end
 
     ui["CafeTwin UI<br/>CCTV overlay + digital twin + recommendation card"]
@@ -39,7 +41,7 @@ flowchart LR
     tracks --> kpi
     objects --> evidence
     kpi --> evidence
-    evidence --> pattern --> optimize --> ui
+    evidence --> pattern --> candidates --> optimize --> ui
     ui -->|accept / reject| memory
     memory -->|prior decisions| evidence
     evidence -. spans .-> trace
@@ -47,9 +49,9 @@ flowchart LR
     optimize -. spans .-> trace
 ```
 
-*Existing CCTV is processed offline into typed evidence. Pydantic AI agents turn
-that evidence into a validated layout recommendation, while MuBit/jsonl memory
-and Logfire make the result repeatable and auditable.*
+*Existing CCTV is processed offline into typed evidence. Deterministic geometry
+checks generate safe moves, Pydantic AI chooses and explains one, and
+MuBit/jsonl memory plus Logfire make the result repeatable and auditable.*
 
 For architecture detail see [`overview_plan.md`](overview_plan.md) (high
 level) and [`agent_plan.md`](agent_plan.md) (engineering). Current build

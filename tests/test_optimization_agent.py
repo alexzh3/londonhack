@@ -6,7 +6,8 @@ from pydantic_ai.models.function import FunctionModel
 from app.agents import optimization_agent as opt
 from app.evidence_pack import build
 from app.fallback import load_cached_recommendation
-from app.schemas import PriorRecommendationMemory
+from app.layout_candidates import generate_layout_candidates
+from app.schemas import OptimizationChoice, PriorRecommendationMemory
 
 
 def function_model_for_outputs(outputs):
@@ -30,9 +31,16 @@ def function_model_for_outputs(outputs):
 
 def test_optimization_agent_retries_semantic_validation_errors(monkeypatch):
     pack = build("ai_cafe_a")
-    cached = load_cached_recommendation("ai_cafe_a")
-    invalid = cached.model_copy(update={"evidence_ids": ["not_in_pattern"]})
-    valid = cached.model_copy(update={"fingerprint": "live_retry_ok"})
+    candidate = generate_layout_candidates(pack)[0]
+    invalid = OptimizationChoice(
+        selected_candidate_id=candidate.candidate_id,
+        title="Open the pickup lane",
+        rationale="The selected candidate shifts the obstruction away from the bottleneck.",
+        evidence_ids=["not_in_pattern"],
+        confidence=0.8,
+        risk="low",
+    )
+    valid = invalid.model_copy(update={"evidence_ids": ["kpi_ai_a_w2"]})
     model, calls = function_model_for_outputs([invalid, valid])
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.delenv("CAFETWIN_FORCE_FALLBACK", raising=False)
@@ -40,7 +48,9 @@ def test_optimization_agent_retries_semantic_validation_errors(monkeypatch):
     with opt.optimization_agent.override(model=model):
         change, used_fallback = anyio.run(opt.run_optimization, pack, "ai_cafe_a")
 
-    assert change.fingerprint == "live_retry_ok"
+    assert change.fingerprint == candidate.fingerprint
+    assert change.target_id == candidate.target_id
+    assert change.simulation.to_position == candidate.to_position
     assert used_fallback is False
     assert len(calls) == 2
     assert "evidence_ids must be a subset" in repr(calls[1])
@@ -48,8 +58,15 @@ def test_optimization_agent_retries_semantic_validation_errors(monkeypatch):
 
 def test_optimization_agent_uses_fallback_after_second_semantic_failure(monkeypatch):
     pack = build("ai_cafe_a")
-    cached = load_cached_recommendation("ai_cafe_a")
-    invalid = cached.model_copy(update={"evidence_ids": ["not_in_pattern"]})
+    candidate = generate_layout_candidates(pack)[0]
+    invalid = OptimizationChoice(
+        selected_candidate_id=candidate.candidate_id,
+        title="Open the pickup lane",
+        rationale="The selected candidate shifts the obstruction away from the bottleneck.",
+        evidence_ids=["not_in_pattern"],
+        confidence=0.8,
+        risk="low",
+    )
     model, calls = function_model_for_outputs([invalid, invalid])
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.delenv("CAFETWIN_FORCE_FALLBACK", raising=False)
@@ -108,3 +125,5 @@ def test_optimization_prompt_includes_decision_aware_memory():
     assert "decision=reject" in prompt
     assert cached.fingerprint in prompt
     assert "blocked the service lane" in prompt
+    assert "Candidate shifts JSON" in prompt
+    assert "selected_candidate_id" in opt.INSTRUCTIONS

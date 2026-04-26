@@ -739,36 +739,72 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
 }
 
 // ── Recommendation helpers ────────────────────────────────────────────────
-// The OptimizationAgent emits LayoutChange.simulation with from_position /
-// to_position in *camera-frame pixels* (see object_inventory.json for the
-// canonical coordinate system). The procedural iso scene works in *tile
-// units* and doesn't share IDs with the fixture (no `table_center_1` here).
-// To bridge: hash target_id -> deterministic table index, and convert the
-// pixel delta to a clamped tile delta so the visible shift is meaningful
-// without flying off-canvas if the agent emits an extreme move.
-function _recHashStr(s) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
 function _recClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 const REC_PX_PER_TILE = 80;
 const REC_MAX_TILES = 2.0;
+const REC_TARGET_TO_TABLE_INDEX = {
+  table_center_1: 3,
+  table_mid_1: 4,
+  table_right_1: 2,
+  table_door_1: 4,
+  table_window_1: 5,
+  table_seating_1: 0,
+};
+const REC_CAMERA_BOUNDS = {
+  ai_cafe_a: { w: 1924, h: 1076 },
+  real_cafe: { w: 1279, h: 719 },
+};
 
 function recInfoFromLayout(layout, recommendation) {
   if (!recommendation || !layout || !layout.tablePositions || !layout.tablePositions.length) {
     return null;
   }
-  const idx = _recHashStr(recommendation.targetId || "") % layout.tablePositions.length;
+  const action = recommendation.action || "";
   const fromX = (recommendation.fromPosition && recommendation.fromPosition[0]) || 0;
   const fromY = (recommendation.fromPosition && recommendation.fromPosition[1]) || 0;
   const toX = (recommendation.toPosition && recommendation.toPosition[0]) || 0;
   const toY = (recommendation.toPosition && recommendation.toPosition[1]) || 0;
   const dxTile = _recClamp((toX - fromX) / REC_PX_PER_TILE, -REC_MAX_TILES, REC_MAX_TILES);
   const dyTile = _recClamp((toY - fromY) / REC_PX_PER_TILE, -REC_MAX_TILES, REC_MAX_TILES);
-  return { idx, dxTile, dyTile, target: layout.tablePositions[idx] };
+  if (action === "move_table" || action === "move_chair") {
+    const mapped = REC_TARGET_TO_TABLE_INDEX[recommendation.targetId];
+    const idx = Number.isInteger(mapped)
+      ? _recClamp(mapped, 0, layout.tablePositions.length - 1)
+      : _nearestTableIndex(layout, _cameraToTile(layout, recommendation, [fromX, fromY]));
+    return { type: "table", idx, dxTile, dyTile, target: layout.tablePositions[idx] };
+  }
+  const fromTile = _cameraToTile(layout, recommendation, [fromX, fromY]);
+  return {
+    type: "marker",
+    dxTile,
+    dyTile,
+    target: fromTile,
+    label: action === "change_queue_boundary" ? "boundary shift" : "station shift",
+  };
+}
+
+function _nearestTableIndex(layout, point) {
+  let bestIdx = 0;
+  let bestDistance = Infinity;
+  layout.tablePositions.forEach((table, idx) => {
+    const distance = Math.hypot(table.x - point.x, table.y - point.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIdx = idx;
+    }
+  });
+  return bestIdx;
+}
+
+function _cameraToTile(layout, recommendation, point) {
+  const bounds = REC_CAMERA_BOUNDS[recommendation.sessionId] || REC_CAMERA_BOUNDS.ai_cafe_a;
+  const x = _recClamp(point[0] / bounds.w, 0.05, 0.95);
+  const y = _recClamp(point[1] / bounds.h, 0.05, 0.95);
+  return {
+    x: 1 + x * Math.max(1, layout.floorW - 2),
+    y: 0.5 + y * Math.max(1, layout.floorH - 1),
+  };
 }
 
 // Smooth scalar tween: animates the current value toward `target` over
@@ -823,26 +859,39 @@ function RecOverlay({ recInfo }) {
   const b = ISO.toScreen(recInfo.target.x + recInfo.dxTile, recInfo.target.y + recInfo.dyTile);
   const rxA = ISO.tileW * 0.7, ryA = ISO.tileH * 0.7;
   const rxB = ISO.tileW * 0.65, ryB = ISO.tileH * 0.65;
+  const label = recInfo.type === "marker" ? `AI · ${recInfo.label}` : "AI · proposed shift";
   return (
     <g style={{ pointerEvents: "none" }}>
-      <ellipse cx={a.sx} cy={a.sy} rx={rxA} ry={ryA}
-        fill="none" stroke="#f4a73e" strokeWidth="2">
-        <animate attributeName="rx" values={`${rxA};${rxA * 1.25};${rxA}`}
-          dur="1.6s" repeatCount="indefinite" />
-        <animate attributeName="ry" values={`${ryA};${ryA * 1.25};${ryA}`}
-          dur="1.6s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.95;0.45;0.95"
-          dur="1.6s" repeatCount="indefinite" />
-      </ellipse>
-      <ellipse cx={b.sx} cy={b.sy} rx={rxB} ry={ryB}
-        fill="rgba(244,167,62,0.18)" stroke="#f4a73e" strokeWidth="1.5"
-        strokeDasharray="4 3" />
+      {recInfo.type === "marker" ? (
+        <>
+          <rect x={a.sx - 12} y={a.sy - 18} width="24" height="18" rx="3"
+            fill="rgba(244,167,62,0.16)" stroke="#f4a73e" strokeWidth="1.8" />
+          <rect x={b.sx - 12} y={b.sy - 18} width="24" height="18" rx="3"
+            fill="rgba(244,167,62,0.24)" stroke="#f4a73e" strokeWidth="1.5"
+            strokeDasharray="4 3" />
+        </>
+      ) : (
+        <>
+          <ellipse cx={a.sx} cy={a.sy} rx={rxA} ry={ryA}
+            fill="none" stroke="#f4a73e" strokeWidth="2">
+            <animate attributeName="rx" values={`${rxA};${rxA * 1.25};${rxA}`}
+              dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="ry" values={`${ryA};${ryA * 1.25};${ryA}`}
+              dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.95;0.45;0.95"
+              dur="1.6s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx={b.sx} cy={b.sy} rx={rxB} ry={ryB}
+            fill="rgba(244,167,62,0.18)" stroke="#f4a73e" strokeWidth="1.5"
+            strokeDasharray="4 3" />
+        </>
+      )}
       <line x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy}
         stroke="#f4a73e" strokeWidth="2.2" strokeLinecap="round"
         markerEnd="url(#rec-arrow-head)" opacity="0.9" />
       <text x={(a.sx + b.sx) / 2} y={Math.min(a.sy, b.sy) - 14}
         fill="#7a4a18" fontSize="10" fontWeight="600" textAnchor="middle">
-        AI · proposed shift
+        {label}
       </text>
     </g>
   );
@@ -910,7 +959,7 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
   // (dxTile, dyTile). Other tables stay put. recTween is 0 while pending,
   // animates to 1 on accept; this layer doesn't care which.
   const tableOffset = (i) => {
-    if (!recInfo || i !== recInfo.idx) return { dx: 0, dy: 0 };
+    if (!recInfo || recInfo.type !== "table" || i !== recInfo.idx) return { dx: 0, dy: 0 };
     return { dx: recInfo.dxTile * recTween, dy: recInfo.dyTile * recTween };
   };
   layout.tablePositions.forEach((t, i) => {
@@ -942,7 +991,7 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
       const walking = c.state === "walk_in" || c.state === "walk_to_seat" || c.state === "leaving"
         || c.state === "queue" || c.state === "ordering";
       let cx = c.x, cy = c.y;
-      if (recInfo && c.state === "seated" && c.seatedTable === recInfo.idx) {
+      if (recInfo && recInfo.type === "table" && c.state === "seated" && c.seatedTable === recInfo.idx) {
         cx += recInfo.dxTile * recTween;
         cy += recInfo.dyTile * recTween;
       }
@@ -985,6 +1034,8 @@ function CafeScene({ seats = 18, baristas = 2, style = "default", scenarioName =
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layout, recKey,
      recommendation && recommendation.targetId,
+     recommendation && recommendation.action,
+     recommendation && recommendation.sessionId,
      recommendation && recommendation.fromPosition && recommendation.fromPosition.join(","),
      recommendation && recommendation.toPosition && recommendation.toPosition.join(",")]
   );
