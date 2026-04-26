@@ -453,6 +453,8 @@ demo_data/
       tracks.cached.json        # Tier 1B — YOLOv8n + ByteTrack person tracks
       annotated_before.mp4      # Tier 1B — overlay video for pitch/debugging
       object_detections.cached.json  # Tier 1B — YOLOv8x static furniture/layout detections
+      object_review.cached.json      # Tier 1B — Pydantic AI object-review keep/drop decisions
+      object_detections.reviewed.cached.json  # Tier 1B — reviewed detector candidates
       zones.json
       object_inventory.json
       kpi_windows.json
@@ -472,6 +474,9 @@ scripts/
   build_fixtures.py             # one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding
   run_yolo_offline.py           # Tier 1B: produce tracks.cached.json + annotated_before.mp4
   detect_layout_objects.py      # Tier 1B: produce object_detections.cached.json static layout cache
+  benchmark_static_detectors.py # Tier 1B: compare YOLOv8x / RT-DETR-x / YOLO11x fairly
+  review_layout_objects_moondream.py  # Tier 1B: optional Moondream open-vocab detector
+  review_layout_objects_agent.py      # Tier 1B: Pydantic AI reviewer -> reviewed object cache
 ```
 
 Current status (2026-04-26): `pyproject.toml`, `app/`, `app/api/`,
@@ -489,6 +494,11 @@ Tier 1B lane via `app/vision/objects.py` and `scripts/detect_layout_objects.py`:
 the script runs high-accuracy YOLOv8x over the representative frame plus sampled
 video frames, aggregates duplicate furniture detections, and writes
 `object_detections.cached.json` for both `ai_cafe_a` and `real_cafe`.
+`benchmark_static_detectors.py` compares YOLOv8x, RT-DETR-x, and YOLO11x on
+the same frames; RT-DETR-x is higher-recall but visibly noisier, so the base
+cache stays YOLOv8x while the Pydantic AI `ObjectReviewAgent` writes stricter
+`object_detections.reviewed.cached.json` caches from detector candidates plus
+optional Moondream evidence.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -1276,6 +1286,8 @@ Tier 1A real-video checks:
 - [x] `uv run scripts/detect_layout_objects.py --session ai_cafe_a` runs high-accuracy YOLOv8x static layout detection and writes `object_detections.cached.json` with 31 aggregated furniture detections (`chair=15`, `dining table=7`, `couch=1`, `potted plant=8`) from 345 raw detections across 9 frames.
 - [x] `uv run scripts/detect_layout_objects.py --session real_cafe` writes `object_detections.cached.json` with 12 aggregated detections (`chair=11`, `dining table=1`) from 84 raw detections across 9 frames; real CCTV static furniture recall remains harder/noisier than the fake session.
 - [x] `load_object_detections_cache(...)` validates both static object caches and asserts geometry/source-frame/zone integrity.
+- [x] `uv run scripts/benchmark_static_detectors.py --session ai_cafe_a --no-annotated` compares YOLOv8x (31 objects), RT-DETR-x (48, higher recall/noisier), and YOLO11x (37, larger false table/counter boxes) on the same 9 frames.
+- [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. Moondream integration is implemented but not run locally because `MOONDREAM_API_KEY` is not in the process environment.
 
 Tier 1C live-KPI engine checks:
 
@@ -1298,6 +1310,17 @@ Tier 1D visible-perception checks (real CCTV in the canvas):
 - [x] New `cctv` toolbar toggle (next to `compare`). When ON in split mode, the left pane is the real CCTV and the right pane is the iso twin (active scenario + recommendation). When ON without split, the canvas shows real CCTV alone. Disabled state when no asset is available.
 - [x] On `?session=real_cafe`, both `realCctv` and `compareMode` auto-engage on first state load via a `useRef`-guarded effect (so the demo opens directly to the killer split: real CCTV ‖ iso twin).
 - [x] Verified end-to-end via Playwright MCP: `paneWidth=435, paneHeight=610, paused=false, currentTime>0` on real_cafe split-pane, and `paneWidth=877, currentTime>0` on ai_cafe_a single-pane after manual toggle.
+
+Tier 1E MuBit Agent Card checks (sponsor-platform depth):
+
+- [x] `app/mubit_agents.py::AgentCardSpec` defines a Pydantic-compatible spec (local_name, agent_id, role, description, system_prompt) for each Pydantic AI agent we want managed in MuBit's control plane.
+- [x] `bootstrap_mubit_agents(specs)` is idempotent: creates the `cafetwin` project on first run (or honours `MUBIT_PROJECT_ID` override), registers each agent via `POST /v2/control/projects/agents`, and only mints a new PromptVersion via `POST /v2/control/prompt/set` (`activate=true`) when the active content drifts from the in-code constant.
+- [x] `default_specs()` lazy-imports `app.agents.{pattern,optimization}_agent::INSTRUCTIONS` so the spec stays in sync with the agents' actual system prompts without forcing those imports at module load time.
+- [x] `is_enabled()` requires both `CAFETWIN_MUBIT_AGENTS=1` and `MUBIT_API_KEY`; FastAPI `@app.on_event("startup")` calls `bootstrap_mubit_agents` only when both are set; bootstrap exceptions are caught and logged so a missing Managed access never crashes the server.
+- [x] `app/memory.py::_resolve_agent_id(record)` routes `recommendation` + `feedback` records to `cafetwin-optimization-agent` (or whatever slug bootstrap registered) and `pattern` records to `cafetwin-pattern-agent`, falling back to the legacy single-agent slug when the registry is empty.
+- [x] `_mubit_remember`, `_mubit_content`, and `_mubit_metadata` accept a per-record `agent_id` so the MuBit `/v2/control/ingest` body, the embedded text, and the metadata all carry the resolved per-agent slug.
+- [x] `tests/test_mubit_agents.py` covers env gating, no-op when disabled, first-run create, idempotent re-run with unchanged prompt, prompt-drift mints new version, per-agent error swallowing, default_specs sanity, lane → agent_id dispatch in `_resolve_agent_id`, and registry-empty fallback (9 tests).
+- [x] Verified live: bootstrap on user's MuBit registered both `cafetwin-pattern-agent` and `cafetwin-optimization-agent` under project `proj-423c5721-c0ec-4aa6-9a2b-90ef12bbceca`; `/v2/control/projects/agents/list` returns the pair with their roles; `/api/run` writes memory records that surface in `/v2/control/activity` with `agent_id=cafetwin-optimization-agent`.
 
 ## Pitch copy (best-case demo recommendation)
 

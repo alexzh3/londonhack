@@ -1,11 +1,15 @@
 """FastAPI entrypoint for the CafeTwin MVP."""
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import config as _config
 from app.logfire_setup import configure_logfire, instrument_fastapi
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -39,6 +43,21 @@ def create_app() -> FastAPI:
             name="demo_data",
         )
     instrument_fastapi(app)
+
+    # Tier 1E: register PatternAgent + OptimizationAgent in MuBit Managed
+    # so the Console shows named agents with versioned system prompts.
+    # Gated by `CAFETWIN_MUBIT_AGENTS=1`; falls back silently otherwise.
+    @app.on_event("startup")
+    async def _bootstrap_mubit_agents() -> None:
+        from app.mubit_agents import bootstrap_mubit_agents, default_specs, is_enabled
+
+        if not is_enabled():
+            return
+        try:
+            await bootstrap_mubit_agents(default_specs())
+        except Exception as exc:
+            logger.warning("MuBit agent bootstrap raised: %s", exc)
+
     return app
 
 

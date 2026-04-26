@@ -17,10 +17,37 @@ from app.logfire_setup import span
 from app.schemas import LayoutChange, MemoryIntent, MemoryLane, MemoryRecord, PriorRecommendationMemory
 
 MUBIT_DEFAULT_ENDPOINT = "https://api.mubit.ai"
+# Legacy single-agent slug. Kept as the fallback for memory records whose
+# lane doesn't map cleanly to a registered MuBit AgentDefinition (and as
+# the default when Tier 1E `bootstrap_mubit_agents` hasn't run / opted in).
 MUBIT_AGENT_ID = "cafetwin-optimization-agent"
 RECOMMENDATION_LANE = "location:demo:recommendations"
 FEEDBACK_LANE = "location:demo:feedback"
+PATTERN_LANE = "location:demo:patterns"
 MemorySource = Literal["mubit", "jsonl"]
+
+
+def _resolve_agent_id(record: "MemoryRecord") -> str:
+    """Pick the MuBit agent_id for a memory record's MuBit ingest payload.
+
+    When Tier 1E (`CAFETWIN_MUBIT_AGENTS=1`) has registered AgentDefinitions
+    for both PatternAgent and OptimizationAgent, the per-lane mapping below
+    routes recommendations + feedback to the OptimizationAgent's slug and
+    pattern records to the PatternAgent's slug. Falls back to the legacy
+    single-agent slug when bootstrap hasn't run or the lane doesn't map.
+    """
+    from app.mubit_agents import (
+        OPTIMIZATION_AGENT_LOCAL,
+        PATTERN_AGENT_LOCAL,
+        get_agent_id,
+    )
+
+    if record.lane == PATTERN_LANE:
+        return get_agent_id(PATTERN_AGENT_LOCAL, MUBIT_AGENT_ID)
+    # Recommendations + feedback both flow through the OptimizationAgent's
+    # decision surface: the agent emits the LayoutChange, the user accepts
+    # or rejects it, and either way the feedback teaches the same agent.
+    return get_agent_id(OPTIMIZATION_AGENT_LOCAL, MUBIT_AGENT_ID)
 
 
 def new_memory_record(
@@ -160,18 +187,21 @@ async def _mubit_remember(record: MemoryRecord) -> str | None:
         if isinstance(stable_seed, str) and stable_seed
         else f"cafetwin_{uuid4().hex[:16]}"
     )
+    agent_id = _resolve_agent_id(record)
     body = {
         "run_id": session_id or "cafetwin-demo",
-        "agent_id": MUBIT_AGENT_ID,
+        "agent_id": agent_id,
         "items": [
             {
                 "item_id": item_id,
                 "content_type": "text",
-                "text": _mubit_content(record),
+                "text": _mubit_content(record, agent_id=agent_id),
                 "intent": record.intent,
                 "lane": record.lane,
-                "agent_id": MUBIT_AGENT_ID,
-                "metadata_json": json.dumps(_mubit_metadata(record), separators=(",", ":")),
+                "agent_id": agent_id,
+                "metadata_json": json.dumps(
+                    _mubit_metadata(record, agent_id=agent_id), separators=(",", ":")
+                ),
                 "occurrence_time": int(record.written_at.timestamp()),
             }
         ],
@@ -264,18 +294,20 @@ def _mubit_timeout() -> float:
     return float(os.getenv("MUBIT_TIMEOUT_S", "8"))
 
 
-def _mubit_content(record: MemoryRecord) -> str:
+def _mubit_content(record: MemoryRecord, *, agent_id: str = MUBIT_AGENT_ID) -> str:
     return (
-        f"CafeTwin {record.intent} memory on {record.lane} by {MUBIT_AGENT_ID}.\n"
+        f"CafeTwin {record.intent} memory on {record.lane} by {agent_id}.\n"
         f"CAFETWIN_MEMORY_RECORD_JSON={record.model_dump_json()}"
     )
 
 
-def _mubit_metadata(record: MemoryRecord) -> dict[str, Any]:
+def _mubit_metadata(
+    record: MemoryRecord, *, agent_id: str = MUBIT_AGENT_ID
+) -> dict[str, Any]:
     payload = record.payload if isinstance(record.payload, dict) else {}
     return {
         "app": "cafetwin",
-        "agent_id": MUBIT_AGENT_ID,
+        "agent_id": agent_id,
         "schema": "MemoryRecord",
         "lane": record.lane,
         "intent": record.intent,
