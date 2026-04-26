@@ -438,12 +438,21 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     let delta = externalTime - prev;
     lastExtRef.current = externalTime;
     if (delta < 0) {
-      // scrubbed backward — re-init
+      // scrubbed backward — re-init. Reuse the same simPoints-aware
+      // barista placement as the main init effect above.
       const customers = []; const baristas = [];
+      const sp = layout.simPoints || {};
       for (let i = 0; i < layout.baristas; i++) {
-        const bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
-        baristas.push({ id: i, home: { x: bx, y: -1.2 }, x: bx, y: -1.2,
-          target: { x: bx, y: -1.2 }, state: "idle", action: "", busyUntil: 0 });
+        let bx, by;
+        if (sp.baristaHome) {
+          bx = sp.baristaHome.x;
+          by = sp.baristaHome.y + (i - (layout.baristas - 1) / 2) * 1.0;
+        } else {
+          bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
+          by = -1.2;
+        }
+        baristas.push({ id: i, home: { x: bx, y: by }, x: bx, y: by,
+          target: { x: bx, y: by }, state: "idle", action: "", busyUntil: 0 });
       }
       stateRef.current = { ...S, customers, baristas, time: externalTime,
         nextSpawn: externalTime, orderQueue: [], drinkQueue: [],
@@ -510,13 +519,14 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     };
 
     // ── customer state machine
-    const queueFront = { x: 2.2, y: 0.6 };
+    const qF = S.queueFront;
+    const qDx = S.queueDx, qDy = S.queueDy;
     S.customers.forEach((c) => {
       switch (c.state) {
         case "walk_in": {
           // walk toward back of queue
           const slot = S.orderQueue.length;
-          const target = { x: queueFront.x + slot * 0.55, y: queueFront.y + slot * 0.18 };
+          const target = { x: qF.x + slot * qDx, y: qF.y + slot * qDy };
           c.target = target;
           c.action = "";
           if (moveTo(c, target)) {
@@ -534,7 +544,12 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
             const free = S.baristas.find(b => b.state === "idle");
             if (free) {
               free.state = "taking_order";
-              free.target = { x: free.home.x, y: 0.1 };
+              // The barista walks to the order spot at the front of
+              // their counter — `S.servePoint` if the layout supplies
+              // one, otherwise the legacy "step toward y=0" hint.
+              free.target = S.servePoint
+                ? { x: S.servePoint.x, y: S.servePoint.y }
+                : { x: free.home.x, y: 0.1 };
               free.action = "taking order";
               free.busyUntil = S.time + 1.6;
               free.assignedCust = c.id;
@@ -542,7 +557,7 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
               S.orderQueue.shift();
             }
           } else {
-            const target = { x: queueFront.x + idx * 0.55, y: queueFront.y + idx * 0.18 };
+            const target = { x: qF.x + idx * qDx, y: qF.y + idx * qDy };
             c.target = target;
             c.action = idx === 1 ? "next" : "";
             moveTo(c, target);
@@ -558,12 +573,12 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
           if (!b || b.state === "making_drink" || b.state === "serve") {
             c.state = "wait_drink";
             c.action = "waiting";
-            c.target = { x: 1.0, y: 1.0 };
+            c.target = { ...S.waitPoint };
           }
           break;
         }
         case "wait_drink": {
-          c.target = { x: 1.0, y: 1.0 };
+          c.target = { ...S.waitPoint };
           moveTo(c, c.target);
           // when barista delivers to drink_queue with this customer's id, we proceed
           if (c.gotDrink) {
@@ -630,7 +645,11 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
           b.action = "taking order";
           if (S.time >= b.busyUntil) {
             b.state = "making_drink";
-            b.target = { x: b.home.x + 0.4, y: -1.4 };
+            // Walk to the make-drink station — layout-supplied if any,
+            // otherwise the legacy "step further behind counter" hint.
+            b.target = S.makeDrink
+              ? { x: S.makeDrink.x, y: S.makeDrink.y }
+              : { x: b.home.x + 0.4, y: -1.4 };
             b.action = "making ☕";
             b.busyUntil = S.time + 2.6 + simHash(S.seed, b.id) * 1.4;
           }
@@ -641,7 +660,10 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
           b.action = "making ☕";
           if (S.time >= b.busyUntil) {
             b.state = "serve";
-            b.target = { x: b.home.x, y: -0.1 };
+            // Walk to the serve point at the front of the counter.
+            b.target = S.servePoint
+              ? { x: S.servePoint.x, y: S.servePoint.y }
+              : { x: b.home.x, y: -0.1 };
             b.action = "serving";
             b.busyUntil = S.time + 0.8;
           }

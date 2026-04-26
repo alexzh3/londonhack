@@ -62,15 +62,18 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
 }
 
 // Annotated-CCTV pane — plays the offline annotated video produced by
-// `scripts/render_rich_annotated_video.py`, which composites three
-// perception layers onto the raw CCTV: zone polygons (counter/queue/
-// pickup/seating/staff_path/entrance), static layout objects (chairs,
-// dining tables, couches, potted plants from YOLOv8x + ObjectReviewAgent),
-// and tracked persons (YOLOv8n + ByteTrack with stable track ids). Same
+// `scripts/render_rich_annotated_video.py`, which composites two
+// perception layers onto the raw CCTV: static layout objects (chairs,
+// dining tables, couches, potted plants from YOLOv8x + ObjectReviewAgent
+// — boxes + class labels with confidence) and tracked persons (YOLOv8n
+// + ByteTrack — boxes + stable track ids + zone label). Zones live in
+// zones.json and the agent stack uses them internally for KPI / pattern
+// detection, but we deliberately don't render the polygons on the video
+// because the large semi-transparent fills clutter the frame. Same
 // outer chrome as `CanvasPane` so it slots into the split-compare layout.
-// Tier 1D: makes the "perception is real, not a cartoon" claim visible to
-// anyone watching the demo. Used for both `real_cafe` (real CCTV) and
-// `ai_cafe_a` (AI-generated CCTV processed through the same pipeline).
+// Tier 1D: makes the "perception is real, not a cartoon" claim visible
+// to anyone watching the demo. Used for both `real_cafe` (real CCTV)
+// and `ai_cafe_a` (AI-generated CCTV processed through the same pipeline).
 function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -108,7 +111,7 @@ function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
         ]} />
       <div className={`cv-real-badge ${hasOverlays ? "" : "cv-real-badge-raw"}`}>
         {hasOverlays
-          ? "persons · static objects · zone polygons"
+          ? "person tracks · static layout objects"
           : "raw CCTV (no overlays cached)"}
       </div>
     </div>
@@ -324,7 +327,7 @@ function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, se
   const showRealLeft = !!(realCctv && realCctvUrl);
   const realLabel = sessionLabel || "CCTV";
   const realSub = realCctvHasOverlays
-    ? "tracks · objects · zones"
+    ? "tracks · objects"
     : "raw CCTV (no overlays cached)";
   return (
     <div className="canvas">
