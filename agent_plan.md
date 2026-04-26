@@ -371,7 +371,11 @@ GET /api/sessions ────────────────────�
 GET /api/state?session_id=ai_cafe_a ───────────────
   fixture status + KPI windows + zones + object inventory + pattern
   ↓
-POST /api/run {session_id: ai_cafe_a} ─────────────
+POST /api/run/stream {session_id: ai_cafe_a} ──────
+  SSE events: run_started → stage_started/completed →
+  recommendation_ready → run_completed (POST /api/run still returns the
+  same final RunResponse for tests/non-stream clients)
+  ↓
   build_pattern_evidence_bundle(state)      (zones + inventory + KPIs)
   ↓
   run_pattern_detection                     (PatternAgent: Pydantic AI output_validator
@@ -394,8 +398,9 @@ POST /api/run {session_id: ai_cafe_a} ─────────────
   ↓
   memory.write (lane=recommendations)       (MuBit primary + jsonl mirror)
   ↓
-  UI binds RunResponse: AgentFlow nodes light from stages[]; ChatPanel ToolCall
-  renders the real LayoutChange; ScenarioRail materialises a `recommended` chip;
+  UI binds streamed events + final RunResponse: ChatPanel ToolCall shows a
+  live stage log, AgentFlow nodes light from stages[], and the real
+  LayoutChange renders once run_completed arrives; ScenarioRail materialises a `recommended` chip;
   TopBar Logfire link uses logfire_trace_url; "Seen before" chip if
   prior_recommendation_count > 0, with accepted/rejected memory available
   to the agent prompt
@@ -443,7 +448,7 @@ app/
   logfire_setup.py              # init + span helpers
   api/
     main.py                     # FastAPI app + CORSMiddleware
-    routes.py                   # /api/sessions, /api/state, /api/run, /api/feedback, /api/memories, /api/logfire_url
+    routes.py                   # /api/sessions, /api/state, /api/run, /api/run/stream, /api/feedback, /api/memories, /api/logfire_url
   fallback.py                   # load sessions/<id>/recommendation.cached.json when the agent fails
   config.py                     # env vars, demo_data path
   sessions.py                   # discover sessions/<slug>/, parse SessionManifest, validate fixture presence
@@ -482,7 +487,7 @@ frontend/                       # existing Babel-in-browser demo — bind backen
   cafe-iso.jsx                  # SVG iso renderer (already built)
   tweaks-panel.jsx              # editable tweaks panel (already built; gains session select)
   cafetwin.css                  # 32KB stylesheet (already built)
-  api.js                        # NEW: fetch wrappers — listSessions, getState, postRun, postFeedback, getMemories, getLogfireUrl
+  api.js                        # NEW: fetch wrappers — listSessions, getState, postRun, postRunStream, postFeedback, getMemories, getLogfireUrl
 models/                         # gitignored local model cache
   ultralytics/                  # active YOLO .pt weights used by vision scripts
 images/                         # gitignored generated screenshots / annotated still images
@@ -1391,6 +1396,13 @@ Tier 1F live-object-inventory checks (vision → agent inventory bridge):
 - [x] Logfire span `object_inventory.augment_live` joins the trace tree inside `evidence_pack.build/state` (only fires when augmentation engages).
 - [x] Verified live: `state("real_cafe")` returns 19 objects (10 fixture + 9 vision); `build("real_cafe")` likewise. `cached_recommendation.target_id="service_lane_marker_1"` still in `inventory.objects`. `/api/run real_cafe` returns 4 stages all 'done', `used_fallback=False`, fingerprint `real_cafe_open_right_service_lane_v4`. `state("ai_cafe_a")` returns 37 objects (16 fixture + 21 vision).
 - [x] `tests/test_live_inventory.py` covers: class mapping coverage, person exclusion, scene-object dict shape, couch→chair mapping, IoU dedup against fixture, non-overlap keep, unmapped-class drop, real-cafe augmentation count, force-fixture env disable, target_id survival, missing-cache no-op, counts_by_kind aggregation, assets unaffected, reviewed-cache preferred (14 tests).
+
+Streaming response checks:
+
+- [x] `POST /api/run/stream` wraps the same backend pipeline as `POST /api/run` and emits SSE events for run start, each stage start/completion, `recommendation_ready`, and final `run_completed` with the canonical `RunResponse`.
+- [x] `frontend/api.js::postRunStream()` consumes the SSE response with `fetch` + `ReadableStream`, dispatches parsed events to `useBackend()`, and falls back to the non-stream run path when streaming bodies are unavailable.
+- [x] `ChatPanel` renders the live event feed in the `optimize.layout` ToolCall while the backend is running, then swaps to the existing validated recommendation card after `run_completed`.
+- [x] `tests/test_api.py::test_run_event_stream_yields_progress_and_final_response` verifies stream order and final fallback response; full `./scripts/test.sh` passes with 94 tests and Ruff clean.
 
 ## Pitch copy (best-case demo recommendation)
 

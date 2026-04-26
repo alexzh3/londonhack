@@ -717,6 +717,30 @@ button { font: inherit; color: inherit; cursor: default; }
 }
 .tc-result code { color: var(--fg); background: var(--bg-3); padding: 0 4px; border-radius: 2px; }
 
+.stream-rows {
+  display: flex; flex-direction: column; gap: 4px;
+  color: var(--fg-2);
+}
+.stream-row {
+  display: flex; align-items: center; gap: 6px;
+  min-height: 16px;
+}
+.stream-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(160,106,20,0.11);
+}
+.stream-stage_completed .stream-dot,
+.stream-recommendation_ready .stream-dot,
+.stream-run_completed .stream-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(74,124,42,0.11);
+}
+.stream-error .stream-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(160,40,40,0.11);
+}
+
 .chat-thinking {
   display: flex; align-items: center; gap: 6px;
   font-family: var(--mono); font-size: 10.5px;

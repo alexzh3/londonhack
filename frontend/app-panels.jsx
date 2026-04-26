@@ -66,7 +66,7 @@ function TopBar({ scenarioName, onOpenSession, onOpenTrace, onOpenMemories, logf
   const statusClass = backendStatus === "loading" ? "warn"
                     : backendStatus === "error" ? "bad"
                     : "ok";
-  const statusLabel = backendStatus === "loading" ? "running /api/run"
+  const statusLabel = backendStatus === "loading" ? "streaming /api/run"
                     : backendStatus === "error" ? "backend error"
                     : "backend ready";
   return (
@@ -279,6 +279,38 @@ function ChatMessage({ from, time, children, traceId }) {
   );
 }
 
+function streamEventLabel(entry) {
+  const event = entry && entry.event;
+  const data = (entry && entry.data) || {};
+  if (event === "run_started") return `session ${data.session_id} · streaming /api/run`;
+  if (event === "stage_started") return `${data.name} · running`;
+  if (event === "stage_completed") {
+    const stage = data.stage || {};
+    const status = stage.status === "fallback" ? "fallback" : "done";
+    return `${stage.name || "stage"} · ${status}${data.message ? " · " + data.message : ""}`;
+  }
+  if (event === "recommendation_ready") return `candidate selected · ${data.title}`;
+  if (event === "run_completed") return "typed LayoutChange ready · memory written";
+  if (event === "error") return `stream error · ${data.status_code || "unknown"}`;
+  return event;
+}
+
+function RunStreamRows({ events }) {
+  const rows = (events && events.length ? events : [
+    { event: "stage_started", data: { name: "connecting" } },
+  ]).slice(-7);
+  return (
+    <div className="stream-rows">
+      {rows.map((entry, i) => (
+        <div className={`stream-row stream-${entry.event}`} key={`${entry.event}-${i}`}>
+          <span className="stream-dot" />
+          <span>{streamEventLabel(entry)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // LiveRecommendation — renders the real OptimizationAgent LayoutChange
 // inside the existing ToolCall visual frame, with Accept/Reject controls
 // wired to /api/feedback via onSubmitFeedback. Replaces the previous mocked
@@ -289,6 +321,7 @@ function LiveRecommendation({
   usedFallback,
   loading,
   error,
+  runEvents,
   onSubmitFeedback,
   onDecision,
 }) {
@@ -329,13 +362,16 @@ function LiveRecommendation({
   };
 
   if (loading) {
+    const last = runEvents && runEvents.length ? runEvents[runEvents.length - 1] : null;
+    const args = JSON.stringify({
+      phase: last ? streamEventLabel(last) : "connecting to /api/run/stream",
+    }, null, 2);
     return (
       <ToolCall
         name="optimize.layout"
         status="running"
-        args={JSON.stringify({
-          phase: "evidence_pack → optimization_agent → memory_write",
-        }, null, 2)}
+        args={args}
+        result={<RunStreamRows events={runEvents} />}
       />
     );
   }
@@ -421,7 +457,7 @@ function LiveRecommendation({
 
 function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
     layoutChange, priorRecommendationCount, usedFallback,
-    backendLoading, backendError, onSubmitFeedback, onRecDecision }) {
+    backendLoading, backendError, runEvents, onSubmitFeedback, onRecDecision }) {
   const isBaseline = scenario.name === "baseline";
   const args = JSON.stringify({
     scenario_id: scenario.name,
@@ -476,6 +512,7 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
           usedFallback={usedFallback}
           loading={backendLoading}
           error={backendError}
+          runEvents={runEvents}
           onSubmitFeedback={onSubmitFeedback}
           onDecision={onRecDecision}
         />

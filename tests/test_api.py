@@ -62,6 +62,29 @@ def test_run_endpoint_returns_valid_fallback_response(monkeypatch, tmp_path):
     assert config.MEMORY_JSONL_PATH.exists()
 
 
+def test_run_event_stream_yields_progress_and_final_response(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAFETWIN_FORCE_FALLBACK", "1")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+
+    async def collect():
+        return [event async for event in routes._run_event_stream("ai_cafe_a")]
+
+    events = anyio.run(collect)
+    names = [event["event"] for event in events]
+    final = events[-1]["data"]["response"]
+
+    assert names[:2] == ["run_started", "stage_started"]
+    assert "recommendation_ready" in names
+    assert names[-1] == "run_completed"
+    assert final["layout_change"]["fingerprint"] == "ai_cafe_a_open_pickup_lane_v1"
+    assert [stage["name"] for stage in final["stages"]] == [
+        "evidence_pack",
+        "pattern_agent",
+        "optimization_agent",
+        "memory_write",
+    ]
+
+
 def test_run_endpoint_returns_real_cafe_fallback_response(monkeypatch, tmp_path):
     monkeypatch.setenv("CAFETWIN_FORCE_FALLBACK", "1")
     monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")

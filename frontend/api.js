@@ -55,6 +55,66 @@ async function _request(path, { method = "GET", body, query } = {}) {
   return data;
 }
 
+async function _streamRequest(path, { method = "GET", body, onEvent } = {}) {
+  const res = await fetch(API_BASE + path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream",
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    const detail = data && (data.detail ?? data.error ?? data);
+    const err = new Error(`${method} ${path} → ${res.status}`);
+    err.status = res.status;
+    err.detail = detail;
+    throw err;
+  }
+  if (!res.body || !res.body.getReader) {
+    return _request("/api/run", { method: "POST", body });
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResponse = null;
+  let streamError = null;
+
+  const dispatch = (block) => {
+    let event = "message";
+    const dataLines = [];
+    for (const raw of block.split(/\r?\n/)) {
+      if (raw.startsWith("event:")) event = raw.slice(6).trim();
+      if (raw.startsWith("data:")) dataLines.push(raw.slice(5).trimStart());
+    }
+    if (!dataLines.length) return;
+    const data = JSON.parse(dataLines.join("\n"));
+    if (onEvent) onEvent({ event, data });
+    if (event === "run_completed") finalResponse = data.response;
+    if (event === "error") {
+      streamError = new Error(`${method} ${path} → ${data.status_code || "stream error"}`);
+      streamError.detail = data.detail;
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n/);
+    buffer = blocks.pop() || "";
+    blocks.forEach(dispatch);
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) dispatch(buffer);
+  if (streamError) throw streamError;
+  if (!finalResponse) throw new Error(`${method} ${path} ended without run_completed`);
+  return finalResponse;
+}
+
 // Resolve a backend-relative asset path (e.g. "demo_data/sessions/.../frame.jpg")
 // against API_BASE so the browser fetches it from the FastAPI static mount. On
 // Vercel deployments API_BASE is empty and vercel.json rewrites these paths to
@@ -74,6 +134,12 @@ const cafetwinApi = {
   listSessions: () => _request("/api/sessions"),
   getState: (sessionId) => _request("/api/state", { query: { session_id: sessionId } }),
   postRun: (sessionId) => _request("/api/run", { method: "POST", body: { session_id: sessionId } }),
+  postRunStream: (sessionId, { onEvent } = {}) =>
+    _streamRequest("/api/run/stream", {
+      method: "POST",
+      body: { session_id: sessionId },
+      onEvent,
+    }),
   postFeedback: ({ sessionId, patternId, proposalFingerprint, decision, reason }) =>
     _request("/api/feedback", {
       method: "POST",

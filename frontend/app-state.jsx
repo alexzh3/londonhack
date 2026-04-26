@@ -103,6 +103,8 @@ function scenarioFromLayoutChange(lc, base) {
 function useBackend(sessionId) {
   const [state, setState] = React.useState(null);
   const [run, setRun] = React.useState(null);
+  const [runEvents, setRunEvents] = React.useState([]);
+  const [streaming, setStreaming] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
 
@@ -114,18 +116,28 @@ function useBackend(sessionId) {
       return;
     }
     setLoading(true);
+    setStreaming(false);
     setError(null);
+    setRun(null);
+    setRunEvents([]);
     try {
       const s = await cafetwinApi.getState(sessionId);
       setState(s);
       if (s.missing_required && s.missing_required.length) {
         throw new Error(`session ${sessionId} missing fixtures: ${s.missing_required.join(", ")}`);
       }
-      const r = await cafetwinApi.postRun(sessionId);
+      const onEvent = (event) => {
+        setRunEvents((prev) => [...prev, { ...event, at: new Date().toISOString() }]);
+      };
+      setStreaming(true);
+      const r = cafetwinApi.postRunStream
+        ? await cafetwinApi.postRunStream(sessionId, { onEvent })
+        : await cafetwinApi.postRun(sessionId);
       setRun(r);
     } catch (err) {
       setError((err && err.message) || String(err));
     } finally {
+      setStreaming(false);
       setLoading(false);
     }
   }, [sessionId]);
@@ -145,7 +157,7 @@ function useBackend(sessionId) {
     });
   }, [run, state, sessionId]);
 
-  return { state, run, loading, error, refresh, submitFeedback };
+  return { state, run, runEvents, streaming, loading, error, refresh, submitFeedback };
 }
 
 // Stage timing helpers for the AgentFlow panel. Backend returns 4 stages
