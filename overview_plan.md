@@ -222,14 +222,14 @@ Upgrade the UI; backend gains a second agent.
 | Frontend (Tier 2 optional) | Vite + React 18 + TypeScript + Tailwind + shadcn/ui |
 | Twin (MVP) | Existing SVG iso renderer in `frontend/cafe-iso.jsx` |
 | Twin (Tier 2) | `@react-three/fiber` + `drei`, driven by typed `TwinLayout` |
-| Hosting | Render backends + Vercel static frontends: MVP stays on Vercel project `frontend` at `https://frontend-hazel-xi-17.vercel.app/cafetwin.html` with `/api/*` rewritten to `https://cafetwin-backend.onrender.com/api/*`; Tier 1 is split onto Vercel project `frontend-tier1` at `https://frontend-tier1.vercel.app/cafetwin.html` with `/api/*` rewritten to `https://cafetwin-backend-tier1.onrender.com/api/*` |
+| Hosting | Render backends + Vercel static frontends: MVP stays on Vercel project `frontend` at `https://frontend-hazel-xi-17.vercel.app/cafetwin.html` with `/api/*` rewritten to `https://cafetwin-backend.onrender.com/api/*`; Tier 1 is split onto Vercel project `frontend-tier1` at `https://frontend-tier1.vercel.app/cafetwin.html` with `/api/*` rewritten to `https://cafetwin-backend-tier1.onrender.com/api/*`. Tier 1 Render installs with `uv sync --python 3.12 --no-install-project` so uv uses Render's provisioned Python instead of the local `.python-version` 3.13 pin. |
 
 ## Sponsor-tool fit
 
 - **Pydantic AI:** two typed agents in MVP, sequenced on every `/api/run` — `PatternAgent` (typed `OperationalPattern`) feeds `OptimizationAgent` (typed `LayoutChange`). Both use `output_validator` + `ModelRetry` + cached fixture fallback. Tier 2 adds `SceneBuilderAgent`.
 - **Logfire:** one trace per `/api/run` covering evidence pack + recall, optimization agent, validation, and memory write. Plus a smaller `/api/feedback` trace.
 - **MuBit:** primary memory store. MVP uses writes for raw recommendation + feedback events, then recall derives a decision-aware view of prior recommendations on the same pattern so the optimizer can favor accepted ideas and avoid rejected repeats. The UI surfaces this as a "Seen before" chip and the Memories modal. Tier 1 adds KPI/inventory/pattern lanes. Local jsonl is a hot fallback always written in parallel per AGENTS.md.
-- **Render:** hosted Tier 1 backend demo URL from the `cafetwin-backend-tier1` service. Render installs dependencies from `uv.lock` without packaging the repo, avoiding flat-layout discovery of frontend/demo folders.
+- **Render:** hosted Tier 1 backend demo URL from the `cafetwin-backend-tier1` service. Render installs dependencies from `uv.lock` with `uv sync --python 3.12 --no-install-project`, avoiding flat-layout discovery of frontend/demo folders and bypassing the local `.python-version` 3.13 pin.
 - **Vercel:** static frontend host for the flat `frontend/cafetwin.html` demo. MVP and Tier 1 are separate projects/URLs: `frontend` for the MVP backend and `frontend-tier1` for the Tier 1 Render backend. `deploy_vercel.sh` writes `frontend/vercel.json`; pass `CAFETWIN_RENDER_URL` inline for deploys so the CLI does not inherit local secret env.
 
 ## 18h Build Plan (2-person split: A=backend, B=frontend bindings)

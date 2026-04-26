@@ -196,54 +196,85 @@ function FloorMat({ x, y, w = 2, d = 1.5, color = "#5a3a28" }) {
 
 // ── Procedural layout ─────────────────────────────────────────────────────
 // `EXPLICIT_BASELINE_LAYOUT` mirrors the AI-cafe video frame at
-// `demo_data/sessions/ai_cafe_a/frame.jpg`: an L-shaped counter (espresso
-// bar across the top, register column down the left), a brown leather
-// couch + bookshelf in the back-middle alcove, five 2-top tables (one
-// near the couch, three along the right window wall, one in the central
-// floor), two area rugs in the central walkway, and a couple of plants.
-// The chair offsets give two seats per table to match the 2-top wood
-// chairs visible in the video. We use this when scenarioName === "baseline"
-// instead of the procedural grid so the demo's iso twin reads as the same
-// physical cafe as the looping CCTV pane to its left.
+// `demo_data/sessions/ai_cafe_a/frame.jpg`. The reference image shows a
+// long, narrow cafe with the counter running along the LEFT wall from
+// the front (where the barista works at the espresso machine) all the way
+// to the back, a brick alcove in the back-middle holding a brown leather
+// couch + bookshelf + a few potted plants, and five 2-top tables spread
+// across the right side of the floor (one near the couch, three along
+// the right window wall, one in the central floor). Two dark floor mats
+// run down the central walkway between the counter and the dining area.
+//
+// In iso tile coordinates, x grows left-to-right and y grows back-to-
+// front, so the "left wall counter" maps to a low-x, varying-y strip and
+// the "back wall alcove" sits at low-y. The layout also carries explicit
+// `simPoints` so the procedural simulation (`useCafeSim`) puts the
+// barista at her actual workstation and queues customers in the right
+// place, instead of the default top-edge counter geometry that the
+// procedural grid layouts assume.
 const EXPLICIT_BASELINE_LAYOUT = {
-  floorW: 13,
-  floorH: 9,
-  counterW: 5,
-  // Multi-segment counter forms the L. The "primary" segment is the top
-  // one, where the espresso machine + grinder live and where the queue
-  // ends. The left segment is the register/POS extension running down
-  // toward the floor.
+  floorW: 14,
+  floorH: 7,
+  counterW: 2,
+  // Single long counter along the LEFT WALL (not an L — the video shows
+  // one continuous bar). `showFixtures` puts the espresso machine + cash
+  // register on this segment.
   counterSegments: [
-    { x: 1, y: -1, w: 5, d: 1, showFixtures: true },
-    { x: 0, y: 0, w: 1, d: 4, showFixtures: false },
+    { x: 0, y: 0, w: 2, d: 5.5, showFixtures: true },
   ],
-  // Five 2-top tables, ordered roughly back-to-front so the recommendation
-  // hash points at varied targets. Index 0 is the "couple table" by the
-  // couch (the natural target for `service_lane_marker_1`-style moves).
+  // Five 2-top tables. Index 0 is the "couple table" near the couch (the
+  // natural target for service-lane-style moves). Positions chosen to
+  // match the actual furniture footprint in the video.
   tablePositions: [
-    { x: 5.5, y: 2.4 },
-    { x: 9.0, y: 2.6 },
-    { x: 11.4, y: 2.4 },
-    { x: 7.5, y: 5.5 },
-    { x: 11.2, y: 5.4 },
-    { x: 11.0, y: 7.4 },
+    { x: 5.5, y: 2.0 },     // T0: couple table near couch
+    { x: 8.5, y: 2.4 },     // T1: middle-back table
+    { x: 11.5, y: 2.0 },    // T2: back-right window table (newspaper guy)
+    { x: 8.0, y: 4.5 },     // T3: middle-floor table
+    { x: 11.5, y: 4.4 },    // T4: middle-right window
+    { x: 12.0, y: 6.0 },    // T5: front-right window (woman with laptop)
   ],
-  // 2 chairs per table (wood chairs in the video are arranged across from
-  // each other, not around the table — keeps the scene readable).
+  // 2 chairs per table — wood chairs in the video sit across from each
+  // other on the long axis of the table, not around it.
   chairOffsets: [{ dx: -0.6, dy: 0 }, { dx: 0.6, dy: 0 }],
-  // Background extras: couch + bookshelf along back wall, a few plants
-  // dotted around, two floor mats in the central walkway. Order doesn't
-  // matter — the renderer sorts by sortY.
+  // Back-wall alcove (couch + bookshelf + plants) and the central
+  // walkway mats. Renderer sorts by sortY so order in this array doesn't
+  // matter.
   extras: [
-    { type: "couch", x: 6.7, y: 0.4, w: 2.4, d: 0.8 },
-    { type: "bookshelf", x: 5.2, y: 0.0, w: 1.2, d: 0.7 },
+    { type: "couch", x: 7.0, y: 0.4, w: 2.6, d: 0.9 },
+    { type: "bookshelf", x: 5.4, y: 0.0, w: 1.3, d: 0.7 },
     { type: "plant", x: 4.4, y: 0.3 },
-    { type: "plant", x: 9.5, y: 0.3 },
-    { type: "plant", x: 12.2, y: 0.4 },
-    { type: "plant", x: -0.5, y: 5.0 },
-    { type: "mat", x: 5.0, y: 4.0, w: 2.4, d: 1.4, color: "#6a4530" },
-    { type: "mat", x: 5.0, y: 6.6, w: 2.4, d: 1.4, color: "#6a4530" },
+    { type: "plant", x: 10.0, y: 0.3 },
+    { type: "plant", x: 12.8, y: 0.4 },
+    { type: "plant", x: 13.6, y: 5.5 },
+    { type: "mat", x: 4.5, y: 3.6, w: 3.0, d: 1.4, color: "#5e3e2a" },
+    { type: "mat", x: 4.5, y: 5.4, w: 3.0, d: 1.4, color: "#5e3e2a" },
   ],
+  // Sim hints — where the barista lives, where customers queue, where
+  // they walk to to order/wait/exit. With the counter on the LEFT wall,
+  // these all live in the low-x band rather than the procedural default
+  // (which assumes a top-edge counter at low y).
+  simPoints: {
+    // Barista stands inside the counter footprint; customers approach
+    // from the right (interior of cafe).
+    baristaHome: { x: 1.0, y: 3.5 },
+    // Customer order point — in front of the counter, at espresso area.
+    orderPoint: { x: 2.4, y: 4.0 },
+    counterFront: { x: 2.2, y: 4.0 },
+    // Queue grows downward (toward entrance) from the order point.
+    queueFront: { x: 2.6, y: 5.0 },
+    queueDx: 0.0,
+    queueDy: 0.55,
+    // Where customers wait for their drink (just to the right of order).
+    waitPoint: { x: 3.5, y: 4.5 },
+    // Customers enter from the bottom-right (door + windows in video)
+    // and exit the same way.
+    entryPoint: { x: 14.5, y: 7.5 },
+    exitPoint: { x: 14.5, y: 7.5 },
+    // Barista-make-drink station (stays inside counter, slightly back).
+    makeDrinkPoint: { x: 0.7, y: 3.0 },
+    // Barista-serve point at the front of the counter.
+    servePoint: { x: 1.7, y: 4.0 },
+  },
 };
 
 
@@ -326,18 +357,39 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
   React.useEffect(() => {
     const customers = [];
     const baristas = [];
-    // counter point — front-of-counter pickup spot
-    const counterFront = { x: 1.2, y: 0.3 };
-    const orderPoint   = { x: 1.5, y: 0.4 };
-    const exitPoint    = { x: -0.5, y: layout.floorH + 0.5 };
-    const entryPoint   = { x: layout.floorW + 0.5, y: layout.floorH + 0.5 };
+    // The procedural grid layout doesn't carry simPoints, so we synthesise
+    // them from `counterW` / `floorH` and pretend the counter sits along
+    // the top edge (legacy behaviour). The hand-tuned baseline overrides
+    // these via `layout.simPoints` so its left-wall counter actually
+    // gets queued against.
+    const sp = layout.simPoints || {};
+    const counterFront = sp.counterFront || { x: 1.2, y: 0.3 };
+    const orderPoint   = sp.orderPoint   || { x: 1.5, y: 0.4 };
+    const queueFront   = sp.queueFront   || { x: 2.2, y: 0.6 };
+    const queueDx      = sp.queueDx ?? 0.55;
+    const queueDy      = sp.queueDy ?? 0.18;
+    const waitPoint    = sp.waitPoint    || { x: 1.0, y: 1.0 };
+    const exitPoint    = sp.exitPoint    || { x: -0.5, y: layout.floorH + 0.5 };
+    const entryPoint   = sp.entryPoint   || { x: layout.floorW + 0.5, y: layout.floorH + 0.5 };
+    const makeDrink    = sp.makeDrinkPoint || null;
+    const servePoint   = sp.servePoint    || null;
 
     for (let i = 0; i < layout.baristas; i++) {
-      const bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
+      let bx, by;
+      if (sp.baristaHome) {
+        // Custom layout: spread the (potentially multiple) baristas
+        // along the counter's vertical extent, since the counter is on
+        // a wall, not the top edge.
+        bx = sp.baristaHome.x;
+        by = sp.baristaHome.y + (i - (layout.baristas - 1) / 2) * 1.0;
+      } else {
+        bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
+        by = -1.2;
+      }
       baristas.push({
-        id: i, home: { x: bx, y: -1.2 },
-        x: bx, y: -1.2,
-        target: { x: bx, y: -1.2 },
+        id: i, home: { x: bx, y: by },
+        x: bx, y: by,
+        target: { x: bx, y: by },
         state: "idle", action: "", busyUntil: 0,
       });
     }
@@ -363,6 +415,7 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     stateRef.current = {
       customers, baristas,
       counterFront, orderPoint, exitPoint, entryPoint,
+      queueFront, queueDx, queueDy, waitPoint, makeDrink, servePoint,
       time: 0, nextSpawn: 0,
       orderQueue: [],   // customer IDs waiting at counter
       drinkQueue: [],   // {custId, doneAt}
