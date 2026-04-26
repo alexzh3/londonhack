@@ -1,0 +1,190 @@
+[
+  {
+    "id": "counter",
+    "name": "Main service counter and POS",
+    "kind": "counter",
+    "polygon": [
+      [
+        470,
+        95
+      ],
+      [
+        1015,
+        70
+      ],
+      [
+        1030,
+        335
+      ],
+      [
+        535,
+        380
+      ],
+      [
+        455,
+        220
+      ]
+    ],
+    "color_hex": "#2563eb",
+    "source": "manual",
+    "confidence": 0.82
+  },
+  {
+    "id": "pickup",
+    "name": "Pickup and handoff shelf",
+    "kind": "pickup",
+    "polygon": [
+      [
+        650,
+        100
+      ],
+      [
+        1005,
+        90
+      ],
+      [
+        995,
+        250
+      ],
+      [
+        620,
+        275
+      ],
+      [
+        570,
+        170
+      ]
+    ],
+    "color_hex": "#16a34a",
+    "source": "manual",
+    "confidence": 0.74
+  },
+  {
+    "id": "queue",
+    "name": "Right-side customer queue / waiting edge",
+    "kind": "queue",
+    "polygon": [
+      [
+        1025,
+        230
+      ],
+      [
+        1235,
+        245
+      ],
+      [
+        1250,
+        655
+      ],
+      [
+        1050,
+        650
+      ],
+      [
+        985,
+        420
+      ]
+    ],
+    "color_hex": "#f97316",
+    "source": "manual",
+    "confidence": 0.7
+  },
+  {
+    "id": "staff_path",
+    "name": "Prep island to counter circulation lane",
+    "kind": "staff_path",
+    "polygon": [
+      [
+        300,
+        345
+      ],
+      [
+        575,
+        260
+      ],
+      [
+        760,
+        300
+      ],
+      [
+        1090,
+        410
+      ],
+      [
+        1025,
+        690
+      ],
+      [
+        525,
+        700
+      ],
+      [
+        295,
+        560
+      ]
+    ],
+    "color_hex": "#a855f7",
+    "source": "manual",
+    "confidence": 0.72
+  },
+  {
+    "id": "seating",
+    "name": "Customer seating nook",
+    "kind": "seating",
+    "polygon": [
+      [
+        225,
+        25
+      ],
+      [
+        535,
+        15
+      ],
+      [
+        560,
+        155
+      ],
+      [
+        455,
+        205
+      ],
+      [
+        235,
+        180
+      ]
+    ],
+    "color_hex": "#0891b2",
+    "source": "manual",
+    "confidence": 0.78
+  },
+  {
+    "id": "entrance",
+    "name": "Right entrance and back-room threshold",
+    "kind": "entrance",
+    "polygon": [
+      [
+        1120,
+        135
+      ],
+      [
+        1279,
+        135
+      ],
+      [
+        1279,
+        719
+      ],
+      [
+        1135,
+        719
+      ],
+      [
+        1075,
+        500
+      ]
+    ],
+    "color_hex": "#dc2626",
+    "source": "manual",
+    "confidence": 0.66
+  }
+]

@@ -85,7 +85,18 @@ button { font: inherit; color: inherit; cursor: default; }
   background: var(--bg-1);
   overflow: hidden;
 }
-.panel-flow { border-right: 1px solid var(--line); overflow-y: auto; }
+.panel-flow {
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  /* Themed scrollbar so the left panel matches the chat-stream + scenarios
+     rail under both light and dark themes (`--line-2` swaps via :root[data-theme]). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.panel-flow::-webkit-scrollbar { width: 8px; }
+.panel-flow::-webkit-scrollbar-track { background: transparent; }
+.panel-flow::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+.panel-flow::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
 .panel-chat { border-left: 1px solid var(--line); }
 
 .panel-hd {
@@ -360,6 +371,102 @@ button { font: inherit; color: inherit; cursor: default; }
   border-radius: 3px;
 }
 
+/* Tier 1D — annotated CCTV pane styling. Drops the iso-pane chrome look
+ * in favour of a flat dark "video monitor" feel so the perception
+ * overlays (persons + static objects + zones) read as a CV feed, not a
+ * synthetic scene.
+ *
+ * `flex: 1; min-width: 0` is required because the pane only contains
+ * absolutely-positioned content; without explicit sizing it collapses
+ * to 0×0 in the parent's single-pane flex layout. The iso pane gets
+ * around this naturally via its SVG's intrinsic dimensions. */
+.cv-real-pane {
+  background: #050608;
+  flex: 1;
+  min-width: 0;
+}
+/* Foreground video — the actual annotated CCTV the viewer reads. We use
+ * `contain` so the whole annotated frame is visible (no crop), even when
+ * the pane's aspect ratio doesn't match the video's. The letterbox area
+ * that `contain` would otherwise leave as pure black is filled by the
+ * `cv-real-video-bg` element below. */
+.cv-real-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: transparent;
+  z-index: 1;
+}
+
+/* Blurred backdrop video — second <video> element playing the same src
+ * as the foreground. Uses `cover` + heavy blur so it crop-fills the
+ * pane behind the foreground, turning the letterbox void into a soft
+ * ambient colour echo of the frame. `transform: scale(1.1)` hides the
+ * blur-softened edges that would otherwise bleed in from outside the
+ * pane. Muted + paused-time-sync via JS keeps it in step with the
+ * foreground. */
+.cv-real-video-bg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  /* Heavy blur turns the video into a soft colour smear; we give it a
+   * gentle boost (the source CCTV is brown-on-brown wood and reads as
+   * near-black after blur otherwise) and a slight desat so the smear
+   * never competes with the foreground. `transform: scale(1.15)` over-
+   * scans so the blur-softened edges never bleed inside the pane. */
+  filter: blur(24px) brightness(1.15) saturate(0.85);
+  transform: scale(1.15);
+  background: #050608;
+  z-index: 0;
+  pointer-events: none;
+}
+.cv-real-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px;
+  color: var(--fg-3);
+  font-family: var(--mono); font-size: 11px;
+  background: repeating-linear-gradient(
+    45deg, #0a0c10, #0a0c10 8px, #0d1015 8px, #0d1015 16px);
+}
+.cv-real-empty small { color: var(--fg-3); opacity: 0.7; }
+.cv-real-empty code {
+  background: rgba(255,255,255,0.06); padding: 1px 4px; border-radius: 2px;
+}
+.cv-real-badge {
+  position: absolute; left: 12px; bottom: 38px;
+  font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--accent-2);
+  background: rgba(8, 11, 16, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 8px; border-radius: 3px;
+  pointer-events: none;
+}
+.cv-real-badge::before {
+  content: "● "; color: #f04646; font-size: 10px;
+  margin-right: 2px;
+  animation: cv-real-rec 1.6s ease-in-out infinite;
+}
+.cv-real-badge-raw {
+  color: var(--fg-2);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.cv-real-badge-raw::before {
+  color: var(--fg-3); animation: none;
+}
+@keyframes cv-real-rec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.cv-real-pane .cv-axes { color: rgba(255, 255, 255, 0.45); }
+
+.cv-toggle-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .cv-overlay {
   position: absolute; top: 12px;
   font-family: var(--mono); font-size: 10.5px;
@@ -609,6 +716,30 @@ button { font: inherit; color: inherit; cursor: default; }
   padding: 5px 9px; font-family: var(--mono); font-size: 10.5px; color: var(--accent);
 }
 .tc-result code { color: var(--fg); background: var(--bg-3); padding: 0 4px; border-radius: 2px; }
+
+.stream-rows {
+  display: flex; flex-direction: column; gap: 4px;
+  color: var(--fg-2);
+}
+.stream-row {
+  display: flex; align-items: center; gap: 6px;
+  min-height: 16px;
+}
+.stream-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(160,106,20,0.11);
+}
+.stream-stage_completed .stream-dot,
+.stream-recommendation_ready .stream-dot,
+.stream-run_completed .stream-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(74,124,42,0.11);
+}
+.stream-error .stream-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(160,40,40,0.11);
+}
 
 .chat-thinking {
   display: flex; align-items: center; gap: 6px;

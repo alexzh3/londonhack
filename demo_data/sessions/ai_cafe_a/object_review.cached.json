@@ -1,0 +1,170 @@
+{
+  "schema_version": "cafetwin.object_review.v1",
+  "session_id": "ai_cafe_a",
+  "decisions": [
+    {
+      "detection_id": "chair_001",
+      "action": "drop",
+      "reason": "Very small area (~1099 px), low confidence (0.28) and low mean confidence (0.23). Though supported across all 9 frames, the tiny bounding box (43×25 px) and zone_id=null suggest an edge fragment or background noise rather than a real chair. No VLM support."
+    },
+    {
+      "detection_id": "chair_002",
+      "action": "keep",
+      "reason": "Moderate-to-good confidence (0.58 peak, 0.48 mean), supported across all 9 frames, located in counter zone which is consistent with bar/counter seating."
+    },
+    {
+      "detection_id": "chair_003",
+      "action": "keep",
+      "reason": "High confidence (0.76 peak, 0.67 mean), 8-frame support, reasonable area (~3216 px) in counter zone. Consistent detection of a counter stool/chair."
+    },
+    {
+      "detection_id": "chair_004",
+      "action": "keep",
+      "reason": "Good confidence (0.64 peak, 0.54 mean), all 9 frames, counter zone. Represents a plausible counter chair/stool with reasonable size."
+    },
+    {
+      "detection_id": "chair_005",
+      "action": "keep",
+      "reason": "High confidence (0.71 peak, 0.61 mean), all 9 frames, seating zone. Good area (~8075 px). Consistent chair detection in seating area."
+    },
+    {
+      "detection_id": "chair_006",
+      "action": "keep",
+      "reason": "Moderate confidence (0.47 peak, 0.37 mean), all 9 frames, seating zone. Large area (~14737 px) is plausible for a chair. Multi-frame consistency supports keeping."
+    },
+    {
+      "detection_id": "chair_007",
+      "action": "keep",
+      "reason": "Moderate confidence (0.43 peak, 0.27 mean), all 9 frames, seating zone. Borderline mean confidence but 9-frame support justifies keeping for layout reasoning."
+    },
+    {
+      "detection_id": "chair_008",
+      "action": "keep",
+      "reason": "High confidence (0.79 peak, 0.65 mean), all 9 frames, seating zone. Large area (~19770 px). Strong, reliable chair detection."
+    },
+    {
+      "detection_id": "chair_009",
+      "action": "drop",
+      "reason": "Low mean confidence (0.20), only 6-frame support, and the bounding box heavily overlaps the seating zone near chair_010 (which covers a larger, better-supported region at similar coordinates). Likely a duplicate/partial detection of chair_010."
+    },
+    {
+      "detection_id": "chair_010",
+      "action": "keep",
+      "reason": "Excellent confidence (0.88 peak, 0.85 mean), all 9 frames, seating zone. Large area (~22986 px). One of the strongest chair detections in the scene."
+    },
+    {
+      "detection_id": "chair_011",
+      "action": "drop",
+      "reason": "Low confidence (0.23 peak, 0.17 mean) and bbox heavily overlaps with chair_008/chair_012 in the seating zone. Very low mean confidence and likely a duplicate of nearby better-supported detections."
+    },
+    {
+      "detection_id": "chair_012",
+      "action": "keep",
+      "reason": "Moderate-to-good peak confidence (0.61), all 9 frames, seating zone, large area (~22451 px). Low mean confidence (0.26) is a concern but the area and zone placement are reasonable for layout; kept conservatively."
+    },
+    {
+      "detection_id": "chair_013",
+      "action": "keep",
+      "reason": "Excellent confidence (0.94 peak, 0.93 mean), all 9 frames, seating zone. Very large area (~33522 px). Top-tier detection in the scene."
+    },
+    {
+      "detection_id": "chair_014",
+      "action": "keep",
+      "reason": "Good confidence (0.68 peak, 0.52 mean), all 9 frames, seating zone. Large area (~22507 px). Consistent detection of a seating-area chair."
+    },
+    {
+      "detection_id": "chair_015",
+      "action": "keep",
+      "reason": "Excellent confidence (0.94 peak, 0.93 mean), all 9 frames, seating zone. Very large area (~58681 px). Highest-area chair detection; very reliable."
+    },
+    {
+      "detection_id": "dining_table_016",
+      "action": "drop",
+      "reason": "Located in the counter zone with bbox centered at ~(617, 412), overlapping heavily with counter chairs (chair_002, chair_003). Counter regions are frequently mislabeled as dining tables. Moderate confidence (0.54) but the counter-zone placement strongly suggests a false positive."
+    },
+    {
+      "detection_id": "dining_table_017",
+      "action": "keep",
+      "reason": "Low-moderate confidence (0.30 peak, 0.26 mean) but 9-frame support and reasonable area (~21051 px) in seating zone. The large bounding box is plausible for a table. Kept conservatively for layout reasoning; note potential overlap with chair_007/chair_008."
+    },
+    {
+      "detection_id": "dining_table_018",
+      "action": "drop",
+      "reason": "Low confidence (0.32 peak, 0.29 mean), very small area (~4825 px), and bbox is nearly entirely contained within dining_table_017's bounding box at almost the same location. Likely a duplicate sub-region detection of dining_table_017."
+    },
+    {
+      "detection_id": "dining_table_019",
+      "action": "keep",
+      "reason": "Good confidence (0.71 peak, 0.69 mean), all 9 frames, seating zone. Large area (~27591 px). Reliable table detection in the seating area."
+    },
+    {
+      "detection_id": "dining_table_020",
+      "action": "drop",
+      "reason": "Very low confidence (0.21 peak, 0.19 mean) and small area (~6972 px) that is largely subsumed by dining_table_019's bounding box at nearly the same location. Duplicate/partial detection of dining_table_019."
+    },
+    {
+      "detection_id": "dining_table_021",
+      "action": "keep",
+      "reason": "Good confidence (0.76 peak, 0.61 mean), all 9 frames, seating zone. Reasonable area (~15547 px). Consistent table detection distinct from dining_table_019."
+    },
+    {
+      "detection_id": "dining_table_022",
+      "action": "keep",
+      "reason": "Good confidence (0.78 peak), all 9 frames, seating zone. Very large area (~59809 px). Despite lower mean (0.46), the large area and consistent peak confidence support a real table. Partially overlaps chair_015 but distinct enough for layout."
+    },
+    {
+      "detection_id": "couch_023",
+      "action": "keep",
+      "reason": "Excellent confidence (0.94 peak, 0.94 mean), all 9 frames, seating zone. Large area (~28901 px). Highest-confidence detection in the entire scene; very reliable couch."
+    },
+    {
+      "detection_id": "potted_plant_024",
+      "action": "keep",
+      "reason": "High confidence (0.85 peak, 0.83 mean), all 9 frames, large area (~28873 px). Strong, consistent potted plant detection — likely a prominent decorative plant in the cafe."
+    },
+    {
+      "detection_id": "potted_plant_025",
+      "action": "keep",
+      "reason": "Moderate confidence (0.49 peak, 0.43 mean), all 9 frames. Small area (~2114 px) but the 9-frame consistency at a stable location suggests a small real plant rather than noise. Kept conservatively."
+    },
+    {
+      "detection_id": "potted_plant_026",
+      "action": "keep",
+      "reason": "Moderate-to-good confidence (0.58 peak, 0.37 mean), all 9 frames, reasonable area (~5915 px). Multi-frame consistency supports a real potted plant."
+    },
+    {
+      "detection_id": "potted_plant_027",
+      "action": "keep",
+      "reason": "Good confidence (0.62 peak, 0.59 mean), all 9 frames, reasonable area (~4090 px). Solid multi-frame support for a real plant."
+    },
+    {
+      "detection_id": "potted_plant_028",
+      "action": "keep",
+      "reason": "Good confidence (0.63 peak, 0.54 mean), all 9 frames, reasonable area (~4587 px). Consistent detection of a decorative plant."
+    },
+    {
+      "detection_id": "potted_plant_029",
+      "action": "keep",
+      "reason": "Good confidence (0.63 peak, 0.60 mean), all 9 frames, reasonable area (~3195 px). Strong multi-frame consistency supports a real plant."
+    },
+    {
+      "detection_id": "potted_plant_030",
+      "action": "drop",
+      "reason": "Very small area (~1265 px, approx 34×37 px) at coordinates that place it near the seating zone boundary. Low mean confidence (0.50) combined with the tiny size suggests an edge artifact or misidentified small region rather than a real potted plant."
+    },
+    {
+      "detection_id": "potted_plant_031",
+      "action": "drop",
+      "reason": "Located in the counter zone with a large bounding box (~10233 px) overlapping counter chairs. Low mean confidence (0.37) and counter-zone placement make this a likely false positive — probably picking up a chair back or counter decoration rather than a true potted plant."
+    }
+  ],
+  "notes": [
+    "No VLM cache was provided; all decisions are based solely on detector confidence, frame support count, bounding box geometry, area, and zone placement.",
+    "Drops in the counter zone (dining_table_016, potted_plant_031) reflect the well-known pattern of large counter regions being mislabeled as dining tables or plants.",
+    "chair_009 and chair_011 were dropped as likely duplicates of the better-supported chair_010 and chair_008/chair_012 respectively, based on overlapping bounding boxes and low mean confidence.",
+    "dining_table_018 and dining_table_020 were dropped as sub-region duplicates of dining_table_017 and dining_table_019 respectively.",
+    "potted_plant_030 dropped due to extremely small area (~1265 px, ~34×37 px) inconsistent with a real plant.",
+    "dining_table_017 is kept despite low confidence because its large area and 9-frame support are consistent with a real table, and it is useful for layout reasoning even if confidence is borderline.",
+    "chair_012 is kept conservatively despite low mean confidence (0.26) because its area and zone placement are consistent with a real chair and it could contribute to seating layout accuracy."
+  ]
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "window_start_s": 0.0,
+    "window_end_s": 15.0,
+    "frames_sampled": 450,
+    "staff_walk_distance_px": 620.0,
+    "staff_customer_crossings": 3,
+    "queue_length_peak": 2,
+    "queue_obstruction_seconds": 8.0,
+    "congestion_score": 0.48,
+    "table_detour_score": 1.1,
+    "session_id": "real_cafe",
+    "run_id": "8fcbf1df-4a16-4fa2-bcb0-07d3cf4db7e0",
+    "memory_id": "kpi_real_cafe_w1"
+  },
+  {
+    "window_start_s": 15.0,
+    "window_end_s": 30.0,
+    "frames_sampled": 450,
+    "staff_walk_distance_px": 980.0,
+    "staff_customer_crossings": 6,
+    "queue_length_peak": 3,
+    "queue_obstruction_seconds": 17.0,
+    "congestion_score": 0.73,
+    "table_detour_score": 1.7,
+    "session_id": "real_cafe",
+    "run_id": "8fcbf1df-4a16-4fa2-bcb0-07d3cf4db7e0",
+    "memory_id": "kpi_real_cafe_w2"
+  },
+  {
+    "window_start_s": 30.0,
+    "window_end_s": 45.0,
+    "frames_sampled": 450,
+    "staff_walk_distance_px": 860.0,
+    "staff_customer_crossings": 5,
+    "queue_length_peak": 2,
+    "queue_obstruction_seconds": 12.0,
+    "congestion_score": 0.61,
+    "table_detour_score": 1.5,
+    "session_id": "real_cafe",
+    "run_id": "8fcbf1df-4a16-4fa2-bcb0-07d3cf4db7e0",
+    "memory_id": "kpi_real_cafe_w3"
+  }
+]

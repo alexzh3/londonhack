@@ -3,7 +3,8 @@ import anyio
 from app import config
 from app.api import routes
 from app import memory
-from app.fallback import load_cached_recommendation
+from app.evidence_pack import build
+from app.fallback import load_cached_recommendation, validate_layout_change
 from app.schemas import FeedbackRequest, RunRequest
 
 
@@ -13,11 +14,30 @@ def test_sessions_endpoint_lists_ai_cafe_a():
     assert any(session.slug == "ai_cafe_a" for session in response)
 
 
+def test_sessions_endpoint_lists_real_cafe():
+    response = anyio.run(routes.sessions)
+
+    assert any(session.slug == "real_cafe" and session.source_kind == "real" for session in response)
+
+
 def test_state_endpoint_returns_fixture_status():
     response = anyio.run(routes.get_state, "ai_cafe_a")
 
     assert response.missing_required == []
     assert response.pattern.id == "pattern_queue_counter_crossing"
+
+
+def test_real_cafe_fixture_pack_validates():
+    response = anyio.run(routes.get_state, "real_cafe")
+    cached = load_cached_recommendation("real_cafe")
+    pack = build("real_cafe")
+
+    assert response.missing_required == []
+    assert response.assets["video"] == "cafe_videos/real_cctv.mp4"
+    assert response.assets["frame"] == "demo_data/sessions/real_cafe/frame.jpg"
+    assert response.pattern.id == "pattern_real_service_lane_choke"
+    assert cached.fingerprint == "real_cafe_open_right_service_lane_v1"
+    assert validate_layout_change(cached, pack) == []
 
 
 def test_run_endpoint_returns_valid_fallback_response(monkeypatch, tmp_path):
@@ -28,15 +48,61 @@ def test_run_endpoint_returns_valid_fallback_response(monkeypatch, tmp_path):
 
     assert [stage.name for stage in response.stages] == [
         "evidence_pack",
+        "pattern_agent",
         "optimization_agent",
         "memory_write",
     ]
+    pattern_stage = next(s for s in response.stages if s.name == "pattern_agent")
+    assert pattern_stage.status == "fallback"
     assert response.layout_change.fingerprint == "ai_cafe_a_open_pickup_lane_v1"
     assert response.used_fallback is True
     assert response.memory_record.fallback_only is True
     assert response.memory_record.payload["session_id"] == "ai_cafe_a"
     assert response.memory_record.payload["pattern_id"] == "pattern_queue_counter_crossing"
     assert config.MEMORY_JSONL_PATH.exists()
+
+
+def test_run_event_stream_yields_progress_and_final_response(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAFETWIN_FORCE_FALLBACK", "1")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+
+    async def collect():
+        return [event async for event in routes._run_event_stream("ai_cafe_a")]
+
+    events = anyio.run(collect)
+    names = [event["event"] for event in events]
+    final = events[-1]["data"]["response"]
+
+    assert names[:2] == ["run_started", "stage_started"]
+    assert "recommendation_ready" in names
+    assert names[-1] == "run_completed"
+    assert final["layout_change"]["fingerprint"] == "ai_cafe_a_open_pickup_lane_v1"
+    assert [stage["name"] for stage in final["stages"]] == [
+        "evidence_pack",
+        "pattern_agent",
+        "optimization_agent",
+        "memory_write",
+    ]
+
+
+def test_run_endpoint_returns_real_cafe_fallback_response(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAFETWIN_FORCE_FALLBACK", "1")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+
+    response = anyio.run(routes.run, RunRequest(session_id="real_cafe"))
+
+    assert [stage.name for stage in response.stages] == [
+        "evidence_pack",
+        "pattern_agent",
+        "optimization_agent",
+        "memory_write",
+    ]
+    pattern_stage = next(s for s in response.stages if s.name == "pattern_agent")
+    assert pattern_stage.status == "fallback"
+    assert response.layout_change.fingerprint == "real_cafe_open_right_service_lane_v1"
+    assert response.used_fallback is True
+    assert response.memory_record.payload["session_id"] == "real_cafe"
+    assert response.memory_record.payload["pattern_id"] == "pattern_real_service_lane_choke"
 
 
 def test_feedback_endpoint_writes_memory(monkeypatch, tmp_path):

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" />
-  <link rel="stylesheet" href="cafetwin.css?v=13" />
+  <link rel="stylesheet" href="cafetwin.css?v=22" />
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -18,28 +18,28 @@
   <div id="root"></div>
 
   <!-- Backend fetch wrappers (plain JS, must load before the JSX bundle uses them) -->
-  <script src="api.js?v=10"></script>
+  <script src="api.js?v=13"></script>
 
-  <script type="text/babel" src="tweaks-panel.jsx?v=14"></script>
-  <script type="text/babel" src="app-state.jsx?v=14"></script>
-  <script type="text/babel" src="cafe-iso.jsx?v=14"></script>
-  <script type="text/babel" src="app-panels.jsx?v=14"></script>
-  <script type="text/babel" src="app-canvas.jsx?v=14"></script>
+  <script type="text/babel" src="tweaks-panel.jsx?v=17"></script>
+  <script type="text/babel" src="app-state.jsx?v=20"></script>
+  <script type="text/babel" src="cafe-iso.jsx?v=22"></script>
+  <script type="text/babel" src="app-panels.jsx?v=20"></script>
+  <script type="text/babel" src="app-canvas.jsx?v=21"></script>
 
   <script type="text/babel">
     const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
       "activeScenario": "baseline",
       "compareMode": true,
-      "darkTheme": false
+      "darkTheme": true
     }/*EDITMODE-END*/;
 
     function App() {
       const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
       // Live backend wiring: fetches /api/state + /api/run on mount for the
-      // active session. MVP defaults to ai_cafe_a per overview_plan §What
-      // MVP Must Ship. Session selector lands in Tier 1.
-      const SESSION_ID = "ai_cafe_a";
+      // active session. Defaults to ai_cafe_a; Tier 1A can be opened with
+      // ?session=real_cafe while preserving the MVP URL.
+      const SESSION_ID = new URLSearchParams(window.location.search).get("session") || "ai_cafe_a";
       const backend = useBackend(SESSION_ID);
 
       // Recommendation-application state. Lives at the App level so the
@@ -54,7 +54,9 @@
       React.useEffect(() => { setRecDecision(null); }, [recFingerprint]);
 
       const recommendation = layoutChange ? {
+        sessionId: SESSION_ID,
         targetId: layoutChange.target_id,
+        action: (layoutChange.simulation && layoutChange.simulation.action) || null,
         fromPosition: (layoutChange.simulation && layoutChange.simulation.from_position) || [0, 0],
         toPosition: (layoutChange.simulation && layoutChange.simulation.to_position) || [0, 0],
         rotationDegrees: (layoutChange.simulation && layoutChange.simulation.rotation_degrees) || 0,
@@ -87,6 +89,30 @@
 
       const [split, setSplit] = React.useState(t.compareMode);
       React.useEffect(() => { setSplit(t.compareMode); }, [t.compareMode]);
+
+      // Tier 1D — annotated CCTV pane. The toggle defaults ON for any session
+      // whose `annotated_video` asset is known to exist, so the user lands
+      // directly on the "perception is real" view without clicking anything.
+      // `compareMode` is left to the TWEAK_DEFAULTS value (true), so the demo
+      // opens with split mode showing the CCTV pane next to the iso twin —
+      // the killer "before vs after" landing shot. Both `ai_cafe_a` and
+      // `real_cafe` qualify since both have cached `annotated_before.web.mp4`
+      // from the offline perception pass.
+      const _stateAssets = backend.state && backend.state.assets;
+      const _annotatedRel = _stateAssets && _stateAssets.annotated_video;
+      const _videoRel = _stateAssets && _stateAssets.video;
+      const realCctvHasOverlays = !!_annotatedRel;
+      const realCctvUrl = (_annotatedRel || _videoRel) && cafetwinApi
+        ? cafetwinApi.assetUrl(_annotatedRel || _videoRel)
+        : null;
+      const [realCctv, setRealCctv] = React.useState(false);
+      const _autoEngagedRef = React.useRef(false);
+      React.useEffect(() => {
+        if (_autoEngagedRef.current) return;
+        if (!realCctvHasOverlays) return;
+        _autoEngagedRef.current = true;
+        setRealCctv(true);
+      }, [realCctvHasOverlays]);
 
       const [layers, setLayers] = React.useState({ geom: true, people: true, heat: false, paths: false, grid: false });
       const [zoom, setZoom] = React.useState(1);
@@ -217,6 +243,10 @@
               speed={speed} setSpeed={setSpeed}
               dayLength={DAY_LENGTH}
               recommendation={recommendation}
+              realCctv={realCctv} setRealCctv={setRealCctv}
+              realCctvUrl={realCctvUrl}
+              realCctvHasOverlays={realCctvHasOverlays}
+              sessionLabel={(backend.state && backend.state.session_id) || SESSION_ID}
             />
             <ChatPanel scenario={activeScn} kpis={activeScn.kpis} base={baseScn}
               draft={draft} setDraft={setDraft} onSend={onSendChat}
@@ -225,6 +255,7 @@
               usedFallback={backend.run && backend.run.used_fallback}
               backendLoading={backend.loading}
               backendError={backend.error}
+              runEvents={backend.runEvents}
               onSubmitFeedback={backend.submitFeedback}
               onRecDecision={setRecDecision} />
           </div>

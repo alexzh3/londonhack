@@ -50,7 +50,7 @@ curl -fsS -X POST "$BASE/api/run" \
 import json, sys
 d = json.load(sys.stdin)
 stages = [s['name'] for s in d['stages']]
-assert stages == ['evidence_pack', 'optimization_agent', 'memory_write'], f'unexpected stages: {stages}'
+assert stages == ['evidence_pack', 'pattern_agent', 'optimization_agent', 'memory_write'], f'unexpected stages: {stages}'
 lc = d['layout_change']
 assert lc.get('fingerprint'), 'layout_change.fingerprint missing'
 assert lc.get('evidence_ids'), 'layout_change.evidence_ids empty'

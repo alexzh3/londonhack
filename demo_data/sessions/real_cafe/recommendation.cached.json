@@ -1,0 +1,32 @@
+{
+  "title": "Open the real cafe right-side service lane",
+  "rationale": "The real CCTV fixture shows the tightest conflict where pickup traffic, storage access, and staff circulation meet on the right side of the counter. Shifting the movable lane boundary deeper toward storage keeps the fixed counter and seating intact while giving staff a cleaner path through the handoff zone.",
+  "target_id": "service_lane_marker_1",
+  "simulation": {
+    "action": "change_queue_boundary",
+    "target_id": "service_lane_marker_1",
+    "from_position": [
+      1102,
+      450
+    ],
+    "to_position": [
+      1185,
+      468
+    ],
+    "rotation_degrees": 0
+  },
+  "evidence_ids": [
+    "kpi_real_cafe_w2",
+    "kpi_real_cafe_w3"
+  ],
+  "expected_kpi_delta": {
+    "staff_walk_distance_px": -95.0,
+    "staff_customer_crossings": -2.0,
+    "queue_obstruction_seconds": -7.0,
+    "congestion_score": -0.14,
+    "table_detour_score": -0.3
+  },
+  "confidence": 0.72,
+  "risk": "medium",
+  "fingerprint": "real_cafe_open_right_service_lane_v1"
+}

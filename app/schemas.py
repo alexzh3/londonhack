@@ -160,6 +160,18 @@ class OperationalPattern(StrictModel):
 # ---------- Agent input bundle ----------
 
 
+class PatternEvidenceBundle(StrictModel):
+    """PatternAgent input. Subset of the perception fixtures the agent needs to
+    reason about which operational friction is dominant. Excludes the prior
+    recommendation memories (those scope OptimizationAgent, not pattern detection)
+    so PatternAgent stays focused on perception → pattern mapping."""
+
+    session_id: str  # slug, e.g. "ai_cafe_a"
+    zones: list[Zone] = Field(min_length=1)
+    object_inventory: ObjectInventory
+    kpi_windows: list[KPIReport] = Field(min_length=1)
+
+
 class CafeEvidencePack(StrictModel):
     """Single typed boundary between perception fixtures and agents."""
 
@@ -195,7 +207,7 @@ class LayoutSimulation(StrictModel):
 
 
 class LayoutChange(StrictModel):
-    """Pure agent output. Does NOT carry session_id / pattern_id; the
+    """Pure recommendation output. Does NOT carry session_id / pattern_id; the
     orchestrator wraps it in :class:`RecommendationMemoryPayload` when
     persisting, so recall scoping stays out of the LLM's schema.
     """
@@ -209,6 +221,29 @@ class LayoutChange(StrictModel):
     confidence: float = Field(ge=0.0, le=1.0)
     risk: RiskLevel
     fingerprint: str
+
+
+class LayoutCandidate(StrictModel):
+    candidate_id: str
+    fingerprint: str
+    action: SimulationAction
+    target_id: str
+    target_kind: ObjectKind
+    from_position: tuple[float, float]
+    to_position: tuple[float, float]
+    rotation_degrees: float = 0
+    expected_kpi_delta: dict[KPIField, float] = Field(min_length=1)
+    score: float
+    reasons: list[str] = Field(default_factory=list)
+
+
+class OptimizationChoice(StrictModel):
+    selected_candidate_id: str
+    title: str
+    rationale: str
+    evidence_ids: list[str] = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    risk: RiskLevel
 
 
 class PriorRecommendationMemory(StrictModel):
@@ -265,7 +300,7 @@ class SessionManifest(StrictModel):
     representative_frame_idx: int | None = None
 
 
-StageName = Literal["evidence_pack", "optimization_agent", "memory_write"]
+StageName = Literal["evidence_pack", "pattern_agent", "optimization_agent", "memory_write"]
 
 
 class StageTiming(StrictModel):

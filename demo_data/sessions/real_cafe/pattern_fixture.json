@@ -1,0 +1,34 @@
+{
+  "id": "pattern_real_service_lane_choke",
+  "title": "Right-side service lane narrows during handoff traffic",
+  "summary": "In the real CCTV clip, staff circulation between the prep island, counter, and right-side service corridor overlaps with customer waiting near pickup. The middle window shows the strongest congestion and obstruction signal, consistent with a narrow lane rather than a staffing shortage.",
+  "pattern_type": "pickup_congestion",
+  "evidence": [
+    {
+      "memory_id": "kpi_real_cafe_w1",
+      "lane": "location:demo:kpi",
+      "summary": "Opening window is moderate but already has 3 staff/customer crossings around the handoff edge.",
+      "kpi_field": "staff_customer_crossings"
+    },
+    {
+      "memory_id": "kpi_real_cafe_w2",
+      "lane": "location:demo:kpi",
+      "summary": "Middle window peaks at 6 crossings, 17s of queue obstruction, and 0.73 congestion score in the right-side lane.",
+      "kpi_field": "queue_obstruction_seconds"
+    },
+    {
+      "memory_id": "kpi_real_cafe_w3",
+      "lane": "location:demo:kpi",
+      "summary": "Later window remains elevated with 5 crossings and a 1.5 detour score, so the choke persists after the first rush.",
+      "kpi_field": "table_detour_score"
+    }
+  ],
+  "severity": "high",
+  "affected_zones": [
+    "counter",
+    "pickup",
+    "queue",
+    "staff_path",
+    "entrance"
+  ]
+}

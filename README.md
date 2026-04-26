@@ -1,11 +1,57 @@
 # CafeTwin / SimCafe
 
 Hackathon MVP that turns overhead cafe video evidence into typed layout
-recommendations. One real Pydantic AI agent emits a validated `LayoutChange`,
-memory recall surfaces a "seen before" chip, Logfire records the trace, and
-an existing Babel-in-browser JSX demo binds it all into a clickable UI.
+recommendations. The backend generates geometry-safe candidate shifts, a real
+Pydantic AI agent selects one, the API materialises a validated `LayoutChange`,
+memory recall surfaces a "seen before" chip, Logfire records the trace, and an
+existing Babel-in-browser JSX demo binds it all into a clickable UI.
 
 > POS tells operators what sold. CafeTwin shows why throughput stalled.
+
+![CafeTwin Tier 1 overview](docs/cafetwin-tier1-overview.png)
+
+*Judge-facing overview — annotated CCTV input, recommended layout floor plan, the live `LayoutChange` recommendation card, and the four proof points. ([source HTML](docs/cafetwin-tier1-overview.html))*
+
+## Tier 1 architecture
+
+```mermaid
+flowchart LR
+    video["Existing CCTV video files<br/>(real_cafe, ai_cafe_a)"]
+
+    subgraph perception["Offline Tier 1 perception"]
+        tracks["YOLOv8n + ByteTrack<br/>people tracks + annotated video"]
+        objects["YOLOv8x static objects<br/>reviewed by ObjectReviewAgent"]
+        kpi["KPI engine<br/>queue, detours, crossings, walk distance"]
+    end
+
+    evidence["Typed CafeEvidencePack<br/>zones + inventory + KPIs + pattern + prior memories"]
+    candidates["Geometry-safe LayoutCandidates<br/>bounds + zones + collisions"]
+
+    subgraph agents["Pydantic AI reasoning"]
+        pattern["PatternAgent<br/>OperationalPattern"]
+        optimize["OptimizationAgent<br/>selects OptimizationChoice"]
+    end
+
+    ui["CafeTwin UI<br/>CCTV overlay + digital twin + recommendation card"]
+    memory["MuBit + local jsonl<br/>recommendations and feedback memory"]
+    trace["Logfire<br/>run trace and audit trail"]
+
+    video --> tracks
+    video --> objects
+    tracks --> kpi
+    objects --> evidence
+    kpi --> evidence
+    evidence --> pattern --> candidates --> optimize --> ui
+    ui -->|accept / reject| memory
+    memory -->|prior decisions| evidence
+    evidence -. spans .-> trace
+    pattern -. spans .-> trace
+    optimize -. spans .-> trace
+```
+
+*Existing CCTV is processed offline into typed evidence. Deterministic geometry
+checks generate safe moves, Pydantic AI chooses and explains one, and
+MuBit/jsonl memory plus Logfire make the result repeatable and auditable.*
 
 For architecture detail see [`overview_plan.md`](overview_plan.md) (high
 level) and [`agent_plan.md`](agent_plan.md) (engineering). Current build
@@ -28,6 +74,51 @@ Open <http://127.0.0.1:5500/cafetwin.html>. The page calls `/api/state` then
 `/api/run` on mount; the agent flow lights up from real backend stages, the
 recommendation card renders the live `LayoutChange`, and the Logfire button
 opens the trace for that run.
+
+To open the Tier 1A real-video fixture session, use
+<http://127.0.0.1:5500/cafetwin.html?session=real_cafe>.
+
+Tier 1B real-video tracking artifacts are generated offline:
+
+```bash
+uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
+uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
+uv run scripts/detect_layout_objects.py --session ai_cafe_a
+uv run scripts/detect_layout_objects.py --session real_cafe
+uv run scripts/review_layout_objects_agent.py --session ai_cafe_a
+uv run scripts/review_layout_objects_agent.py --session real_cafe
+```
+
+The tracking script writes `tracks.cached.json` and `annotated_before.mp4`;
+the static layout script writes high-accuracy YOLOv8x
+`object_detections.cached.json` artifacts under each session, and the review
+script writes `object_review.cached.json` plus the stricter
+`object_detections.reviewed.cached.json`. The archived detector and Moondream
+benchmark results live in `docs/vision_benchmarks.md`; the optional Moondream
+generator and other benchmark/prototype-only scripts were pruned because
+YOLOv8x plus ObjectReviewAgent remains the demo cache. The fake `ai_cafe_a`
+video currently gives the cleanest detection overlay.
+
+Local/generated vision artifacts are grouped by type and ignored by git:
+active Ultralytics weights live under `models/ultralytics/`, generated
+screenshots/annotated still images under `images/`, and benchmark-only scripts
+or prototype model weights have been removed after archiving their results.
+
+For the Tier 1D real-CCTV pane in the frontend, transcode the annotated
+videos to H.264 (Chromium HTML5 `<video>` rejects the `cv2.VideoWriter`
+default `mp4v` codec):
+
+```bash
+./scripts/transcode_annotated_for_web.sh        # all sessions
+./scripts/transcode_annotated_for_web.sh real_cafe   # one session
+```
+
+Both `annotated_before.mp4` and `annotated_before.web.mp4` are gitignored
+(multi-MB pitch artifacts). Open
+<http://127.0.0.1:5500/cafetwin.html?session=real_cafe> after running the
+backend to see the killer split: real CCTV with YOLO+ByteTrack overlays
+on the left, iso twin responding to the agent's recommendation on the
+right.
 
 ## Prerequisites
 
@@ -75,13 +166,22 @@ the real memory recall path against MuBit when configured, with
 ## Deploy
 
 The recommended split is **Vercel for the static frontend + Render for the
-FastAPI backend**. Vercel rewrites `/api/*` to the Render origin so the
-deployed frontend stays same-origin (no CORS preflight, no hardcoded API
-URL in `cafetwin.html`).
+FastAPI backend**. Vercel rewrites `/api/*` plus backend-served media paths
+(`/demo_data/*`, `/cafe_videos/*`) to the Render origin so the deployed
+frontend stays same-origin (no CORS preflight, no hardcoded API/video URL in
+`cafetwin.html`).
+
+Current hosted demo split:
+
+| Demo | Vercel project / URL | Backend |
+|---|---|---|
+| MVP | `frontend` — <https://frontend-hazel-xi-17.vercel.app/cafetwin.html> | <https://cafetwin-backend.onrender.com> |
+| Tier 1 | `frontend-tier1` — <https://frontend-tier1.vercel.app/cafetwin.html> | <https://cafetwin-backend-tier1.onrender.com> |
 
 ### 1. Backend on Render
 
-`render.yaml` at the repo root declares the web service.
+`render.yaml` at the repo root declares the `cafetwin-backend-tier1` web
+service pinned to the `tier_1` branch.
 
 ```bash
 git push                          # Render auto-deploys when connected.
@@ -98,7 +198,7 @@ First-time:
 4. After Render assigns a public URL, set it in your local `.env`:
 
    ```bash
-   CAFETWIN_RENDER_URL=https://cafetwin-backend.onrender.com
+   CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com
    ```
 5. Smoke-test:
 
@@ -106,8 +206,8 @@ First-time:
    ./scripts/deploy_render.sh --smoke
    ```
 
-Optional: copy the deploy hook from **Render → cafetwin-backend → Settings →
-Deploy Hook** into `.env` as `RENDER_DEPLOY_HOOK=...` so subsequent runs of
+Optional: copy the deploy hook from **Render → cafetwin-backend-tier1 →
+Settings → Deploy Hook** into `.env` as `RENDER_DEPLOY_HOOK=...` so subsequent runs of
 `./scripts/deploy_render.sh` trigger a redeploy without the dashboard.
 
 ### 2. Frontend on Vercel
@@ -119,7 +219,13 @@ Deploy Hook** into `.env` as `RENDER_DEPLOY_HOOK=...` so subsequent runs of
 This generates `frontend/vercel.json` with a `/api/*` rewrite pointing at
 `CAFETWIN_RENDER_URL`, then runs `vercel deploy --prod` from the `frontend/`
 directory. Prereqs: a Vercel account, `vercel login` once. The script falls
-back to `npx vercel@latest` if the CLI is not installed globally.
+back to `npx vercel@latest` if the CLI is not installed globally. For a
+secret-minimal deploy, pass the backend URL inline so the script does not need
+to read `.env`:
+
+```bash
+CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com ./scripts/deploy_vercel.sh
+```
 
 ### Why this split
 

@@ -6,11 +6,11 @@
 # To deploy:
 #   1. Push this repo (with render.yaml) to GitHub.
 #   2. https://dashboard.render.com → New → Blueprint → connect repo.
-#   3. Render provisions the `cafetwin-backend` web service from this file.
+#   3. Render provisions the `cafetwin-backend-tier1` web service from this file.
 #   4. In the service Environment tab, set the secrets listed below
 #      (sync: false means "value lives in the dashboard, not in git").
 #
-# After deploy, the public URL (e.g. https://cafetwin-backend.onrender.com)
+# After deploy, the public URL (e.g. https://cafetwin-backend-tier1.onrender.com)
 # becomes CAFETWIN_RENDER_URL — set it in .env, then run
 # ./scripts/deploy_vercel.sh to ship the frontend.
 #
@@ -18,20 +18,26 @@
 
 services:
   - type: web
-    name: cafetwin-backend
+    name: cafetwin-backend-tier1
+    branch: tier_1
     runtime: python
     plan: free
     region: oregon
 
-    # Render auto-detects pyproject.toml and runs `pip install .`. The build
-    # command below is explicit so future readers don't have to guess.
-    buildCommand: pip install --upgrade pip && pip install .
-    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    # Install dependencies from uv.lock without installing the repo itself as a
+    # package. The app runs from the checkout root, which avoids setuptools'
+    # flat-layout auto-discovery seeing frontend/demo_data/cafe_videos as
+    # accidental packages during `pip install .`. Pass the Render-provisioned
+    # Python explicitly because the local `.python-version` pins 3.13 while
+    # Render currently provisions 3.12 via PYTHON_VERSION below.
+    buildCommand: uv sync --python 3.12 --frozen --no-dev --no-install-project
+    startCommand: uv run --python 3.12 --no-sync uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
 
     healthCheckPath: /api/sessions
 
     envVars:
-      # Pin Python so behaviour matches local dev.
+      # Pin Render's runtime; the uv build/start commands pass the same
+      # interpreter explicitly because local dev uses `.python-version` 3.13.
       - key: PYTHON_VERSION
         value: "3.12"
 
@@ -45,7 +51,7 @@ services:
         value: gateway/anthropic:claude-sonnet-4-6
 
       - key: LOGFIRE_SERVICE_NAME
-        value: cafetwin-mvp
+        value: cafetwin-backend-tier1
       - key: LOGFIRE_ENVIRONMENT
         value: production
 

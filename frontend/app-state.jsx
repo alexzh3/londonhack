@@ -1,14 +1,15 @@
 // app-state.jsx — Scenarios, KPI computation, dialog modals
 
 // ── Scenario presets ──────────────────────────────────────────────────────
+// `baseline` numbers reflect the actual AI-cafe video frame: 5 two-tops +
+// 1 couch ≈ 12 seats, 1 barista, modest footfall. The other scenarios are
+// "what-if" comparisons that scale up from there.
 const SCENARIO_PRESETS = {
-  "baseline":     { id: "00", name: "baseline",     style: "default",  seats: 18,  baristas: 2,  footfall: 42,  hours: 10 },
-  "10x.size":     { id: "01", name: "10x.size",     style: "default",  seats: 180, baristas: 12, footfall: 480, hours: 14 },
-  "brooklyn":     { id: "02", name: "brooklyn",     style: "brooklyn", seats: 32,  baristas: 3,  footfall: 78,  hours: 12 },
-  "+2.baristas":  { id: "03", name: "+2.baristas",  style: "default",  seats: 18,  baristas: 4,  footfall: 64,  hours: 10 },
-  "tokyo":        { id: "04", name: "tokyo",        style: "tokyo",    seats: 14,  baristas: 2,  footfall: 95,  hours: 16 },
+  "baseline": { id: "00", name: "baseline", style: "default",  seats: 12, baristas: 1, footfall: 32, hours: 10 },
+  "brooklyn": { id: "01", name: "brooklyn", style: "brooklyn", seats: 32, baristas: 3, footfall: 78, hours: 12 },
+  "tokyo":    { id: "02", name: "tokyo",    style: "tokyo",    seats: 14, baristas: 2, footfall: 95, hours: 16 },
 };
-const SCENARIO_ORDER = ["baseline", "10x.size", "brooklyn", "+2.baristas", "tokyo"];
+const SCENARIO_ORDER = ["baseline", "brooklyn", "tokyo"];
 
 // ── Made-up KPI model ─────────────────────────────────────────────────────
 // Throughput cap is min(barista_capacity, footfall). Wait grows with queue
@@ -102,6 +103,8 @@ function scenarioFromLayoutChange(lc, base) {
 function useBackend(sessionId) {
   const [state, setState] = React.useState(null);
   const [run, setRun] = React.useState(null);
+  const [runEvents, setRunEvents] = React.useState([]);
+  const [streaming, setStreaming] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
 
@@ -113,18 +116,28 @@ function useBackend(sessionId) {
       return;
     }
     setLoading(true);
+    setStreaming(false);
     setError(null);
+    setRun(null);
+    setRunEvents([]);
     try {
       const s = await cafetwinApi.getState(sessionId);
       setState(s);
       if (s.missing_required && s.missing_required.length) {
         throw new Error(`session ${sessionId} missing fixtures: ${s.missing_required.join(", ")}`);
       }
-      const r = await cafetwinApi.postRun(sessionId);
+      const onEvent = (event) => {
+        setRunEvents((prev) => [...prev, { ...event, at: new Date().toISOString() }]);
+      };
+      setStreaming(true);
+      const r = cafetwinApi.postRunStream
+        ? await cafetwinApi.postRunStream(sessionId, { onEvent })
+        : await cafetwinApi.postRun(sessionId);
       setRun(r);
     } catch (err) {
       setError((err && err.message) || String(err));
     } finally {
+      setStreaming(false);
       setLoading(false);
     }
   }, [sessionId]);
@@ -144,16 +157,19 @@ function useBackend(sessionId) {
     });
   }, [run, state, sessionId]);
 
-  return { state, run, loading, error, refresh, submitFeedback };
+  return { state, run, runEvents, streaming, loading, error, refresh, submitFeedback };
 }
 
-// Stage timing helpers for the AgentFlow panel. Backend returns 3 stages
-// (evidence_pack, optimization_agent, memory_write); the existing JSX shows
-// 5 visual nodes — see overview_plan.md "Visual node ← StageTiming.name".
+// Stage timing helpers for the AgentFlow panel. Backend returns 4 stages
+// (evidence_pack, pattern_agent, optimization_agent, memory_write); the
+// existing JSX shows 5 visual nodes — see overview_plan.md
+// "Visual node ← StageTiming.name". The `pattern` node now reads
+// pattern_agent's actual latency (Tier 1A added the live agent stage)
+// instead of folding it into evidence_pack's timestamp.
 const AGENT_FLOW_NODE_TO_STAGE = {
   vision: "evidence_pack",
   kpi: "evidence_pack",
-  pattern: "evidence_pack",
+  pattern: "pattern_agent",
   optimize: "optimization_agent",
   simulate: "memory_write",
 };

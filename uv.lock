@@ -329,11 +329,11 @@ wheels = [
 [[package]]
 name = "cafetwin"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "logfire", extra = ["fastapi"] },
+    { name = "logfire", extra = ["fastapi", "httpx"] },
     { name = "pydantic" },
     { name = "pydantic-ai" },
     { name = "python-dotenv" },
@@ -350,7 +350,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "logfire", extras = ["fastapi"], specifier = ">=3.0.0" },
+    { name = "logfire", extras = ["fastapi", "httpx"], specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pydantic-ai", specifier = ">=1.16.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },

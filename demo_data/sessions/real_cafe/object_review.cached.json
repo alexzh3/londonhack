@@ -1,0 +1,74 @@
+{
+  "schema_version": "cafetwin.object_review.v1",
+  "session_id": "real_cafe",
+  "decisions": [
+    {
+      "detection_id": "chair_001",
+      "action": "keep",
+      "reason": "Supported by 6 frames with a peak confidence of 0.66 and mean of 0.55. Located in the seating zone. The bbox is small but consistent multi-frame support confirms it is a real distant/small chair rather than a fragment."
+    },
+    {
+      "detection_id": "chair_002",
+      "action": "drop",
+      "reason": "Single-frame detection (video_05 only) with low confidence (0.40) and a very small area (~614 px). The bounding box heavily overlaps with chair_001 spatially, making this a likely duplicate partial detection of the same chair with no independent multi-frame or VLM support."
+    },
+    {
+      "detection_id": "chair_003",
+      "action": "keep",
+      "reason": "Strong candidate: supported across 8 frames including the session frame, peak confidence 0.75, seating zone. Reasonable area (~6,599 px). High multi-frame consensus makes this a reliable seating-area chair."
+    },
+    {
+      "detection_id": "chair_004",
+      "action": "keep",
+      "reason": "Supported by 8 frames including the session frame, peak confidence 0.68, seating zone, area ~3,851 px. Solid multi-frame support confirms a real chair in the seating area."
+    },
+    {
+      "detection_id": "chair_005",
+      "action": "keep",
+      "reason": "7-frame support, peak confidence 0.63, area ~7,476 px. Although placed in the counter zone, this is plausible for a counter stool / bar-style seating, and the strong multi-frame consistency warrants keeping for layout reasoning."
+    },
+    {
+      "detection_id": "chair_006",
+      "action": "drop",
+      "reason": "Only 3-frame support, very low confidence (peak 0.24, mean 0.19). Large area (~10,215 px) heavily overlaps with chair_007 and chair_008 in the counter zone — likely a loose, over-expanded bounding box that is subsumed by the better-supported detections. No VLM confirmation."
+    },
+    {
+      "detection_id": "chair_007",
+      "action": "keep",
+      "reason": "7-frame support in the counter zone, area ~3,708 px. Although peak confidence is moderate (0.33) and mean is low (0.24), the consistent multi-frame presence justifies keeping for layout reasoning. Spatially distinct from chair_008."
+    },
+    {
+      "detection_id": "chair_008",
+      "action": "keep",
+      "reason": "Best-supported counter-zone chair: 7 frames, peak confidence 0.77 (highest among counter chairs), mean 0.53, area ~6,932 px. Clearly a real counter seat."
+    },
+    {
+      "detection_id": "chair_009",
+      "action": "keep",
+      "reason": "4-frame support in staff_path zone, area ~8,263 px. Confidence is low (peak 0.26, mean 0.19), but the detection is spatially distinct and non-trivially sized. Keeping for layout reasoning as it may represent a chair near the counter/staff boundary; useful even if uncertain."
+    },
+    {
+      "detection_id": "chair_010",
+      "action": "drop",
+      "reason": "Very large area (~24,741 px) in the staff_path zone with low mean confidence (0.30). The oversized bounding box — nearly covering a quarter of the image height — strongly suggests this is a false positive or a region mislabeled as a chair (e.g., a large counter/shelf segment). Overlaps substantially with chair_009. Dropping to avoid corrupting layout reasoning."
+    },
+    {
+      "detection_id": "chair_011",
+      "action": "keep",
+      "reason": "7-frame support, area ~17,381 px, peak confidence 0.48. Although zone_id is null (edge of scene), the large area and strong multi-frame presence suggest a real piece of seating furniture (possibly a bench or chair cluster near the entrance/edge). Useful for layout boundary reasoning; keeping conservatively."
+    },
+    {
+      "detection_id": "dining_table_012",
+      "action": "keep",
+      "reason": "Supported by all 9 frames (maximum possible), peak confidence 0.70, mean 0.53, area ~14,889 px in the seating zone. This is the most robustly detected object in the scene and clearly represents a real dining table."
+    }
+  ],
+  "notes": [
+    "No VLM cache was provided (vlm_cache: null), so all decisions rely solely on detector confidence, multi-frame support, spatial plausibility, and area heuristics.",
+    "chair_002 was dropped as a duplicate fragment overlapping chair_001 with single-frame, low-confidence support.",
+    "chair_006 was dropped because its large, low-confidence bbox is spatially subsumed by the better-supported chair_007 and chair_008 in the counter zone.",
+    "chair_010 was dropped due to an implausibly large bounding box (~24,741 px) in the staff_path zone with low mean confidence, consistent with a counter/region mislabel rather than a discrete chair.",
+    "dining_table_012 is the most reliable detection (9/9 frames) and was kept without hesitation.",
+    "chair_011 has a null zone_id but was kept conservatively given 7-frame support, as it likely represents real seating furniture at the scene boundary."
+  ]
+}

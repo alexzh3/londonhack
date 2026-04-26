@@ -18,6 +18,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.cache/
 .coverage
 htmlcov/
 dist/
@@ -26,6 +27,28 @@ build/
 
 # Runtime demo output (memory writes accumulate here at demo time)
 demo_data/mubit_fallback.jsonl
+
+# Downloaded model weights for local/offline vision scripts
+models/
+*.pt
+
+# Generated visual artifacts and screenshots
+images/
+
+# Vision pipeline overlay videos (pitch artifacts; multi-MB; not runtime data).
+# Source CCTV under cafe_videos/ stays tracked. The H.264 web-safe transcode
+# (annotated_before.web.mp4) is regenerated via scripts/transcode_annotated_for_web.sh.
+**/object_detections.annotated.jpg
+**/object_detections.moondream.jpg
+**/object_detections.moondream.local.cached.json
+**/object_detections.moondream.05b_mf*.cached.json
+**/object_detections.moondream.05b_mf*.jpg
+**/moondream_local_benchmark.json
+**/moondream_05b_mf*_benchmark.json
+**/object_detector_benchmark/
+
+# Playwright MCP local screenshots from manual verification runs.
+tier_1*.png
 
 # Playwright MCP session artifacts (snapshots, console logs, network logs)
 .playwright-mcp/

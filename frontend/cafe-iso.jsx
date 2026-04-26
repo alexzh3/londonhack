@@ -115,7 +115,7 @@ function Plant({ x, y }) {
   );
 }
 
-function Counter({ x, y, w, d, style = "default" }) {
+function Counter({ x, y, w, d, style = "default", showFixtures = true }) {
   const palette = {
     default: { top: "#5a4836", left: "#46382a", right: "#33291e" },
     brooklyn: { top: "#3a2c1e", left: "#28201a", right: "#1a1410" },
@@ -124,16 +124,214 @@ function Counter({ x, y, w, d, style = "default" }) {
   return (
     <g>
       <IsoBox x={x} y={y} w={w} d={d} h={18} {...palette} />
-      <IsoBox x={x + 0.3} y={y + 0.2} w={0.6} d={0.6} h={26}
-        top="#c8c4bb" left="#a09c93" right="#7a766d" />
-      <IsoBox x={x + w - 0.9} y={y + 0.2} w={0.5} d={0.5} h={22}
-        top="#3a3328" left="#2a251c" right="#1c1812" />
+      {showFixtures && (
+        <>
+          <IsoBox x={x + 0.3} y={y + 0.2} w={0.6} d={0.6} h={26}
+            top="#c8c4bb" left="#a09c93" right="#7a766d" />
+          <IsoBox x={x + w - 0.9} y={y + 0.2} w={0.5} d={0.5} h={22}
+            top="#3a3328" left="#2a251c" right="#1c1812" />
+        </>
+      )}
     </g>
   );
 }
 
+// Cosy lounge couch — long upholstered bench against the back wall, modelled
+// after the brown leather couch behind the couple's table in the AI-cafe
+// video. Built as a low base IsoBox plus three "cushion" IsoBoxes on top so
+// it reads as a piece of seating, not a generic counter.
+function Couch({ x, y, w = 2.6, d = 0.85 }) {
+  const base = { top: "#7a4d36", left: "#5e3a26", right: "#46291a" };
+  const cushion = { top: "#a36d50", left: "#8a563b", right: "#6e3f29" };
+  const seatW = (w - 0.2) / 3;
+  return (
+    <g>
+      <IsoBox x={x} y={y} w={w} d={d} h={6} {...base} />
+      {[0, 1, 2].map((i) => (
+        <IsoBox key={i} x={x + 0.1 + i * seatW} y={y + 0.05} w={seatW - 0.1} d={d - 0.1} h={11}
+          {...cushion} />
+      ))}
+    </g>
+  );
+}
+
+// Tall bookshelf against the back wall (the wood-and-books column behind
+// the couch in the video). Renders as a slim deep IsoBox with a set of
+// horizontal shelf strokes drawn on the front face.
+function Bookshelf({ x, y, w = 1.4, d = 0.7 }) {
+  const c00 = ISO.toScreen(x - 0.5, y - 0.5);
+  const top = "#5a4030";
+  const left = "#3e2c20";
+  const right = "#2a1d14";
+  const shelfH = 30;
+  const lines = [];
+  for (let i = 1; i <= 4; i++) {
+    const y0 = c00.sy - shelfH * (i / 5);
+    lines.push(
+      <line key={i} x1={c00.sx} y1={y0} x2={c00.sx + (w * ISO.tileW) / 2} y2={y0 + (w * ISO.tileH) / 2}
+        stroke="#8a6448" strokeWidth="0.6" opacity="0.7" />
+    );
+  }
+  return (
+    <g>
+      <IsoBox x={x} y={y} w={w} d={d} h={shelfH} top={top} left={left} right={right} />
+      {lines}
+    </g>
+  );
+}
+
+// Floor mat / area rug — drawn as a flat darker quadrilateral on top of
+// the tile grid. Two of these run down the central walkway in the AI-cafe
+// video; mirroring them in the iso scene grounds the layout visually.
+function FloorMat({ x, y, w = 2, d = 1.5, color = "#5a3a28" }) {
+  const c00 = ISO.toScreen(x - 0.5, y - 0.5);
+  const c10 = ISO.toScreen(x + w - 0.5, y - 0.5);
+  const c11 = ISO.toScreen(x + w - 0.5, y + d - 0.5);
+  const c01 = ISO.toScreen(x - 0.5, y + d - 0.5);
+  return (
+    <polygon points={`${c00.sx},${c00.sy} ${c10.sx},${c10.sy} ${c11.sx},${c11.sy} ${c01.sx},${c01.sy}`}
+      fill={color} stroke={shade(color, -0.25)} strokeWidth="0.4" opacity="0.85" />
+  );
+}
+
 // ── Procedural layout ─────────────────────────────────────────────────────
+// `EXPLICIT_BASELINE_LAYOUT` mirrors the AI-cafe video frame at
+// `demo_data/sessions/ai_cafe_a/frame.jpg`. The reference image shows a
+// long, narrow cafe with the counter running along the LEFT wall from
+// the front (where the barista works at the espresso machine) all the way
+// to the back, a brick alcove in the back-middle holding a brown leather
+// couch + bookshelf + a few potted plants, and five 2-top tables spread
+// across the right side of the floor (one near the couch, three along
+// the right window wall, one in the central floor). Two dark floor mats
+// run down the central walkway between the counter and the dining area.
+//
+// In iso tile coordinates, x grows left-to-right and y grows back-to-
+// front, so the "left wall counter" maps to a low-x, varying-y strip and
+// the "back wall alcove" sits at low-y. The layout also carries explicit
+// `simPoints` so the procedural simulation (`useCafeSim`) puts the
+// barista at her actual workstation and queues customers in the right
+// place, instead of the default top-edge counter geometry that the
+// procedural grid layouts assume.
+// Six base table positions chosen to match the cafe video. Index 0 is
+// the "couple table" near the couch (the natural target for service-lane
+// moves). When the seats slider asks for more than the canonical 12
+// (= 6 × 2-top), we extend with `BASELINE_OVERFLOW_TABLES` below; when it
+// asks for fewer we slice. This keeps the cafetwin scene reactive to the
+// `seats` slider on the *baseline* / *recommended* scenarios while still
+// preserving the hand-tuned positions for the demo's default 12-seat shot.
+const BASELINE_BASE_TABLES = [
+  { x: 5.5, y: 2.0 },     // T0: couple table near couch
+  { x: 8.5, y: 2.4 },     // T1: middle-back table
+  { x: 11.5, y: 2.0 },    // T2: back-right window table (newspaper guy)
+  { x: 8.0, y: 4.5 },     // T3: middle-floor table
+  { x: 11.5, y: 4.4 },    // T4: middle-right window
+  { x: 12.0, y: 6.0 },    // T5: front-right window (woman with laptop)
+];
+
+// Overflow table positions in remaining floor space. These keep clear of
+// the left-wall counter (x ≤ 2), the back-wall couch / bookshelf / plant
+// alcove (y ≤ 1.4 for x ∈ [4.4, 13.0]), and the two central floor mats
+// (the mats sit *under* tables visually so it's fine to land on them).
+const BASELINE_OVERFLOW_TABLES = [
+  { x: 6.0, y: 6.0 },     // T6:  front-center
+  { x: 9.5, y: 6.0 },     // T7:  front-center-right
+  { x: 4.5, y: 4.5 },     // T8:  middle near counter
+  { x: 4.5, y: 6.0 },     // T9:  front near counter
+  { x: 6.5, y: 4.0 },     // T10: middle-front-left
+  { x: 9.5, y: 3.8 },     // T11: middle-front-center
+];
+
+const EXPLICIT_BASELINE_LAYOUT = {
+  floorW: 14,
+  floorH: 7,
+  counterW: 2,
+  // Single long counter along the LEFT WALL (not an L — the video shows
+  // one continuous bar). `showFixtures` puts the espresso machine + cash
+  // register on this segment.
+  counterSegments: [
+    { x: 0, y: 0, w: 2, d: 5.5, showFixtures: true },
+  ],
+  // Default 6 × 2-top = 12 seats — the canonical baseline shot. The
+  // generator below replaces this when `seats` differs.
+  tablePositions: BASELINE_BASE_TABLES,
+  // 2 chairs per table — wood chairs in the video sit across from each
+  // other on the long axis of the table, not around it.
+  chairOffsets: [{ dx: -0.6, dy: 0 }, { dx: 0.6, dy: 0 }],
+  // Back-wall alcove (couch + bookshelf + plants) and the central
+  // walkway mats. Renderer sorts by sortY so order in this array doesn't
+  // matter.
+  extras: [
+    { type: "couch", x: 7.0, y: 0.4, w: 2.6, d: 0.9 },
+    { type: "bookshelf", x: 5.4, y: 0.0, w: 1.3, d: 0.7 },
+    { type: "plant", x: 4.4, y: 0.3 },
+    { type: "plant", x: 10.0, y: 0.3 },
+    { type: "plant", x: 12.8, y: 0.4 },
+    { type: "plant", x: 13.6, y: 5.5 },
+    { type: "mat", x: 4.5, y: 3.6, w: 3.0, d: 1.4, color: "#5e3e2a" },
+    { type: "mat", x: 4.5, y: 5.4, w: 3.0, d: 1.4, color: "#5e3e2a" },
+  ],
+  // Sim hints — where the barista lives, where customers queue, where
+  // they walk to to order/wait/exit. With the counter on the LEFT wall,
+  // these all live in the low-x band rather than the procedural default
+  // (which assumes a top-edge counter at low y).
+  simPoints: {
+    // Barista stands inside the counter footprint; customers approach
+    // from the right (interior of cafe).
+    baristaHome: { x: 1.0, y: 3.5 },
+    // Customer order point — in front of the counter, at espresso area.
+    orderPoint: { x: 2.4, y: 4.0 },
+    counterFront: { x: 2.2, y: 4.0 },
+    // Queue grows downward (toward entrance) from the order point.
+    queueFront: { x: 2.6, y: 5.0 },
+    queueDx: 0.0,
+    queueDy: 0.55,
+    // Where customers wait for their drink (just to the right of order).
+    waitPoint: { x: 3.5, y: 4.5 },
+    // Customers enter from the bottom-right (door + windows in video)
+    // and exit the same way.
+    entryPoint: { x: 14.5, y: 7.5 },
+    exitPoint: { x: 14.5, y: 7.5 },
+    // Barista-make-drink station (stays inside counter, slightly back).
+    makeDrinkPoint: { x: 0.7, y: 3.0 },
+    // Barista-serve point at the front of the counter.
+    servePoint: { x: 1.7, y: 4.0 },
+  },
+};
+
+
 function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3, name = "" }) {
+  const shirtColors = ["#a86b4a", "#4a6a96", "#9a4a6a", "#c8a050", "#5a7a4a", "#a04050",
+                       "#3d6f8a", "#8a4d3d", "#6e9050", "#a0805a", "#7a4a6a", "#506a96"];
+
+  // The "baseline" scenario (and the agent's "recommended" derivative —
+  // which is literally baseline + one table shifted) use an explicit
+  // hand-tuned layout that matches the cafe in the looping CCTV pane next
+  // to it (see frame.jpg in demo_data/sessions/ai_cafe_a/). All other
+  // scenarios use the procedural grid below — they're "what-if" twins,
+  // not 1:1 reproductions of any specific cafe, so the grid stays the
+  // right tool for them.
+  //
+  // The seats slider drives table count via 2-tops (matches the video's
+  // wood-chair-pair seating and the controls panel's `tableCountFor`
+  // estimate). We pull from the canonical 6 base positions first, then
+  // extend with overflow positions when the user asks for more seats; if
+  // they ask for fewer we slice. Default seats=12 → first 6 positions ⇒
+  // the iso scene reads exactly like the AI-cafe video frame.
+  if (name === "baseline" || name === "recommended") {
+    const requestedTables = Math.max(1, Math.ceil(seats / 2));
+    const allPositions = [...BASELINE_BASE_TABLES, ...BASELINE_OVERFLOW_TABLES];
+    const tablePositions = allPositions.slice(
+      0, Math.min(requestedTables, allPositions.length)
+    );
+    return {
+      ...EXPLICIT_BASELINE_LAYOUT,
+      tablePositions,
+      baristas,
+      style,
+      shirtColors,
+    };
+  }
+
   const tables = Math.max(1, Math.ceil(seats / chairsPerTable));
   const cols = Math.max(2, Math.ceil(Math.sqrt(tables * 1.6)));
   const rows = Math.ceil(tables / cols);
@@ -153,9 +351,6 @@ function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3
     { dx: -0.6, dy: 0 }, { dx: 0.6, dy: 0 }, { dx: 0, dy: -0.6 }, { dx: 0, dy: 0.6 },
   ].slice(0, chairsPerTable);
 
-  const shirtColors = ["#a86b4a", "#4a6a96", "#9a4a6a", "#c8a050", "#5a7a4a", "#a04050",
-                       "#3d6f8a", "#8a4d3d", "#6e9050", "#a0805a", "#7a4a6a", "#506a96"];
-
   return {
     floorW: Math.ceil(floorW),
     floorH: Math.ceil(floorH),
@@ -165,6 +360,8 @@ function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3
     tablePositions,
     chairOffsets,
     shirtColors,
+    extras: [],
+    counterSegments: null,
   };
 }
 
@@ -184,6 +381,47 @@ function simHash(seed, i) {
   return x - Math.floor(x);
 }
 
+// Compute home positions for `n` baristas along the counter's vertical
+// extent. For a `simPoints`-equipped layout (the hand-tuned baseline),
+// they spread evenly across the counter's first segment and stay clamped
+// to the segment, so a generous baristas slider doesn't push them outside
+// the counter footprint. Procedural grid layouts fall back to the legacy
+// "spread along the top-edge counter at y=-1.2" behaviour.
+function _placeBaristas(layout) {
+  const n = Math.max(1, layout.baristas);
+  const sp = layout.simPoints || {};
+  const homes = [];
+  if (sp.baristaHome) {
+    const seg = (layout.counterSegments && layout.counterSegments[0]) || null;
+    const segY = seg ? seg.y : 0;
+    const segD = seg ? seg.d : 5.5;
+    const margin = 0.4;
+    const y0 = segY + margin;
+    const y1 = segY + segD - margin;
+    for (let i = 0; i < n; i++) {
+      const bx = sp.baristaHome.x;
+      const by = n === 1 ? sp.baristaHome.y : y0 + (i / (n - 1)) * (y1 - y0);
+      homes.push({ x: bx, y: by });
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const bx = 1.5 + (i / Math.max(1, n - 1)) * (layout.counterW - 1.5);
+      const by = -1.2;
+      homes.push({ x: bx, y: by });
+    }
+  }
+  return homes;
+}
+
+function _initBaristas(layout) {
+  return _placeBaristas(layout).map((h, i) => ({
+    id: i, home: { x: h.x, y: h.y },
+    x: h.x, y: h.y,
+    target: { x: h.x, y: h.y },
+    state: "idle", action: "", busyUntil: 0,
+  }));
+}
+
 function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTime = null, speed = 1 }) {
   const [tick, setTick] = React.useState(0);
   const stateRef = React.useRef(null);
@@ -193,22 +431,24 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
   // (Re)init on layout/scenario change
   React.useEffect(() => {
     const customers = [];
-    const baristas = [];
-    // counter point — front-of-counter pickup spot
-    const counterFront = { x: 1.2, y: 0.3 };
-    const orderPoint   = { x: 1.5, y: 0.4 };
-    const exitPoint    = { x: -0.5, y: layout.floorH + 0.5 };
-    const entryPoint   = { x: layout.floorW + 0.5, y: layout.floorH + 0.5 };
+    // The procedural grid layout doesn't carry simPoints, so we synthesise
+    // them from `counterW` / `floorH` and pretend the counter sits along
+    // the top edge (legacy behaviour). The hand-tuned baseline overrides
+    // these via `layout.simPoints` so its left-wall counter actually
+    // gets queued against.
+    const sp = layout.simPoints || {};
+    const counterFront = sp.counterFront || { x: 1.2, y: 0.3 };
+    const orderPoint   = sp.orderPoint   || { x: 1.5, y: 0.4 };
+    const queueFront   = sp.queueFront   || { x: 2.2, y: 0.6 };
+    const queueDx      = sp.queueDx ?? 0.55;
+    const queueDy      = sp.queueDy ?? 0.18;
+    const waitPoint    = sp.waitPoint    || { x: 1.0, y: 1.0 };
+    const exitPoint    = sp.exitPoint    || { x: -0.5, y: layout.floorH + 0.5 };
+    const entryPoint   = sp.entryPoint   || { x: layout.floorW + 0.5, y: layout.floorH + 0.5 };
+    const makeDrink    = sp.makeDrinkPoint || null;
+    const servePoint   = sp.servePoint    || null;
 
-    for (let i = 0; i < layout.baristas; i++) {
-      const bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
-      baristas.push({
-        id: i, home: { x: bx, y: -1.2 },
-        x: bx, y: -1.2,
-        target: { x: bx, y: -1.2 },
-        state: "idle", action: "", busyUntil: 0,
-      });
-    }
+    const baristas = _initBaristas(layout);
 
     // pre-seed some customers already seated for non-empty starting state
     const seedCount = Math.min(layout.tablePositions.length,
@@ -231,6 +471,7 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     stateRef.current = {
       customers, baristas,
       counterFront, orderPoint, exitPoint, entryPoint,
+      queueFront, queueDx, queueDy, waitPoint, makeDrink, servePoint,
       time: 0, nextSpawn: 0,
       orderQueue: [],   // customer IDs waiting at counter
       drinkQueue: [],   // {custId, doneAt}
@@ -253,13 +494,10 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     let delta = externalTime - prev;
     lastExtRef.current = externalTime;
     if (delta < 0) {
-      // scrubbed backward — re-init
-      const customers = []; const baristas = [];
-      for (let i = 0; i < layout.baristas; i++) {
-        const bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
-        baristas.push({ id: i, home: { x: bx, y: -1.2 }, x: bx, y: -1.2,
-          target: { x: bx, y: -1.2 }, state: "idle", action: "", busyUntil: 0 });
-      }
+      // scrubbed backward — re-init. Reuse the same simPoints-aware
+      // barista placement helper as the main init effect above.
+      const customers = [];
+      const baristas = _initBaristas(layout);
       stateRef.current = { ...S, customers, baristas, time: externalTime,
         nextSpawn: externalTime, orderQueue: [], drinkQueue: [],
         tableUsed: new Array(layout.tablePositions.length).fill(false), nextId: 1 };
@@ -325,13 +563,14 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     };
 
     // ── customer state machine
-    const queueFront = { x: 2.2, y: 0.6 };
+    const qF = S.queueFront;
+    const qDx = S.queueDx, qDy = S.queueDy;
     S.customers.forEach((c) => {
       switch (c.state) {
         case "walk_in": {
           // walk toward back of queue
           const slot = S.orderQueue.length;
-          const target = { x: queueFront.x + slot * 0.55, y: queueFront.y + slot * 0.18 };
+          const target = { x: qF.x + slot * qDx, y: qF.y + slot * qDy };
           c.target = target;
           c.action = "";
           if (moveTo(c, target)) {
@@ -349,7 +588,12 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
             const free = S.baristas.find(b => b.state === "idle");
             if (free) {
               free.state = "taking_order";
-              free.target = { x: free.home.x, y: 0.1 };
+              // The barista walks to the order spot at the front of
+              // their counter — `S.servePoint` if the layout supplies
+              // one, otherwise the legacy "step toward y=0" hint.
+              free.target = S.servePoint
+                ? { x: S.servePoint.x, y: S.servePoint.y }
+                : { x: free.home.x, y: 0.1 };
               free.action = "taking order";
               free.busyUntil = S.time + 1.6;
               free.assignedCust = c.id;
@@ -357,7 +601,7 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
               S.orderQueue.shift();
             }
           } else {
-            const target = { x: queueFront.x + idx * 0.55, y: queueFront.y + idx * 0.18 };
+            const target = { x: qF.x + idx * qDx, y: qF.y + idx * qDy };
             c.target = target;
             c.action = idx === 1 ? "next" : "";
             moveTo(c, target);
@@ -373,12 +617,12 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
           if (!b || b.state === "making_drink" || b.state === "serve") {
             c.state = "wait_drink";
             c.action = "waiting";
-            c.target = { x: 1.0, y: 1.0 };
+            c.target = { ...S.waitPoint };
           }
           break;
         }
         case "wait_drink": {
-          c.target = { x: 1.0, y: 1.0 };
+          c.target = { ...S.waitPoint };
           moveTo(c, c.target);
           // when barista delivers to drink_queue with this customer's id, we proceed
           if (c.gotDrink) {
@@ -445,7 +689,11 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
           b.action = "taking order";
           if (S.time >= b.busyUntil) {
             b.state = "making_drink";
-            b.target = { x: b.home.x + 0.4, y: -1.4 };
+            // Walk to the make-drink station — layout-supplied if any,
+            // otherwise the legacy "step further behind counter" hint.
+            b.target = S.makeDrink
+              ? { x: S.makeDrink.x, y: S.makeDrink.y }
+              : { x: b.home.x + 0.4, y: -1.4 };
             b.action = "making ☕";
             b.busyUntil = S.time + 2.6 + simHash(S.seed, b.id) * 1.4;
           }
@@ -456,7 +704,10 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
           b.action = "making ☕";
           if (S.time >= b.busyUntil) {
             b.state = "serve";
-            b.target = { x: b.home.x, y: -0.1 };
+            // Walk to the serve point at the front of the counter.
+            b.target = S.servePoint
+              ? { x: S.servePoint.x, y: S.servePoint.y }
+              : { x: b.home.x, y: -0.1 };
             b.action = "serving";
             b.busyUntil = S.time + 0.8;
           }
@@ -488,36 +739,104 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
 }
 
 // ── Recommendation helpers ────────────────────────────────────────────────
-// The OptimizationAgent emits LayoutChange.simulation with from_position /
-// to_position in *camera-frame pixels* (see object_inventory.json for the
-// canonical coordinate system). The procedural iso scene works in *tile
-// units* and doesn't share IDs with the fixture (no `table_center_1` here).
-// To bridge: hash target_id -> deterministic table index, and convert the
-// pixel delta to a clamped tile delta so the visible shift is meaningful
-// without flying off-canvas if the agent emits an extreme move.
-function _recHashStr(s) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
 function _recClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 const REC_PX_PER_TILE = 80;
 const REC_MAX_TILES = 2.0;
 
+// Map known table fixture IDs to indices in the iso layout's
+// `tablePositions` so the agent's `move_table` / `move_chair` recommendations
+// land on the same table the user was looking at in the CCTV pane.
+const REC_TARGET_TO_TABLE_INDEX = {
+  table_center_1: 3,
+  table_mid_1: 4,
+  table_right_1: 2,
+  table_door_1: 4,
+  table_window_1: 5,
+  table_seating_1: 0,
+};
+
+// Map known non-table fixture IDs to their semantic iso-tile positions.
+// The agent emits camera-pixel coordinates (1924×1076 for ai_cafe_a, etc.),
+// but the iso scene is a procedural top-down twin where the counter sits on
+// the LEFT wall (x∈[0,2]) and the queue forms in front of it. A naive
+// linear pixel→tile conversion drops markers in the middle of the floor
+// instead of next to the counter, so per-fixture lookups override that for
+// the IDs we know about. Falls back to `_cameraToTile` for unknown IDs.
+const REC_TARGET_TO_ISO_POINT = {
+  // ai_cafe_a (left-wall counter, queue in front)
+  counter_1:               { x: 1.0, y: 2.8 },  // mid-counter
+  pickup_shelf_1:          { x: 1.6, y: 1.4 },  // top of counter, near pickup zone
+  queue_marker_1:          { x: 2.6, y: 5.0 },  // queue front (matches simPoints.queueFront)
+  // real_cafe (same iso template, different fixture IDs)
+  counter_main_1:          { x: 1.0, y: 2.8 },
+  pickup_shelf_right_1:    { x: 1.8, y: 2.0 },
+  prep_island_1:           { x: 1.2, y: 3.6 },
+  service_lane_marker_1:   { x: 2.6, y: 5.0 },
+  display_fridge_left_1:   { x: 0.6, y: 1.0 },
+  bar_stool_row_1:         { x: 2.4, y: 3.4 },
+  menu_board_1:            { x: 1.4, y: 0.4 },
+};
+
+const REC_CAMERA_BOUNDS = {
+  ai_cafe_a: { w: 1924, h: 1076 },
+  real_cafe: { w: 1279, h: 719 },
+};
+
 function recInfoFromLayout(layout, recommendation) {
   if (!recommendation || !layout || !layout.tablePositions || !layout.tablePositions.length) {
     return null;
   }
-  const idx = _recHashStr(recommendation.targetId || "") % layout.tablePositions.length;
+  const action = recommendation.action || "";
   const fromX = (recommendation.fromPosition && recommendation.fromPosition[0]) || 0;
   const fromY = (recommendation.fromPosition && recommendation.fromPosition[1]) || 0;
   const toX = (recommendation.toPosition && recommendation.toPosition[0]) || 0;
   const toY = (recommendation.toPosition && recommendation.toPosition[1]) || 0;
   const dxTile = _recClamp((toX - fromX) / REC_PX_PER_TILE, -REC_MAX_TILES, REC_MAX_TILES);
   const dyTile = _recClamp((toY - fromY) / REC_PX_PER_TILE, -REC_MAX_TILES, REC_MAX_TILES);
-  return { idx, dxTile, dyTile, target: layout.tablePositions[idx] };
+  if (action === "move_table" || action === "move_chair") {
+    const mapped = REC_TARGET_TO_TABLE_INDEX[recommendation.targetId];
+    const idx = Number.isInteger(mapped)
+      ? _recClamp(mapped, 0, layout.tablePositions.length - 1)
+      : _nearestTableIndex(layout, _cameraToTile(layout, recommendation, [fromX, fromY]));
+    return { type: "table", idx, dxTile, dyTile, target: layout.tablePositions[idx] };
+  }
+  // Non-table targets: prefer the curated semantic position; otherwise
+  // fall back to the linear camera-to-tile mapping.
+  const isoPoint = REC_TARGET_TO_ISO_POINT[recommendation.targetId];
+  const fromTile = isoPoint
+    ? { x: isoPoint.x, y: isoPoint.y }
+    : _cameraToTile(layout, recommendation, [fromX, fromY]);
+  return {
+    type: "marker",
+    dxTile,
+    dyTile,
+    target: fromTile,
+    label: action === "change_queue_boundary" ? "boundary shift" : "station shift",
+  };
+}
+
+function _nearestTableIndex(layout, point) {
+  let bestIdx = 0;
+  let bestDistance = Infinity;
+  layout.tablePositions.forEach((table, idx) => {
+    const distance = Math.hypot(table.x - point.x, table.y - point.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIdx = idx;
+    }
+  });
+  return bestIdx;
+}
+
+function _cameraToTile(layout, recommendation, point) {
+  const bounds = REC_CAMERA_BOUNDS[recommendation.sessionId] || REC_CAMERA_BOUNDS.ai_cafe_a;
+  const x = _recClamp(point[0] / bounds.w, 0.05, 0.95);
+  const y = _recClamp(point[1] / bounds.h, 0.05, 0.95);
+  return {
+    x: 1 + x * Math.max(1, layout.floorW - 2),
+    y: 0.5 + y * Math.max(1, layout.floorH - 1),
+  };
 }
 
 // Smooth scalar tween: animates the current value toward `target` over
@@ -572,26 +891,39 @@ function RecOverlay({ recInfo }) {
   const b = ISO.toScreen(recInfo.target.x + recInfo.dxTile, recInfo.target.y + recInfo.dyTile);
   const rxA = ISO.tileW * 0.7, ryA = ISO.tileH * 0.7;
   const rxB = ISO.tileW * 0.65, ryB = ISO.tileH * 0.65;
+  const label = recInfo.type === "marker" ? `AI · ${recInfo.label}` : "AI · proposed shift";
   return (
     <g style={{ pointerEvents: "none" }}>
-      <ellipse cx={a.sx} cy={a.sy} rx={rxA} ry={ryA}
-        fill="none" stroke="#f4a73e" strokeWidth="2">
-        <animate attributeName="rx" values={`${rxA};${rxA * 1.25};${rxA}`}
-          dur="1.6s" repeatCount="indefinite" />
-        <animate attributeName="ry" values={`${ryA};${ryA * 1.25};${ryA}`}
-          dur="1.6s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.95;0.45;0.95"
-          dur="1.6s" repeatCount="indefinite" />
-      </ellipse>
-      <ellipse cx={b.sx} cy={b.sy} rx={rxB} ry={ryB}
-        fill="rgba(244,167,62,0.18)" stroke="#f4a73e" strokeWidth="1.5"
-        strokeDasharray="4 3" />
+      {recInfo.type === "marker" ? (
+        <>
+          <rect x={a.sx - 12} y={a.sy - 18} width="24" height="18" rx="3"
+            fill="rgba(244,167,62,0.16)" stroke="#f4a73e" strokeWidth="1.8" />
+          <rect x={b.sx - 12} y={b.sy - 18} width="24" height="18" rx="3"
+            fill="rgba(244,167,62,0.24)" stroke="#f4a73e" strokeWidth="1.5"
+            strokeDasharray="4 3" />
+        </>
+      ) : (
+        <>
+          <ellipse cx={a.sx} cy={a.sy} rx={rxA} ry={ryA}
+            fill="none" stroke="#f4a73e" strokeWidth="2">
+            <animate attributeName="rx" values={`${rxA};${rxA * 1.25};${rxA}`}
+              dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="ry" values={`${ryA};${ryA * 1.25};${ryA}`}
+              dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.95;0.45;0.95"
+              dur="1.6s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx={b.sx} cy={b.sy} rx={rxB} ry={ryB}
+            fill="rgba(244,167,62,0.18)" stroke="#f4a73e" strokeWidth="1.5"
+            strokeDasharray="4 3" />
+        </>
+      )}
       <line x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy}
         stroke="#f4a73e" strokeWidth="2.2" strokeLinecap="round"
         markerEnd="url(#rec-arrow-head)" opacity="0.9" />
       <text x={(a.sx + b.sx) / 2} y={Math.min(a.sy, b.sy) - 14}
         fill="#7a4a18" fontSize="10" fontWeight="600" textAnchor="middle">
-        AI · proposed shift
+        {label}
       </text>
     </g>
   );
@@ -609,21 +941,57 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
     }
   }
 
-  const objects = [];
-  // counter
-  objects.push({ key: "counter", sortY: -2,
-    el: <Counter x={1} y={-1} w={layout.counterW} d={1} style={layout.style} /> });
+  // Floor mats render *under* every other entity but *over* the floor tile
+  // grid, so they're added separately from the sortY-stacked `objects`
+  // list. Only baseline carries mats today (extras list).
+  const matEls = (layout.extras || [])
+    .filter((e) => e.type === "mat")
+    .map((e, i) => (<FloorMat key={`mat${i}`} x={e.x} y={e.y} w={e.w} d={e.d} color={e.color} />));
 
-  // plants
-  objects.push({ key: "p1", sortY: layout.floorH, el: <Plant x={-1} y={layout.floorH - 1} /> });
-  objects.push({ key: "p2", sortY: layout.floorH, el: <Plant x={layout.floorW - 1} y={layout.floorH - 1} /> });
+  const objects = [];
+
+  // Counter — multi-segment when the layout supplies `counterSegments`
+  // (baseline = L-shape espresso bar + register column), otherwise the
+  // single-segment top-edge counter the procedural layout produces.
+  if (layout.counterSegments && layout.counterSegments.length) {
+    layout.counterSegments.forEach((seg, i) => {
+      objects.push({ key: `counter${i}`, sortY: seg.x + seg.y - 2,
+        el: <Counter x={seg.x} y={seg.y} w={seg.w} d={seg.d}
+              style={layout.style} showFixtures={seg.showFixtures !== false} /> });
+    });
+  } else {
+    objects.push({ key: "counter", sortY: -2,
+      el: <Counter x={1} y={-1} w={layout.counterW} d={1} style={layout.style} /> });
+  }
+
+  // Background extras (couch, bookshelf, plants) — opt-in via the layout's
+  // `extras` array. Procedural scenarios fall back to the legacy
+  // bottom-corner plants so the empty back wall doesn't read as bare.
+  const extras = layout.extras || [];
+  if (extras.length) {
+    extras.forEach((e, i) => {
+      if (e.type === "couch") {
+        objects.push({ key: `couch${i}`, sortY: e.x + e.y,
+          el: <Couch x={e.x} y={e.y} w={e.w} d={e.d} /> });
+      } else if (e.type === "bookshelf") {
+        objects.push({ key: `bs${i}`, sortY: e.x + e.y - 0.1,
+          el: <Bookshelf x={e.x} y={e.y} w={e.w} d={e.d} /> });
+      } else if (e.type === "plant") {
+        objects.push({ key: `p${i}`, sortY: e.x + e.y, el: <Plant x={e.x} y={e.y} /> });
+      }
+      // mats are handled above (they render under everything else)
+    });
+  } else {
+    objects.push({ key: "p1", sortY: layout.floorH, el: <Plant x={-1} y={layout.floorH - 1} /> });
+    objects.push({ key: "p2", sortY: layout.floorH, el: <Plant x={layout.floorW - 1} y={layout.floorH - 1} /> });
+  }
 
   // tables + chairs — when a recommendation is being applied, the target
   // table (and the chairs orbiting it) translate together by recTween *
   // (dxTile, dyTile). Other tables stay put. recTween is 0 while pending,
   // animates to 1 on accept; this layer doesn't care which.
   const tableOffset = (i) => {
-    if (!recInfo || i !== recInfo.idx) return { dx: 0, dy: 0 };
+    if (!recInfo || recInfo.type !== "table" || i !== recInfo.idx) return { dx: 0, dy: 0 };
     return { dx: recInfo.dxTile * recTween, dy: recInfo.dyTile * recTween };
   };
   layout.tablePositions.forEach((t, i) => {
@@ -655,7 +1023,7 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
       const walking = c.state === "walk_in" || c.state === "walk_to_seat" || c.state === "leaving"
         || c.state === "queue" || c.state === "ordering";
       let cx = c.x, cy = c.y;
-      if (recInfo && c.state === "seated" && c.seatedTable === recInfo.idx) {
+      if (recInfo && recInfo.type === "table" && c.state === "seated" && c.seatedTable === recInfo.idx) {
         cx += recInfo.dxTile * recTween;
         cy += recInfo.dyTile * recTween;
       }
@@ -669,6 +1037,7 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
   return (
     <g>
       {floor}
+      {matEls}
       {objects.map(o => <g key={o.key}>{o.el}</g>)}
     </g>
   );
@@ -697,6 +1066,8 @@ function CafeScene({ seats = 18, baristas = 2, style = "default", scenarioName =
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layout, recKey,
      recommendation && recommendation.targetId,
+     recommendation && recommendation.action,
+     recommendation && recommendation.sessionId,
      recommendation && recommendation.fromPosition && recommendation.fromPosition.join(","),
      recommendation && recommendation.toPosition && recommendation.toPosition.join(",")]
   );
