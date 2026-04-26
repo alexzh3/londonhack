@@ -5,12 +5,11 @@
 // 1 couch ≈ 12 seats, 1 barista, modest footfall. The other scenarios are
 // "what-if" comparisons that scale up from there.
 const SCENARIO_PRESETS = {
-  "baseline": { id: "00", name: "baseline", style: "default",  seats: 12,  baristas: 1, footfall: 32,  hours: 10 },
-  "10x.size": { id: "01", name: "10x.size", style: "default",  seats: 120, baristas: 8, footfall: 320, hours: 14 },
-  "brooklyn": { id: "02", name: "brooklyn", style: "brooklyn", seats: 32,  baristas: 3, footfall: 78,  hours: 12 },
-  "tokyo":    { id: "03", name: "tokyo",    style: "tokyo",    seats: 14,  baristas: 2, footfall: 95,  hours: 16 },
+  "baseline": { id: "00", name: "baseline", style: "default",  seats: 12, baristas: 1, footfall: 32, hours: 10 },
+  "brooklyn": { id: "01", name: "brooklyn", style: "brooklyn", seats: 32, baristas: 3, footfall: 78, hours: 12 },
+  "tokyo":    { id: "02", name: "tokyo",    style: "tokyo",    seats: 14, baristas: 2, footfall: 95, hours: 16 },
 };
-const SCENARIO_ORDER = ["baseline", "10x.size", "brooklyn", "tokyo"];
+const SCENARIO_ORDER = ["baseline", "brooklyn", "tokyo"];
 
 // ── Made-up KPI model ─────────────────────────────────────────────────────
 // Throughput cap is min(barista_capacity, footfall). Wait grows with queue
