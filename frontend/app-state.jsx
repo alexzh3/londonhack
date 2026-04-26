@@ -65,6 +65,85 @@ function deltaStr(curr, base, kind = "abs") {
   return (d >= 0 ? "+" : "") + d;
 }
 
+// ── useBackend ────────────────────────────────────────────────────────────
+// Drives /api/state + /api/run on mount per session_id. Holds {state, run,
+// loading, error}. submitFeedback() is exposed for the Accept/Reject buttons
+// so the panel doesn't need to thread session_id / pattern_id / fingerprint
+// itself. Mounts even when api.js failed to load — exposes a clear error so
+// we don't silently degrade to mock data.
+function useBackend(sessionId) {
+  const [state, setState] = React.useState(null);
+  const [run, setRun] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  const refresh = React.useCallback(async () => {
+    if (!sessionId) return;
+    if (typeof cafetwinApi === "undefined") {
+      setError("cafetwinApi not loaded — check api.js script tag");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const s = await cafetwinApi.getState(sessionId);
+      setState(s);
+      if (s.missing_required && s.missing_required.length) {
+        throw new Error(`session ${sessionId} missing fixtures: ${s.missing_required.join(", ")}`);
+      }
+      const r = await cafetwinApi.postRun(sessionId);
+      setRun(r);
+    } catch (err) {
+      setError((err && err.message) || String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId]);
+
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const submitFeedback = React.useCallback(async ({ decision, reason } = {}) => {
+    if (!run || !state || !state.pattern) {
+      throw new Error("cannot submit feedback before run completes");
+    }
+    return cafetwinApi.postFeedback({
+      sessionId,
+      patternId: state.pattern.id,
+      proposalFingerprint: run.layout_change.fingerprint,
+      decision,
+      reason,
+    });
+  }, [run, state, sessionId]);
+
+  return { state, run, loading, error, refresh, submitFeedback };
+}
+
+// Stage timing helpers for the AgentFlow panel. Backend returns 3 stages
+// (evidence_pack, optimization_agent, memory_write); the existing JSX shows
+// 5 visual nodes — see overview_plan.md "Visual node ← StageTiming.name".
+const AGENT_FLOW_NODE_TO_STAGE = {
+  vision: "evidence_pack",
+  kpi: "evidence_pack",
+  pattern: "evidence_pack",
+  optimize: "optimization_agent",
+  simulate: "memory_write",
+};
+
+function stageDurationMs(stage) {
+  if (!stage) return null;
+  const start = Date.parse(stage.started_at);
+  const end = Date.parse(stage.ended_at);
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  return Math.max(0, end - start);
+}
+
+function fmtLatency(ms) {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
 // ── Modal component ───────────────────────────────────────────────────────
 function Modal({ open, onClose, title, sub, children, footer }) {
   if (!open) return null;
@@ -89,4 +168,5 @@ Object.assign(window, {
   SCENARIO_PRESETS, SCENARIO_ORDER,
   computeKpis, fmtMoney, deltaStr,
   Modal,
+  useBackend, AGENT_FLOW_NODE_TO_STAGE, stageDurationMs, fmtLatency,
 });

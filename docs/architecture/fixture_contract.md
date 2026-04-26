@@ -5,24 +5,28 @@ when required files are missing.
 
 ## Runtime Inputs
 
-- `zones.json`
-- `object_inventory.json`
-- `kpi_windows.json`
-- `pattern_fixture.json`
-- `recommendation.cached.json`
+Primary MVP session:
+
+- `demo_data/sessions/ai_cafe_a/session.json`
+- `demo_data/sessions/ai_cafe_a/zones.json`
+- `demo_data/sessions/ai_cafe_a/object_inventory.json`
+- `demo_data/sessions/ai_cafe_a/kpi_windows.json`
+- `demo_data/sessions/ai_cafe_a/pattern_fixture.json`
+- `demo_data/sessions/ai_cafe_a/recommendation.cached.json`
 
 ## Presentation Assets
 
-- `annotated_before.mp4`
-- `twin_observed.png`
-- `twin_recommended.png`
+- `cafe_videos/ai_generated_cctv.mp4`
+- `demo_data/sessions/ai_cafe_a/frame.jpg` (optional representative frame)
+- The MVP twin is rendered by `frontend/cafe-iso.jsx`; no PNG twin assets are required.
 
 ## Credibility / Tier 1 Assets
 
-- `source_video.mp4`
-- `tracks.cached.json`
-- `twin_observed.json`
-- `twin_recommended.json`
+- `cafe_videos/real_cctv.mp4`
+- `cafe_videos/ai_generated_cctv_round.mp4`
+- `demo_data/sessions/<slug>/tracks.cached.json`
+- `demo_data/sessions/<slug>/twin_observed.json`
+- `demo_data/sessions/<slug>/twin_recommended.json`
 
 ## Runtime Output
 

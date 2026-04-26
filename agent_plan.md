@@ -14,6 +14,8 @@ This document specifies **MVP** in full and gives upgrade contracts for Tier 1 /
 
 **Frontend strategy (locked):** the MVP keeps the existing `frontend/cafetwin.html` Babel-in-browser demo as the shell. We add a thin `frontend/api.js` and a `useBackend()` hook in `app-state.jsx`; existing components (`AgentFlow`, `ChatPanel`, `TopBar`, `ScenarioRail`) gain optional props that bind real backend data. No Vite port. The demo's hand-authored scenarios stay as decorative what-ifs; the agent contributes one chip (`recommended`) materialised from the real `LayoutChange`.
 
+**The rule:** what is mock stays mock; what is real (or could be real with a small additive binding) gets wired in MVP. Tier 1 / Tier 2 add the rest. No existing JSX file is rewritten. The canonical real/mock inventory per UI surface lives in `overview_plan.md` §Frontend strategy → "What's real vs mock in the MVP UI"; this engineering plan should not duplicate it.
+
 ## Visual Architecture — module-level, per tier
 
 Three views of the same system. Each tier strictly adds to the previous one — boxes marked `(NEW)` are the additions vs the prior tier. Tiers are gated on the previous tier being green and stable.
@@ -55,7 +57,7 @@ Legend: `[REAL]` = live code at demo time. `[mock]` = fixture or prebaked artifa
                                             │ /api/feedback: 1 span│
                                             └──────────────────────┘
 
-  Routes: GET /api/state, POST /api/run, POST /api/feedback,
+  Routes: GET /api/sessions, GET /api/state, POST /api/run, POST /api/feedback,
           GET /api/memories, GET /api/logfire_url
 ```
 
@@ -113,40 +115,46 @@ Perception layer becomes live. Intelligence and presentation layers untouched. *
 Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAgent, /api/apply, optional R3F, activated chat.**
 
 ```text
-  ── PERCEPTION (Tier 1, REAL) ────   ── INTELLIGENCE (Tier 1+SB, REAL) ──   ── PRESENTATION (richer) ──────────
+─── PERCEPTION (Tier 1, REAL · unchanged) ──────────────────────────────────────
 
-  (unchanged from Tier 1)              (unchanged from Tier 1, plus:)         frontend/  (still JSX, optionally
-                                                                              Vite-ported once design is locked)
-                                       agents/scene_builder_agent.py (NEW)    ┌──────────────────────────────┐
-                                         Pydantic AI · Claude  [REAL]         │ TopBar               [REAL]   │
-                                         emits TwinLayout                     │ Flow canvas (7 nodes) (NEW)  │
-                                         called twice per demo:               │   per-span animation         │
-                                           mode=observed   ← inventory        │ Recommendation card  [REAL]   │
-                                           mode=recommended ← layout_change   │                              │
-                                         ↳ retry + validate + cached fallback │ Twin panel           (NEW) │
-                                                                              │   R3F box prefabs    [REAL]   │
-                                                                              │   reads TwinLayout           │
-                                                                              │   iso renderer = lowend      │
-                                                                              │     fallback (?lowend=1)     │
-                                                                              │                              │
-                                                                              │ Scenario rail        (NEW)   │
-                                                                              │   2–3 prebaked concepts      │
-                                                                              │   (each = SB call w/ theme)  │
-                                                                              │                              │
-                                                                              │ Chat input activated (NEW)   │
-                                                                              │   supported prompts only      │
-                                                                              │   (regex/keyword routing)     │
-                                                                              │                              │
-                                                                              │ Memory timeline      (NEW)   │
-                                                                              │   rich UI w/ previews [REAL]  │
-                                                                              │                              │
-                                                                              │ Optional: Hyper3D hero asset │
-                                                                              │   (one prebaked GLB)  [mock]  │
-                                                                              └──────────────────────────────┘
+  tracks.cached.json [REAL] · kpi_windows (live engine) [REAL]
+  zones.json [mock]          · object_inventory.json    [mock]
+  pattern via PatternAgent (or deterministic builder)   [REAL]
 
-  Backend additions in Tier 2: POST /api/apply (SceneBuilderAgent → recommended TwinLayout),
-                               optional GET /api/twin/{scenario}, /api/chat for routed prompts.
-  No new sponsor integrations.
+─── INTELLIGENCE (Tier 1 + one new agent) ──────────────────────────────────────
+
+  ┌────────────────────────────────────┐  ┌────────────────────────────────────┐
+  │ optimization_agent.py       [REAL] │  │ scene_builder_agent.py     (NEW)   │
+  │   (unchanged from MVP/Tier 1)      │  │   Pydantic AI · Claude     [REAL]  │
+  │   → LayoutChange                   │  │   emits TwinLayout                 │
+  └────────────────────────────────────┘  │   called twice per demo:           │
+                                          │     mode=observed   ← inventory    │
+                                          │    mode=recommended ← LayoutChange │
+                                          │   ↳ retry + validate + cached      │
+                                          └────────────────────────────────────┘
+
+─── PRESENTATION (richer JSX shell, optionally Vite-ported) ────────────────────
+
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ TopBar                          [REAL]  unchanged from MVP                 │
+  │ Recommendation card             [REAL]  unchanged from MVP                 │
+  │                                                                            │
+  │ Flow canvas (7 nodes)           (NEW)   per-span animation from Logfire    │
+  │ Twin panel                      (NEW)   R3F box prefabs ← reads TwinLayout │
+  │                                          iso renderer = ?lowend=1 fallback │
+  │ Scenario rail                   (NEW)   2–3 prebaked concept chips         │
+  │                                          (each = one SceneBuilderAgent run)│
+  │ Chat input                      (NEW)   activated, supported-prompts-only  │
+  │ Memory timeline                 (NEW)   rich UI with previews              │
+  │ Hyper3D hero asset (optional)   [mock]  one prebaked GLB if time permits   │
+  └────────────────────────────────────────────────────────────────────────────┘
+
+  Backend additions:
+    POST /api/apply           SceneBuilderAgent → recommended TwinLayout
+    GET  /api/twin/{scenario} (optional) parsed layout for scenario rail
+    /api/chat                 (optional) routed supported prompts
+
+  Sponsor integrations: none new.
 ```
 
 ### Cross-tier component status
@@ -165,7 +173,7 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 | Chat | input visible but disabled / hidden | same as MVP | input activated; supported-prompts-only |
 | Scenario rail | demo presets + 1 agent-driven `recommended` chip | same as MVP | + 2–3 prebaked concept chips (each = one `SceneBuilderAgent` call) |
 | Logfire span count | 4 on `/api/run` + 1 on `/api/feedback` | +KPI +pattern +extra writes | + scene_builder spans on `/api/apply` |
-| Routes | `/api/state`, `/api/run`, `/api/feedback`, `/api/memories`, `/api/logfire_url` | same as MVP | + `/api/apply`, optional `/api/twin/{scenario}`, `/api/chat` |
+| Routes | `/api/sessions`, `/api/state`, `/api/run`, `/api/feedback`, `/api/memories`, `/api/logfire_url` | same as MVP | + `/api/apply`, optional `/api/twin/{scenario}`, `/api/chat` |
 | Sponsor services | Anthropic, MuBit, Logfire | + (none) | + (none) |
 
 ### Sponsor services used at demo time (all tiers)
@@ -194,9 +202,9 @@ sequenceDiagram
     participant JL as mubit_fallback.jsonl
     participant LF as Logfire
 
-    Note over FE,API: Page load → useBackend() fires GET /api/state then POST /api/run
+    Note over FE,API: Page load → useBackend("ai_cafe_a") fires GET /api/sessions, GET /api/state, then POST /api/run
 
-    FE->>API: POST /api/run (JSON)
+    FE->>API: POST /api/run {session_id: "ai_cafe_a"}
     API->>LF: span(run) begin
 
     API->>EP: build(CafeEvidencePack)
@@ -277,13 +285,16 @@ All five light up sequentially on the single `/api/run` call. Latency badges on 
 ## Demo loop (MVP)
 
 ```
-fixtures (loaded once)
+fixtures (loaded once per session selection)
   ↓
-GET /api/state ────────────────────────────────────
+GET /api/sessions ─────────────────────────────────
+  list of SessionManifest (ai_cafe_a + any authored alternates)
+  ↓
+GET /api/state?session_id=ai_cafe_a ───────────────
   fixture status + KPI windows + zones + object inventory + pattern
   ↓
-POST /api/run ─────────────────────────────────────
-  build CafeEvidencePack   (typed input bundle, includes prior_recommendations via MuBit recall)
+POST /api/run {session_id: ai_cafe_a} ─────────────
+  build CafeEvidencePack(session_id)   (typed input bundle, includes prior_recommendations via MuBit recall scoped to session+pattern)
   ↓
   OptimizationAgent             (Pydantic AI, typed LayoutChange, validated, cached fallback)
   ↓
@@ -323,8 +334,8 @@ Plus a smaller `/api/feedback` trace:
 
 ```
 app/
-  schemas.py                    # all Pydantic models (see §Schemas) — already implemented
-  evidence_pack.py              # build CafeEvidencePack from demo_data/
+  schemas.py                    # all Pydantic models — implemented; SessionManifest to add
+  evidence_pack.py              # build(session_id) → CafeEvidencePack reading from sessions/<id>/
   agents/
     optimization_agent.py       # live Pydantic AI agent → LayoutChange
     # scene_builder_agent.py    # Tier 2 only
@@ -332,53 +343,112 @@ app/
   logfire_setup.py              # init + span helpers
   api/
     main.py                     # FastAPI app + CORSMiddleware
-    routes.py                   # /api/state, /api/run, /api/feedback, /api/memories, /api/logfire_url
-  fallback.py                   # load recommendation.cached.json when the agent fails validation
+    routes.py                   # /api/sessions, /api/state, /api/run, /api/feedback, /api/memories, /api/logfire_url
+  fallback.py                   # load sessions/<id>/recommendation.cached.json when the agent fails
   config.py                     # env vars, demo_data path
-demo_data/                      # see §Demo data contract
+  sessions.py                   # discover sessions/<slug>/, parse SessionManifest, validate fixture presence
+cafe_videos/                    # three CCTV source videos (already in repo)
+  real_cctv.mp4
+  ai_generated_cctv.mp4
+  ai_generated_cctv_round.mp4
+demo_data/
+  sessions/
+    ai_cafe_a/                  # MVP mock — must ship
+      session.json
+      zones.json
+      object_inventory.json
+      kpi_windows.json
+      pattern_fixture.json
+      recommendation.cached.json
+    real_cafe/                  # Tier 1 only — pairs with live YOLO on real_cctv.mp4
+  mubit_fallback.jsonl          # shared across sessions, payloads include session_id
 frontend/                       # existing Babel-in-browser demo — bind backend, do not rewrite
-  cafetwin.html                 # shell (already built)
-  app-state.jsx                 # SCENARIO_PRESETS + computeKpis + Modal — add useBackend() hook
+  cafetwin.html                 # shell (already built; add memories modal + optional session selector)
+  app-state.jsx                 # add useBackend(sessionId) + scenarioFromLayoutChange()
   app-canvas.jsx                # iso twin canvas + split-compare (already built)
   app-panels.jsx                # TopBar, AgentFlow, ChatPanel, ScenarioRail (bind backend props)
   cafe-iso.jsx                  # SVG iso renderer (already built)
-  tweaks-panel.jsx              # editable tweaks panel (already built)
+  tweaks-panel.jsx              # editable tweaks panel (already built; gains session select)
   cafetwin.css                  # 32KB stylesheet (already built)
-  api.js                        # NEW: thin fetch wrappers for the 5 routes
+  api.js                        # NEW: fetch wrappers — listSessions, getState, postRun, postFeedback, getMemories, getLogfireUrl
 scripts/
-  build_fixtures.py             # one-shot: hand-author or render fixtures
-  run_yolo_offline.py           # Tier 1 hook: produce real tracks.cached.json
+  build_fixtures.py             # one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding
+  run_yolo_offline.py           # Tier 1 hook: produce real tracks.cached.json per session
 ```
 
-Current scaffold exists for these boundaries: `pyproject.toml`, `app/`,
-`app/api/`, `app/agents/`, `demo_data/`, `frontend/`, `scripts/`, and
-`docs/architecture/`. `app/schemas.py` is implemented with strict Pydantic
-models for fixtures, `CafeEvidencePack`, `LayoutChange`, memory records, API
-responses, and Tier 2 twin layouts. `frontend/` contains the working
-Babel-in-browser demo. The next implementation step is creating the first
-`demo_data/*.json` fixtures, loading them through `app/evidence_pack.py`,
-and standing up the 5 routes in `app/api/routes.py` so the frontend bindings
-have something real to read.
+Current status (2026-04-26): `pyproject.toml`, `app/`, `app/api/`,
+`app/agents/`, `demo_data/`, `frontend/`, `scripts/`, and
+`docs/architecture/` exist. `app/schemas.py` is implemented with strict
+Pydantic models for fixtures, `CafeEvidencePack`, `LayoutChange`, memory
+records, API responses, and Tier 2 twin layouts. `demo_data/sessions/ai_cafe_a/`
+now contains the extracted 5s frame and all six required JSON fixtures.
+`app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
+and `app/api/routes.py` provide the first test-backed backend spine for the six
+MVP routes. `OptimizationAgent` now retries semantic validation failures once
+before using the cached recommendation, and `/api/memories?session_id=...`
+filters local jsonl records server-side by `payload.session_id`. `tests/`
+covers the fixture contract, route response models, agent semantic retry, and
+memory filtering (`pytest` 10 passed; `ruff check app tests` passed). `.agents/`
+is local-only coordination/skills state and is ignored; `.agents/handoff.md`
+should be read and updated during multi-agent work but not committed.
+
+Next implementation step: bind the existing Babel-in-browser frontend to these
+route shapes while tightening MuBit and Logfire behavior behind the
+already-working fallback path.
 
 ## Demo data contract (MVP fixtures)
 
-All hand-authored or precomputed offline. Loaded once at startup.
+CCTV videos in `cafe_videos/` seed sessions. Each session is a self-contained fixture pack hand-derived from a representative frame of its source video.
+
+### Sessions
+
+| Session slug | Source video | Status |
+|---|---|---|
+| `ai_cafe_a` | `cafe_videos/ai_generated_cctv.mp4` (1924×1076 / 24fps / 15s) | **MVP — must ship.** Controlled AI-generated CCTV mock; fastest path to a clean fixture pack. |
+| `real_cafe` | `cafe_videos/real_cctv.mp4` (1280×720 / 30fps / 49s) | **Tier 1 only.** Authored once `scripts/run_yolo_offline.py` produces real `tracks.cached.json` for it. Carries the "real video" pitch beat when Tier 1 ships. |
+
+`cafe_videos/ai_generated_cctv_round.mp4` is held in repo as raw material; no session is authored against it for MVP or Tier 1.
+
+### Per-session files
+
+For each `<slug>` under `demo_data/sessions/<slug>/`:
 
 | File | Schema | Notes |
 |---|---|---|
-| `demo_data/source_video.mp4` | binary | The original overhead clip. Not loaded by code; available for the pitch ("here's the raw input"). |
-| `demo_data/annotated_before.mp4` | binary | Optional. Used only if the canvas's `view` segment is extended with a `video` mode. |
-| `demo_data/tracks.cached.json` | `list[TrackPoint]` | Used by Tier 1 KPI engine. In MVP: shipped for credibility ("here's the data") but not consumed at runtime. |
-| `demo_data/zones.json` | `list[Zone]` | Hand-drawn polygons. Loaded into `CafeEvidencePack`. |
-| `demo_data/object_inventory.json` | `ObjectInventory` | Hand-authored counts + xy. Loaded into `CafeEvidencePack`. |
-| `demo_data/kpi_windows.json` | `list[KPIReport]` | Precomputed in MVP, reflecting plausible numbers. Loaded into `CafeEvidencePack` and shown on the baseline KPI cards. |
-| `demo_data/pattern_fixture.json` | `OperationalPattern` | One pattern with `evidence_ids` (e.g. `mem_kpi_w1`, `mem_kpi_w2`, `mem_kpi_w3`). The agent **must** cite these IDs. |
-| `demo_data/recommendation.cached.json` | `LayoutChange` | Deterministic fallback used if the agent retries fail validation. |
-| `demo_data/twin_observed.json` | `TwinLayout` (Tier 2 schema) | Shipped for Tier 2 R3F. Not used in MVP — the iso renderer synthesises its scene from demo presets. |
-| `demo_data/twin_recommended.json` | `TwinLayout` (Tier 2 schema) | Shipped for Tier 2 R3F. Not used in MVP. |
-| `demo_data/mubit_fallback.jsonl` | append-only | Created at runtime. Source of truth for the Memories modal. |
+| `session.json` | `SessionManifest` (new schema, see below) | Slug, label, video relative path, source kind (`real` or `ai_generated`), notes. |
+| `zones.json` | `list[Zone]` | Hand-drawn polygons traced from the representative frame. Loaded into `CafeEvidencePack`. |
+| `object_inventory.json` | `ObjectInventory` | Hand-authored counts + `center_xy` in the video's pixel coordinate space. Loaded into `CafeEvidencePack`. |
+| `kpi_windows.json` | `list[KPIReport]` | 3–4 precomputed windows with plausible numbers consistent with the visible activity. The pattern fixture's `evidence_ids` cite these windows' `memory_id`. |
+| `pattern_fixture.json` | `OperationalPattern` | One pattern. The agent **must** cite its `evidence[*].memory_id` values. |
+| `recommendation.cached.json` | `LayoutChange` | Deterministic fallback used if the agent retries fail validation for this session. |
+| `frame.jpg` (optional) | image | The representative frame used to derive the fixtures. Pulled with `ffmpeg -ss 5 -i <video> -frames:v 1 frame.jpg`. Useful for debugging / regenerating fixtures. |
 
-**Failure rule:** if any required fixture is missing at startup, `/api/state` returns a clear error with the missing filename. Don't paper over it.
+### Global files
+
+| File | Schema | Notes |
+|---|---|---|
+| `cafe_videos/real_cctv.mp4`, `ai_generated_cctv.mp4`, `ai_generated_cctv_round.mp4` | binary | Already in repo. Not parsed by backend at runtime. Optionally streamed by the frontend if the canvas's `view` segment grows a `video` mode. |
+| `demo_data/sessions/<slug>/tracks.cached.json` | `list[TrackPoint]` | Tier 1 only — produced offline by `scripts/run_yolo_offline.py <session_id>`. Not used in MVP. |
+| `demo_data/sessions/<slug>/twin_observed.json` / `twin_recommended.json` | `TwinLayout` (Tier 2 schema) | Tier 2 R3F input. Not used in MVP — the iso renderer synthesises its scene from demo presets. |
+| `demo_data/mubit_fallback.jsonl` | append-only | Created at runtime. Shared across sessions. Each record's payload includes `session_id` so the Memories modal can filter. |
+
+### `SessionManifest` schema
+
+Add to `app/schemas.py`:
+
+```python
+class SessionManifest(StrictModel):
+    slug: str                              # e.g. "ai_cafe_a"
+    label: str                             # human-readable, e.g. "AI cafe A (mock CCTV)"
+    video_path: str                        # relative path, e.g. "cafe_videos/ai_generated_cctv.mp4"
+    source_kind: Literal["real", "ai_generated"]
+    notes: str | None = None
+    representative_frame_idx: int | None = None
+```
+
+`evidence_pack.build(session_id)` resolves files under `demo_data/sessions/<session_id>/`. If `session_id` is unset, defaults to `"ai_cafe_a"`. Missing files → `/api/state` returns a clear error (no silent fallback to a different session).
+
+**Failure rule:** if any required fixture for the active session is missing at startup, `/api/state?session_id=...` returns a clear error with the missing filename. Don't paper over it or silently fall back to another session.
 
 ## Schemas
 
@@ -412,7 +482,7 @@ class SceneObject(BaseModel):
 
 
 class ObjectInventory(BaseModel):
-    session_id: UUID
+    session_id: str           # slug, e.g. "ai_cafe_a"
     run_id: UUID
     source_frame_idx: int
     source_timestamp_s: float
@@ -462,7 +532,7 @@ class KPIReport(BaseModel):
     queue_obstruction_seconds: float
     congestion_score: float
     table_detour_score: float
-    session_id: UUID
+    session_id: str           # slug, e.g. "ai_cafe_a"
     run_id: UUID
     memory_id: str  # e.g. "mem_kpi_w1"; cited by patterns
 
@@ -492,10 +562,10 @@ class OperationalPattern(BaseModel):
 
 class CafeEvidencePack(BaseModel):
     """Single typed input to OptimizationAgent.
-    Built by `evidence_pack.build()` from demo_data fixtures (MVP)
+    Built by `evidence_pack.build(session_id)` from demo_data fixtures (MVP)
     or live KPI engine output (Tier 1).
     """
-    session_id: UUID = Field(default_factory=uuid4)
+    session_id: str                                # slug, e.g. "ai_cafe_a"
     run_id: UUID = Field(default_factory=uuid4)
     zones: list[Zone]
     object_inventory: ObjectInventory
@@ -503,13 +573,19 @@ class CafeEvidencePack(BaseModel):
     pattern: OperationalPattern  # MVP: the fixture pattern. Tier 1: PatternAgent output.
     org_rules: list[str] = Field(default_factory=list)
     prior_recommendations: list["LayoutChange"] = Field(default_factory=list)
-    # Populated by mubit.recall() on the pattern fingerprint. Empty list if
-    # MuBit unavailable or no prior runs — agent handles both cases.
+    # Populated by mubit.recall(session_id, pattern_id). Empty list if MuBit
+    # unavailable or no prior runs — agent handles both cases. Recall is
+    # scoped to (session_id, pattern_id) so cafes never see each other's
+    # recommendations.
 
 
 # ---------- Agent output ----------
 
-class SimulationSpec(BaseModel):
+class LayoutSimulation(BaseModel):
+    """Single-action MVP simulation spec. Renamed from `SimulationSpec` to
+    avoid collision with the Tier-2 multi-op `SimulationSpec` in the UI spec
+    (§3.5 of `docs/superpowers/specs/2026-04-25-simcafe-ui-design.md`).
+    """
     action: Literal["move_table", "move_chair", "move_station", "change_queue_boundary"]
     target_id: str
     from_position: tuple[float, float]
@@ -518,10 +594,14 @@ class SimulationSpec(BaseModel):
 
 
 class LayoutChange(BaseModel):
+    """Pure agent output — does NOT carry session_id / pattern_id. The
+    orchestrator wraps it in `RecommendationMemoryPayload` (below) when
+    persisting, so recall scoping stays out of the LLM's schema.
+    """
     title: str
     rationale: str
     target_id: str
-    simulation: SimulationSpec
+    simulation: LayoutSimulation
     evidence_ids: list[str] = Field(min_length=1)  # MUST be subset of pattern.evidence ids
     expected_kpi_delta: dict[KPIField, float] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -530,6 +610,23 @@ class LayoutChange(BaseModel):
 
 
 # ---------- Memory write payloads ----------
+
+class RecommendationMemoryPayload(BaseModel):
+    """Wraps a `LayoutChange` with the scoping fields needed by recall.
+    Stored as `MemoryRecord.payload` for lane=recommendations.
+    """
+    session_id: str          # slug, e.g. "ai_cafe_a" — recall filters on this
+    pattern_id: str          # the OperationalPattern.id this proposal addresses
+    layout_change: LayoutChange
+
+
+class FeedbackMemoryPayload(BaseModel):
+    """Stored as `MemoryRecord.payload` for lane=feedback."""
+    session_id: str
+    pattern_id: str
+    proposal_fingerprint: str
+    decision: Literal["accept", "reject"]
+
 
 class MemoryRecord(BaseModel):
     lane: Literal[
@@ -541,7 +638,7 @@ class MemoryRecord(BaseModel):
         "location:demo:patterns",
     ]
     intent: Literal["fact", "lesson", "feedback", "rule", "trace"]
-    payload: dict
+    payload: dict           # validated via the per-lane payload models above
     written_at: datetime
     mubit_id: str | None = None
     fallback_only: bool = False
@@ -549,7 +646,8 @@ class MemoryRecord(BaseModel):
 
 Notes:
 
-- `LayoutChange.evidence_ids` is a flat `list[str]` rather than `list[EvidenceRef]` to make the Pydantic AI prompt simpler and the post-validation trivial.
+- `LayoutChange` stays a pure agent-output type; `session_id` / `pattern_id` ride on the `RecommendationMemoryPayload` wrapper, so the LLM never has to copy them and recall stays correctly scoped.
+- `evidence_ids` is a flat `list[str]` rather than `list[EvidenceRef]` to make the Pydantic AI prompt simpler and the post-validation trivial.
 - `expected_kpi_delta` keys are typed via `KPIField` literal, so the agent cannot hallucinate field names.
 - `confidence` is bounded `[0,1]` by `Field`.
 
@@ -560,15 +658,21 @@ Notes:
 ### Pydantic AI setup
 
 ```python
+import os
 from pydantic_ai import Agent
 from app.schemas import CafeEvidencePack, LayoutChange
 
-optimization_agent: Agent[CafeEvidencePack, LayoutChange] = Agent(
-    "anthropic:claude-sonnet-4-latest",  # exact model id per Pydantic AI docs
+optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
+    os.getenv("CAFETWIN_OPTIMIZATION_MODEL", "anthropic:claude-sonnet-4-5"),
+    deps_type=CafeEvidencePack,
     output_type=LayoutChange,
-    system_prompt=OPTIMIZATION_SYSTEM_PROMPT,
+    instructions=OPTIMIZATION_INSTRUCTIONS,
+    retries=1,
 )
 ```
+
+`CAFETWIN_OPTIMIZATION_MODEL` stays overrideable for demo tuning. Before the
+live demo, verify the default Anthropic model id or set the env var explicitly.
 
 ### System prompt (contract)
 
@@ -610,62 +714,44 @@ that was accepted"). If empty, do not mention prior memory.
 After the agent returns, we run a second-pass validator before returning to the UI:
 
 ```python
-def validate_layout_change(change: LayoutChange, pack: CafeEvidencePack) -> bool:
+def validate_layout_change(change: LayoutChange, pack: CafeEvidencePack) -> list[str]:
     pattern_ids = {ref.memory_id for ref in pack.pattern.evidence}
+    errors = []
     if not change.evidence_ids:
-        return False
+        errors.append("missing evidence_ids")
     if not set(change.evidence_ids).issubset(pattern_ids):
-        return False
+        errors.append("evidence_ids outside pattern evidence")
     if not change.expected_kpi_delta:
-        return False
+        errors.append("missing expected_kpi_delta")
     object_ids = {o.id for o in pack.object_inventory.objects}
-    zone_ids = {z.id for z in pack.zones}
-    if change.simulation.target_id not in object_ids | zone_ids:
-        return False
-    return True
+    if change.simulation.target_id not in object_ids:
+        errors.append("simulation target not in inventory")
+    return errors
 
 
-async def run_optimization(pack: CafeEvidencePack) -> tuple[LayoutChange, bool]:
+async def run_optimization(pack: CafeEvidencePack, session_id: str) -> tuple[LayoutChange, bool]:
     """Returns (layout_change, used_fallback)."""
-    with logfire.span("optimization_agent.run"):
+    with logfire.span("optimization_agent.run", session_id=pack.session_id):
         try:
-            result = await optimization_agent.run(pack)
+            result = await optimization_agent.run(_optimization_prompt(pack), deps=pack)
             change = result.output
         except Exception as e:
             logfire.warn("optimization_agent failed", error=str(e))
-            return load_fallback_recommendation(), True
+            return load_cached_recommendation(session_id), True
 
     with logfire.span("layout_change.validate"):
-        if validate_layout_change(change, pack):
+        errors = validate_layout_change(change, pack)
+        if not errors:
             return change, False
-        # Retry once with a stricter reminder
-        retry = await optimization_agent.run(
-            pack,
-            message_history=[...],  # include the original failure as a user message
-        )
-        if validate_layout_change(retry.output, pack):
+        # Retry once with a stricter reminder in the full live-agent path.
+        retry = await optimization_agent.run(_retry_prompt(pack, change, errors), deps=pack)
+        if not validate_layout_change(retry.output, pack):
             return retry.output, False
         logfire.warn("optimization_agent validation failed twice, using fallback")
-        return load_fallback_recommendation(), True
+        return load_cached_recommendation(session_id), True
 ```
 
-`load_fallback_recommendation()` reads `demo_data/recommendation.cached.json` and returns it parsed as `LayoutChange`.
-
-## Optional second agent (recommended)
-
-To honestly say "agentic workflow" (plural), add `EvidenceSummarizerAgent`:
-
-**Input:** `CafeEvidencePack`. **Output:** a small typed model:
-
-```python
-class EvidenceSummary(BaseModel):
-    headline: str  # one sentence
-    bullets: list[str] = Field(min_length=2, max_length=4)  # 2-4 bullets citing KPIs
-```
-
-Run it before `OptimizationAgent`. Show its output above the recommendation card. Cost: ~30 minutes of code, one extra Logfire span (`evidence_summarizer.run`), one extra `MemoryRecord`. Two real Pydantic AI agents in a chain.
-
-If time-constrained, skip and frame the demo as "typed Pydantic AI agent with structured output and traced reasoning" (singular). Both framings are honest.
+`load_cached_recommendation(session_id)` reads `demo_data/sessions/<session_id>/recommendation.cached.json` and returns it parsed as `LayoutChange`. Each session ships its own cached fallback that must satisfy `validate_layout_change` against that session's fixture pack — see §Acceptance checks.
 
 ## Memory layer
 
@@ -700,26 +786,27 @@ async def write_memory(record: MemoryRecord) -> MemoryRecord:
 
 
 async def recall_prior_recommendations(
-    fingerprint: str | None = None,
-    pattern_id: str | None = None,
+    session_id: str,
+    pattern_id: str,
     limit: int = 3,
 ) -> list[LayoutChange]:
-    """Recall prior LayoutChange recommendations for the same pattern or
-    layout fingerprint. Used by evidence_pack.build() to give the agent
-    operational memory.
-
-    Returns [] if MuBit unavailable, key unset, or no matches.
+    """Recall prior LayoutChange recommendations for this session+pattern.
+    Scoping by both keys ensures cafes never see each other's recommendations
+    even if pattern_ids collide. Returns [] if MuBit unavailable or no matches.
     """
-    with logfire.span("mubit.recall"):
+    with logfire.span("mubit.recall", session_id=session_id, pattern_id=pattern_id):
         if not _mubit_available():
             return []
         try:
             hits = await _mubit_query(
                 lane="location:demo:recommendations",
-                filters={"fingerprint": fingerprint} if fingerprint else {"pattern_id": pattern_id},
+                filters={"session_id": session_id, "pattern_id": pattern_id},
                 limit=limit,
             )
-            return [LayoutChange.model_validate(h.payload) for h in hits]
+            return [
+                RecommendationMemoryPayload.model_validate(h.payload).layout_change
+                for h in hits
+            ]
         except Exception as e:
             logfire.warn("mubit recall failed; returning empty", error=str(e))
             return []
@@ -729,13 +816,13 @@ If `MUBIT_API_KEY` is unset, both `_mubit_remember` and `_mubit_query` no-op cle
 
 ### MVP writes
 
-- After successful recommendation: 1 record on lane `location:demo:recommendations`, intent `lesson`. Payload includes the `LayoutChange` JSON and its `fingerprint`.
-- After Accept/Reject feedback: 1 record on lane `location:demo:feedback`, intent `feedback`. Payload includes the proposal `fingerprint` and the decision.
+- After successful recommendation: one `MemoryRecord` on lane `location:demo:recommendations`, intent `lesson`, with `payload = RecommendationMemoryPayload(session_id, pattern_id, layout_change).model_dump()`. The `session_id` + `pattern_id` are read from the `CafeEvidencePack`, not from the LLM output.
+- After Accept/Reject feedback: one `MemoryRecord` on lane `location:demo:feedback`, intent `feedback`, with `payload = FeedbackMemoryPayload(session_id, pattern_id, proposal_fingerprint, decision).model_dump()`.
 
 ### MVP reads
 
-- `evidence_pack.build()` calls `recall_prior_recommendations(pattern_id=pack.pattern.id)` before building the pack and stores results in `pack.prior_recommendations`.
-- `GET /api/memories` queries MuBit (lane: `location:demo:recommendations` + `location:demo:feedback`) and merges with jsonl entries, dedup by `mubit_id`. If MuBit unavailable, returns jsonl only.
+- `evidence_pack.build(session_id)` calls `recall_prior_recommendations(session_id, pattern.id)` after loading the fixture pattern, and stores results in `pack.prior_recommendations`.
+- `GET /api/memories?session_id=...` queries MuBit (lanes `location:demo:recommendations` + `location:demo:feedback`) and merges with jsonl entries, dedup by `mubit_id`. If MuBit unavailable, returns jsonl only. When `session_id` is provided, the backend filters via `payload.session_id`; without it, the endpoint returns all local records and the frontend may filter.
 
 ### UI surface
 
@@ -751,16 +838,35 @@ KPI summary, object inventory, and pattern writes on their own lanes (see `Memor
 ```python
 # app/api/routes.py
 
+# Request body schemas (add to app/schemas.py)
+class RunRequest(BaseModel):
+    session_id: str = "ai_cafe_a"
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    pattern_id: str
+    proposal_fingerprint: str
+    decision: Literal["accept", "reject"]
+
+
+@router.get("/api/sessions")
+async def list_sessions() -> SessionsResponse:
+    """Lists demo sessions discovered under demo_data/sessions/<slug>/.
+    Loaded from each session's session.json. ai_cafe_a must always be
+    present; other sessions appear only if their fixtures have been authored
+    (real_cafe is Tier 1; see overview_plan.md).
+    """
+
 @router.get("/api/state")
-async def get_state() -> StateResponse:
-    """Reports fixture status + KPI windows + zones + object inventory + pattern.
-    Frontend hits this on mount before /api/run; lets the JSX shell render
-    fixture-backed numbers immediately while the agent call is in flight.
+async def get_state(session_id: str = "ai_cafe_a") -> StateResponse:
+    """Fixture status + KPI windows + zones + object inventory + pattern for
+    the requested session. Frontend hits this on mount before /api/run.
+    Returns an explicit error if any required fixture is missing.
     """
 
 @router.post("/api/run")
-async def run() -> RunResponse:
-    """Runs the full agentic chain. JSON response (matches RunResponse schema):
+async def run(body: RunRequest) -> RunResponse:
+    """Runs the full agentic chain for body.session_id. JSON response shape:
         {
           "stages": [
             {"name": "evidence_pack",      "started_at": "...", "ended_at": "..."},
@@ -777,17 +883,17 @@ async def run() -> RunResponse:
 
 @router.post("/api/feedback")
 async def feedback(body: FeedbackRequest) -> FeedbackResponse:
-    """Writes feedback memory. body has decision (accept/reject) and proposal_fingerprint."""
+    """Writes feedback memory scoped to (session_id, pattern_id, proposal_fingerprint)."""
 
 @router.get("/api/logfire_url")
 async def logfire_url() -> LogfireURLResponse:
-    """Returns the current trace URL for the top-bar link. Cached from the
-    most recent /api/run span; null if Logfire is unavailable."""
+    """Trace URL for the top-bar link, cached from the most recent /api/run span."""
 
 @router.get("/api/memories")
-async def memories() -> MemoriesResponse:
-    """Returns merged MuBit + jsonl records, deduplicated by mubit_id.
-    Fallback to jsonl-only if MuBit is unavailable."""
+async def memories(session_id: str | None = None) -> MemoriesResponse:
+    """Merged MuBit + jsonl records, dedup by mubit_id. If session_id is
+    provided, filters server-side via payload.session_id; otherwise returns
+    all sessions and the frontend filters."""
 ```
 
 `app/api/main.py` adds `CORSMiddleware` so the demo HTML (served at `file://` or
@@ -806,24 +912,36 @@ the request completes.
 ```python
 # app/logfire_setup.py
 import logfire
-logfire.configure(service_name="cafetwin-mvp")
-logfire.instrument_pydantic_ai()  # auto-spans agent runs
+logfire.configure(
+    service_name="cafetwin-mvp",
+    environment="demo",
+    send_to_logfire="if-token-present",
+)
+logfire.instrument_pydantic_ai()
+# app/api/main.py calls logfire.instrument_fastapi(app) after FastAPI creation.
 ```
 
 Span hierarchy for one `/api/run` call:
 
 ```
-run (root)
+api.run (root)
 ├── evidence_pack.build
-│   └── mubit.recall                  (returns prior_recommendations)
-├── optimization_agent.run            (auto-instrumented by Pydantic AI)
+│   └── memory.recall.jsonl           (MuBit recall replaces/augments this later)
+├── optimization_agent.run            (plus Pydantic AI auto-spans when live)
 ├── layout_change.validate
 └── memory.write
-    ├── memory.write.mubit
-    └── memory.write.jsonl
+    └── memory.write.jsonl            (MuBit child span lands with MuBit integration)
 ```
 
 The Logfire URL is returned inline as `RunResponse.logfire_trace_url` (and also exposed at `/api/logfire_url` for the top-bar link to refresh independently). Cache it in process state when the run finishes.
+
+Current verification: with `LOGFIRE_TOKEN` and `LOGFIRE_PROJECT_URL` in local
+`.env`, a forced-fallback `/api/run` smoke returns a non-empty
+`logfire_trace_url`, writes jsonl memory, and flushes spans. Live Pydantic AI
+Gateway calls reach Gateway but currently fail with `Route not found: anthropic.
+You do not have any providers configured.` Configure an Anthropic provider/route
+in the Pydantic/Logfire org or override `CAFETWIN_OPTIMIZATION_MODEL` to a
+configured Gateway route.
 
 ## Frontend contract
 
@@ -833,10 +951,11 @@ The MVP frontend is the existing `frontend/cafetwin.html` Babel-in-browser demo 
 
 | User action | Frontend call | Existing component bound |
 |---|---|---|
-| Page load | `GET /api/state` then `POST /api/run` | `useBackend()` hook in `app-state.jsx`; results threaded down through `App()` in `cafetwin.html` |
+| Page load | `GET /api/sessions`, then `GET /api/state?session_id=...` and `POST /api/run {session_id}` for the active session (defaults to `ai_cafe_a`) | `useBackend(sessionId)` hook in `app-state.jsx`; results threaded down through `App()` in `cafetwin.html` |
+| Switch session | (Tier 1) Re-issue `GET /api/state` + `POST /api/run` with the new `session_id` | Tier 1 adds the selector once `real_cafe` is authored; the routes already accept `session_id`, MVP just defaults it. |
 | (Auto on response) | — | `AgentFlow` node states from `RunResponse.stages[]`; `ChatPanel` ToolCall rendering the real `LayoutChange`; `ScenarioRail` materialising a `recommended` chip; KPI cards from `kpi_windows`; "Seen before" chip from `prior_recommendation_count` |
 | Click `recommended` chip / Apply | Frontend-only | Iso twin enters split-compare; KPI deltas animate from `expected_kpi_delta`; optional asset shift via `simulation.from_position`/`to_position` |
-| Click "Accept" / "Reject" | `POST /api/feedback {decision, proposal_fingerprint}` | Toast confirmation; Memories modal refreshes on next open |
+| Click "Accept" / "Reject" | `POST /api/feedback {session_id, pattern_id, proposal_fingerprint, decision}` | Toast confirmation; Memories modal refreshes on next open |
 | Click Logfire link in `TopBar` | `window.open(logfire_trace_url)` (URL already returned by `/api/run`; `/api/logfire_url` is the manual-refresh path) | Existing TopBar button at `frontend/app-panels.jsx` |
 | Open Memories modal | `GET /api/memories` | New modal cloning the `session.replay` modal pattern in `cafetwin.html` |
 
@@ -848,7 +967,7 @@ The MVP frontend is the existing `frontend/cafetwin.html` Babel-in-browser demo 
 
 ### What is added (additive only)
 
-- `frontend/api.js` — ~40 lines of `fetch` wrappers exporting `getState`, `postRun`, `postFeedback`, `getMemories`, `getLogfireUrl`.
+- `frontend/api.js` — ~40 lines of `fetch` wrappers exporting `listSessions`, `getState`, `postRun`, `postFeedback`, `getMemories`, `getLogfireUrl`.
 - `frontend/cafetwin.html` — one new `<script src="api.js">` tag before the JSX scripts, and a new `<Modal open={openModal === "memories"}>` block alongside the existing modals.
 - `frontend/app-state.jsx` — a `useBackend()` hook + a `scenarioFromLayoutChange(lc)` helper that converts a `LayoutChange` into the demo's scenario shape so the rail can render it.
 - `frontend/app-panels.jsx` — `AgentFlow` accepts an optional `stages` prop; `ChatPanel` renders a real `LayoutChange` ToolCall + Apply/Accept/Reject buttons when a `layoutChange` prop is present; `TopBar` Logfire button uses `logfireUrl`.
@@ -895,7 +1014,11 @@ Plus a separate `scripts/render_annotated.py` that uses ffmpeg + the cached dete
 
 ## Tier 2 hooks (NOT MVP)
 
-The MVP explicitly ships `twin_observed.json` and `twin_recommended.json` so Tier 2 can be added without backend changes. Schema (use as-is in Tier 2):
+Twin layout JSON is optional Tier 2 input under `demo_data/sessions/<slug>/`.
+MVP does not require `twin_observed.json` or `twin_recommended.json`; the
+existing iso renderer synthesises the visible cafe from demo presets and the
+agent's `LayoutChange` can optionally shift one target asset on Apply. When
+Tier 2 lands, use the schema below for R3F / scene-builder output:
 
 ```python
 class TwinAsset(BaseModel):
@@ -914,7 +1037,9 @@ class TwinLayout(BaseModel):
     track_trails: list[list[tuple[float, float]]] = Field(default_factory=list)
 ```
 
-R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}` returns the parsed layout. Twin panel can A/B between current MVP `<img>` rendering and R3F rendering behind a feature flag.
+R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}`
+returns the parsed layout. The twin panel can A/B between the current MVP iso
+renderer and R3F behind a feature flag.
 
 ## Risk controls
 
@@ -931,19 +1056,32 @@ R3F renders this with box prefabs. A Tier 2 endpoint `/api/twin/{scenario}` retu
 
 ## Acceptance checks (MVP)
 
-- [ ] `GET /api/state` returns plausible KPI numbers and object counts.
-- [ ] `POST /api/run` returns 3 stage timestamps (`evidence_pack`, `optimization_agent`, `memory_write`), a `layout_change` payload, a `memory_record`, and a `logfire_trace_url`.
-- [ ] `LayoutChange.evidence_ids` is non-empty and ⊆ pattern fixture's evidence IDs.
-- [ ] `LayoutChange.expected_kpi_delta` has ≥ 1 entry, all keys are valid `KPIField`s.
-- [ ] On page load, the existing `ChatPanel` ToolCall renders the real `LayoutChange` (rationale, evidence, deltas, confidence, risk), and the existing `ScenarioRail` shows a `recommended` chip.
-- [ ] `AgentFlow` node states animate from real stage timestamps (vision/kpi/pattern lit by `evidence_pack`, optimize by `optimization_agent`, simulate/memory by `memory_write`).
-- [ ] Clicking the `recommended` chip / Apply enters split-compare on the iso twin and animates KPI deltas from `expected_kpi_delta`.
-- [ ] Clicking Accept/Reject writes a `MemoryRecord` to MuBit AND to `mubit_fallback.jsonl`.
+Fixture/API tests (currently in `tests/`; startup self-tests can wrap the same helpers later):
+
+- [x] `ai_cafe_a` under `demo_data/sessions/<slug>/`: all six required JSON files load and validate against their schemas.
+- [x] `validate_layout_change(load_cached_recommendation("ai_cafe_a"), build("ai_cafe_a"))` returns no errors. Catches a stale cached fallback against an edited pattern fixture.
+
+Runtime checks:
+
+- [x] `GET /api/sessions` route model includes at least `ai_cafe_a`.
+- [x] `GET /api/state?session_id=ai_cafe_a` route model returns plausible KPI numbers and object counts.
+- [x] `POST /api/run {session_id: "ai_cafe_a"}` route model returns 3 stage timestamps (`evidence_pack`, `optimization_agent`, `memory_write`), a `layout_change`, and a `memory_record` through the fallback path.
+- [x] `LayoutChange.evidence_ids` is non-empty and ⊆ pattern fixture's evidence IDs.
+- [x] `LayoutChange.expected_kpi_delta` has ≥ 1 entry; all keys are valid `KPIField`s.
+- [x] `MemoryRecord.payload` for the recommendation includes the correct `session_id` + `pattern_id`.
+- [x] `OptimizationAgent` semantic validation retries once with a stricter prompt before falling back.
+- [x] `GET /api/memories?session_id=ai_cafe_a` filters jsonl records server-side by `payload.session_id`.
+- [x] On page load, `ChatPanel` ToolCall renders the real `LayoutChange`.
+- [x] `AgentFlow` node states animate from real stage timestamps.
+- [ ] `ScenarioRail` shows a `recommended` chip.
+- [ ] Clicking `recommended` / Apply enters split-compare and animates KPI deltas from `expected_kpi_delta`.
+- [ ] Clicking Accept/Reject writes a `MemoryRecord` to MuBit AND to `mubit_fallback.jsonl`, with `payload.session_id == "ai_cafe_a"`.
 - [ ] Memories modal shows merged MuBit+jsonl data; rows display `mubit_id` chips when present.
-- [ ] When MuBit is up and a prior recommendation with the same `pattern_id` exists, the recommendation card shows a "Seen before" chip and the agent's rationale acknowledges it.
-- [ ] Logfire trace shows the full span tree (`evidence_pack.build` → `mubit.recall`, `optimization_agent.run`, `layout_change.validate`, `memory.write` → `memory.write.mubit` + `memory.write.jsonl`).
-- [ ] If `ANTHROPIC_API_KEY` is unset or invalid, the fallback path still produces a valid recommendation card.
-- [ ] If `MUBIT_API_KEY` is unset, jsonl-only mode works end-to-end without errors and the UI degrades silently (no `mubit_id` chips, no "Seen before" chip).
+- [ ] When MuBit is up and a prior recommendation for `(ai_cafe_a, pattern_id)` exists, the recommendation card shows a "Seen before" chip and the agent's rationale acknowledges it.
+- [x] Forced-fallback `/api/run` returns a non-empty `logfire_trace_url` and flushes Logfire spans when local Logfire env is present.
+- [ ] MuBit trace children replace/augment jsonl-only spans (`mubit.recall`, `memory.write.mubit`).
+- [ ] If `ANTHROPIC_API_KEY` is unset/invalid, the fallback path still produces a valid recommendation card.
+- [ ] If `MUBIT_API_KEY` is unset, jsonl-only mode works end-to-end with no `mubit_id` chips and no "Seen before" chip.
 
 ## Pitch copy (best-case demo recommendation)
 
@@ -970,7 +1108,7 @@ Risk: low. Maintains 1.2m walkway clearance.
 - One seeded video, no live camera.
 - Fixture-backed perception; live agent reasoning.
 - MuBit is the primary memory store; jsonl is a hot fallback always written in parallel.
-- One Pydantic AI agent live in MVP (`OptimizationAgent`). Optional second agent (`EvidenceSummarizerAgent`) if time. `SceneBuilderAgent` and `PatternAgent` are Tier 2 / Tier 1.
+- One Pydantic AI agent live in MVP (`OptimizationAgent`). `PatternAgent` is Tier 1; `SceneBuilderAgent` is Tier 2.
 - Frontend is the existing `cafetwin.html` Babel-in-browser demo. No Vite port for MVP.
 - 3D twin is the existing iso renderer in `cafe-iso.jsx`. R3F is non-goal until Tier 2.
 - Evidence chain is mandatory; recommendation must cite real fixture IDs.

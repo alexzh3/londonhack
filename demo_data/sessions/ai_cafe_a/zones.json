@@ -1,0 +1,56 @@
+[
+  {
+    "id": "counter",
+    "name": "Counter and barista station",
+    "kind": "counter",
+    "polygon": [[0, 360], [650, 360], [735, 760], [390, 1035], [0, 1035]],
+    "color_hex": "#2563eb",
+    "source": "manual",
+    "confidence": 0.84
+  },
+  {
+    "id": "pickup",
+    "name": "Pickup shelf pinch point",
+    "kind": "pickup",
+    "polygon": [[510, 400], [720, 430], [730, 540], [515, 550]],
+    "color_hex": "#16a34a",
+    "source": "manual",
+    "confidence": 0.78
+  },
+  {
+    "id": "queue",
+    "name": "Counter queue",
+    "kind": "queue",
+    "polygon": [[610, 470], [845, 505], [875, 700], [665, 770]],
+    "color_hex": "#f97316",
+    "source": "manual",
+    "confidence": 0.72
+  },
+  {
+    "id": "staff_path",
+    "name": "Barista circulation lane",
+    "kind": "staff_path",
+    "polygon": [[545, 620], [675, 465], [790, 510], [715, 775], [425, 1050], [260, 1000]],
+    "color_hex": "#a855f7",
+    "source": "manual",
+    "confidence": 0.7
+  },
+  {
+    "id": "seating",
+    "name": "Customer seating",
+    "kind": "seating",
+    "polygon": [[760, 330], [1850, 330], [1840, 1040], [720, 1020], [760, 660]],
+    "color_hex": "#0891b2",
+    "source": "manual",
+    "confidence": 0.82
+  },
+  {
+    "id": "entrance",
+    "name": "Window and entrance edge",
+    "kind": "entrance",
+    "polygon": [[1580, 100], [1924, 100], [1924, 1040], [1510, 945], [1505, 600]],
+    "color_hex": "#dc2626",
+    "source": "manual",
+    "confidence": 0.67
+  }
+]

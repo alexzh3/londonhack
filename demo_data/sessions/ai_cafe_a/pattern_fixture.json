@@ -1,0 +1,28 @@
+{
+  "id": "pattern_queue_counter_crossing",
+  "title": "Queue and pickup lane pinch the barista path",
+  "summary": "The service lane between the counter, pickup shelf, and closest center table is narrow. Customers waiting near pickup intersect the barista route during the busiest middle window.",
+  "pattern_type": "queue_crossing",
+  "evidence": [
+    {
+      "memory_id": "kpi_ai_a_w1",
+      "lane": "location:demo:kpi",
+      "summary": "Opening window already shows 4 staff/customer crossings and 13s of queue obstruction.",
+      "kpi_field": "staff_customer_crossings"
+    },
+    {
+      "memory_id": "kpi_ai_a_w2",
+      "lane": "location:demo:kpi",
+      "summary": "Middle window peaks at 7 crossings, 18s queue obstruction, and 0.74 congestion score.",
+      "kpi_field": "queue_obstruction_seconds"
+    },
+    {
+      "memory_id": "kpi_ai_a_w3",
+      "lane": "location:demo:kpi",
+      "summary": "Later window remains elevated with 6 crossings and table detour score 1.5.",
+      "kpi_field": "table_detour_score"
+    }
+  ],
+  "severity": "high",
+  "affected_zones": ["counter", "pickup", "queue", "staff_path"]
+}

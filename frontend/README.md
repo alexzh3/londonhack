@@ -1,12 +1,13 @@
 # Frontend
 
-The MVP frontend should be a React shell over the real backend spine.
+The MVP frontend is the existing `cafetwin.html` + JSX shell over the real backend spine.
 
-Build only the four-click flow first:
+Build only the locked MVP flow first:
 
-1. Load demo
-2. Generate recommendation
-3. Apply
-4. Accept / Reject
+1. Page load: `useBackend("ai_cafe_a")` calls `/api/sessions`, `/api/state`, then `/api/run`.
+2. Click `recommended` / Apply: frontend-only split compare and KPI delta animation.
+3. Accept / Reject: POST `/api/feedback`.
 
-The twin is a PNG crossfade in MVP. R3F, chat, and scenario rail are Tier 2.
+The twin is the existing SVG iso renderer in MVP. No PNG crossfade, no Vite port,
+and no SceneBuilderAgent until Tier 2. The demo scenario rail stays visible; only
+the `recommended` chip is agent-backed.

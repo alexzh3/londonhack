@@ -16,9 +16,16 @@ placeholder template.
 
 ## MVP Build Order
 
-1. Validate `demo_data/` fixtures.
-2. Build the `CafeEvidencePack` loader.
-3. Return and validate a cached `LayoutChange`.
-4. Wire the live `OptimizationAgent`.
-5. Add memory writes and Logfire spans.
-6. Add the React four-click demo shell.
+1. Done: validate `demo_data/sessions/ai_cafe_a/` fixtures from `cafe_videos/ai_generated_cctv.mp4`.
+2. Done: build the `CafeEvidencePack` loader.
+3. Done: return and validate a cached `LayoutChange`.
+4. In progress: wire the live `OptimizationAgent`.
+5. In progress: add memory writes and Logfire spans.
+6. Next: bind the existing `frontend/cafetwin.html` JSX shell to the backend flow.
+
+## Verification
+
+```bash
+.venv/bin/pytest
+.venv/bin/ruff check app tests
+```

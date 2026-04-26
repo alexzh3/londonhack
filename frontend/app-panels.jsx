@@ -28,7 +28,26 @@ const Icon = {
 };
 
 // ── Top bar ────────────────────────────────────────────────────────────────
-function TopBar({ scenarioName, onOpenSession, onOpenTrace }) {
+function TopBar({ scenarioName, onOpenSession, onOpenTrace, logfireUrl, backendStatus, sessionId }) {
+  const traceLabel = logfireUrl
+    ? `logfire ↗ trace#${logfireUrl.split("/").pop().slice(-8)}`
+    : "logfire ↗ no trace yet";
+  // When a real trace URL exists we open it in a new tab; otherwise fall
+  // back to the existing decorative modal so the click still does something.
+  const openTrace = (e) => {
+    if (logfireUrl) {
+      e.preventDefault();
+      window.open(logfireUrl, "_blank", "noopener,noreferrer");
+    } else {
+      onOpenTrace && onOpenTrace();
+    }
+  };
+  const statusClass = backendStatus === "loading" ? "warn"
+                    : backendStatus === "error" ? "bad"
+                    : "ok";
+  const statusLabel = backendStatus === "loading" ? "running /api/run"
+                    : backendStatus === "error" ? "backend error"
+                    : "backend ready";
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -46,13 +65,14 @@ function TopBar({ scenarioName, onOpenSession, onOpenTrace }) {
           <span className="ico"><Icon.play /></span>
           <span>session.replay</span>
         </button>
-        <button className="tb-btn" onClick={onOpenTrace}>
+        <button className={`tb-btn ${logfireUrl ? "" : "tb-btn-disabled"}`}
+          onClick={openTrace} title={logfireUrl || "Logfire trace URL not set — see app/logfire_setup.py"}>
           <span className="logfire-mark" />
-          <span>logfire ↗ trace#a4f1c0e</span>
+          <span>{traceLabel}</span>
         </button>
       </div>
       <div className="topbar-right">
-        <div className="status"><span className="status-dot ok" /><span>worker:gpu-2 · 23ms</span></div>
+        <div className="status"><span className={`status-dot ${statusClass}`} /><span>session:{sessionId || "?"} · {statusLabel}</span></div>
         <div className="status"><span className="status-dot warn" /><span>tokens 142.3k / 200k</span></div>
         <button className="tb-btn">share · {scenarioName}</button>
         <div className="avatar">JK</div>
@@ -79,20 +99,54 @@ function AgentNode({ I, name, state, latency, traceId }) {
   );
 }
 
-function AgentFlow({ active, base, scenario, onTweakSeats, onTweakBaristas, onTweakFootfall, onOpenKpi }) {
+function AgentFlow({
+  active, base, scenario,
+  stages, backendLoading, backendError, usedFallback,
+  onTweakSeats, onTweakBaristas, onTweakFootfall, onOpenKpi,
+}) {
+  // Backend RunResponse.stages[] carries 3 stage timings; the existing flow
+  // shows 5 visual nodes (vision/kpi/pattern share evidence_pack; optimize ↔
+  // optimization_agent; memory ↔ memory_write). See overview_plan §Frontend
+  // stage timestamps → flow canvas nodes.
+  const stageByName = {};
+  if (Array.isArray(stages)) for (const s of stages) stageByName[s.name] = s;
+
+  const nodeState = (stageName) => {
+    if (backendError) return "error";
+    if (stageByName[stageName]) return "ok";
+    if (backendLoading) return "running";
+    return "queued";
+  };
+  const nodeLatency = (stageName) => fmtLatency(stageDurationMs(stageByName[stageName]));
+
+  const traceShort = (() => {
+    const first = Array.isArray(stages) && stages[0];
+    if (!first) return "—";
+    const t = Date.parse(first.started_at);
+    return Number.isNaN(t) ? "—" : `t${String(t).slice(-6)}`;
+  })();
+
   const nodes = [
-    { I: Icon.eye, name: "vision", state: "ok", latency: "1.42s", traceId: "01h9.." },
-    { I: Icon.bar, name: "kpi", state: "ok", latency: "612ms", traceId: "01h9.." },
-    { I: Icon.grid, name: "pattern", state: "ok", latency: "2.10s", traceId: "01h9.." },
-    { I: Icon.flask, name: "optimize", state: scenario.name === "baseline" ? "ok" : "running", latency: scenario.name === "baseline" ? "1.84s" : "—", traceId: "01h9.." },
-    { I: Icon.play, name: "simulate", state: "queued", latency: "—", traceId: "—" },
+    { I: Icon.eye, name: "vision", state: nodeState("evidence_pack"), latency: nodeLatency("evidence_pack"), traceId: traceShort },
+    { I: Icon.bar, name: "kpi", state: nodeState("evidence_pack"), latency: nodeLatency("evidence_pack"), traceId: traceShort },
+    { I: Icon.grid, name: "pattern", state: nodeState("evidence_pack"), latency: nodeLatency("evidence_pack"), traceId: traceShort },
+    { I: Icon.flask, name: "optimize", state: nodeState("optimization_agent"), latency: nodeLatency("optimization_agent"), traceId: traceShort },
+    { I: Icon.play, name: "memory", state: nodeState("memory_write"), latency: nodeLatency("memory_write"), traceId: traceShort },
   ];
+
+  const flowSubLabel = backendError
+    ? "backend error"
+    : backendLoading
+      ? "running /api/run…"
+      : usedFallback
+        ? "5 nodes · DAG · cached fallback"
+        : "5 nodes · DAG";
 
   const k = active.kpis;
   const b = base.kpis;
   return (
     <div className="panel panel-flow">
-      <div className="panel-hd"><span className="panel-title">agent_graph</span><span className="panel-sub">5 nodes · DAG</span></div>
+      <div className="panel-hd"><span className="panel-title">agent_graph</span><span className="panel-sub">{flowSubLabel}</span></div>
       <div className="agent-flow">
         {nodes.map((n, i) => (
           <React.Fragment key={n.name}>
@@ -196,7 +250,133 @@ function ChatMessage({ from, time, children, traceId }) {
   );
 }
 
-function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft }) {
+// LiveRecommendation — renders the real OptimizationAgent LayoutChange
+// inside the existing ToolCall visual frame, with Accept/Reject controls
+// wired to /api/feedback via onSubmitFeedback. Replaces the previous mocked
+// optimize.layout ToolCall.
+function LiveRecommendation({
+  layoutChange,
+  priorRecommendationCount,
+  usedFallback,
+  loading,
+  error,
+  onSubmitFeedback,
+}) {
+  const [feedback, setFeedback] = React.useState(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState(null);
+
+  const submit = async (decision) => {
+    if (!onSubmitFeedback || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await onSubmitFeedback({ decision });
+      setFeedback({
+        decision: (res && res.decision) || decision,
+        mubitId: res && res.memory_record && res.memory_record.mubit_id,
+        fallbackOnly: !!(res && res.memory_record && res.memory_record.fallback_only),
+      });
+    } catch (e) {
+      setSubmitError((e && e.message) || String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <ToolCall
+        name="optimize.layout"
+        status="running"
+        args={JSON.stringify({
+          phase: "evidence_pack → optimization_agent → memory_write",
+        }, null, 2)}
+      />
+    );
+  }
+  if (error) {
+    const apiBase = (typeof cafetwinApi !== "undefined" && cafetwinApi.base) || "?";
+    return (
+      <ToolCall
+        name="optimize.layout"
+        status="error"
+        args={JSON.stringify({ error }, null, 2)}
+        result={<>backend unavailable · check <code>{apiBase}</code></>}
+      />
+    );
+  }
+  if (!layoutChange) return null;
+
+  const lc = layoutChange;
+  const sim = lc.simulation;
+  const args = JSON.stringify({
+    target_id: lc.target_id,
+    action: sim.action,
+    from: sim.from_position,
+    to: sim.to_position,
+    evidence_ids: lc.evidence_ids,
+  }, null, 2);
+  const deltas = Object.entries(lc.expected_kpi_delta || {});
+
+  return (
+    <ToolCall
+      name="optimize.layout"
+      status="ok"
+      args={args}
+      result={
+        <div className="rec-card">
+          <div className="rec-hd">
+            <span className="rec-title">{lc.title}</span>
+            <span className={`rec-pill rec-risk-${lc.risk}`}>risk · {lc.risk}</span>
+            <span className="rec-pill rec-conf">conf · {Math.round((lc.confidence || 0) * 100)}%</span>
+            {priorRecommendationCount > 0 && (
+              <span className="rec-pill rec-prior">seen {priorRecommendationCount}× before</span>
+            )}
+            {usedFallback && <span className="rec-pill rec-fallback">cached fallback</span>}
+          </div>
+          <p className="rec-rationale">{lc.rationale}</p>
+          <div className="rec-deltas">
+            {deltas.map(([k, v]) => (
+              <span key={k} className={`rec-delta ${v < 0 ? "good" : v > 0 ? "bad" : ""}`}>
+                <em>{k}</em>
+                <b>{v >= 0 ? "+" : ""}{v}</b>
+              </span>
+            ))}
+          </div>
+          <div className="rec-meta">
+            <span>evidence:</span>
+            {(lc.evidence_ids || []).map((eid) => <code key={eid}>{eid}</code>)}
+            <span className="rec-meta-spacer" />
+            <span><code>{sim.action}</code> · <code>{lc.target_id}</code></span>
+          </div>
+          {feedback ? (
+            <div className={`rec-actions rec-done rec-${feedback.decision}`}>
+              <span className="rec-done-label">
+                {feedback.decision === "accept" ? "✓ accepted" : "✗ rejected"}
+              </span>
+              {feedback.mubitId && <code>{feedback.mubitId}</code>}
+              {feedback.fallbackOnly && <span className="rec-meta-jl">jsonl-only</span>}
+            </div>
+          ) : (
+            <div className="rec-actions">
+              <button className="rec-btn rec-btn-accept" disabled={submitting}
+                onClick={() => submit("accept")}>accept</button>
+              <button className="rec-btn rec-btn-reject" disabled={submitting}
+                onClick={() => submit("reject")}>reject</button>
+              {submitting && <span className="rec-meta-jl">writing memory…</span>}
+              {submitError && <span className="rec-err">{submitError}</span>}
+            </div>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
+function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
+    layoutChange, priorRecommendationCount, usedFallback,
+    backendLoading, backendError, onSubmitFeedback }) {
   const isBaseline = scenario.name === "baseline";
   const args = JSON.stringify({
     scenario_id: scenario.name,
@@ -214,6 +394,19 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft }) {
         <ChatMessage from="agent" time="14:02:21" traceId="01h9k2..">
           <p>scanned <code>cafe_floor.mp4</code> · detected <b>{base.seats / 3 | 0} tables</b>, <b>{base.seats} chairs</b>, <b>{base.baristas} baristas</b>. footprint ≈ <b>{base.kpis.footprint} m²</b>.</p>
         </ChatMessage>
+
+        {/* Live OptimizationAgent recommendation — replaces the previous mocked
+            optimize.layout ToolCall. Always shown when the backend has produced
+            a LayoutChange, regardless of the active scenario chip. */}
+        <LiveRecommendation
+          layoutChange={layoutChange}
+          priorRecommendationCount={priorRecommendationCount}
+          usedFallback={usedFallback}
+          loading={backendLoading}
+          error={backendError}
+          onSubmitFeedback={onSubmitFeedback}
+        />
+
         {!isBaseline && (
           <>
             <ChatMessage from="user" time="14:03:04">
@@ -227,15 +420,6 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft }) {
             <ChatMessage from="agent" time="14:03:09">
               <p>kpi delta: throughput <b>{deltaStr(kpis.throughput, base.kpis.throughput, "x")}</b>, wait <b>{deltaStr(base.kpis.waitSec, kpis.waitSec, "pct")}</b>, revenue/d <b>{fmtMoney(kpis.revenue)}</b>.</p>
             </ChatMessage>
-            <ToolCall name="optimize.layout" status="running" args={JSON.stringify({
-              scenario_id: scenario.name,
-              objective: "minimize p95_wait",
-              constraints: ["seat_min=" + Math.floor(scenario.seats * 0.9), "barista_max=" + (scenario.baristas + 2)],
-            }, null, 2)} />
-            <div className="chat-thinking">
-              <span className="dot" /><span className="dot" /><span className="dot" />
-              <span>cafetwin.agent · running optimize → simulate</span>
-            </div>
           </>
         )}
         {isBaseline && (
@@ -325,4 +509,4 @@ function ScenarioRail({ scenarios, base, activeName, onSelect, onOpen, onNew }) 
   );
 }
 
-Object.assign(window, { TopBar, AgentFlow, ChatPanel, ScenarioRail });
+Object.assign(window, { TopBar, AgentFlow, ChatPanel, ScenarioRail, LiveRecommendation });

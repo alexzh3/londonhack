@@ -4,6 +4,7 @@
 !.env.example
 !.env.sample
 .codex
+.agents/
 
 # Common secret material
 *.pem
@@ -24,4 +25,8 @@ build/
 *.egg-info/
 
 # Runtime demo output
-demo_data/mubit_fallback.jsonl
+demo_data/mubit_fallback.json
+
+.claude/
+.factory/
+.devin/ 

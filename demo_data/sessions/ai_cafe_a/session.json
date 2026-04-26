@@ -1,0 +1,8 @@
+{
+  "slug": "ai_cafe_a",
+  "label": "AI cafe A (mock CCTV)",
+  "video_path": "cafe_videos/ai_generated_cctv.mp4",
+  "source_kind": "ai_generated",
+  "notes": "Controlled CCTV-style mock cafe. Fixtures hand-authored from frame.jpg at 5s.",
+  "representative_frame_idx": 120
+}

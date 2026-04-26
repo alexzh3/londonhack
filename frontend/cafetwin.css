@@ -840,3 +840,99 @@ button { font: inherit; color: inherit; cursor: default; }
 .scn:hover { border-color: var(--line-2); }
 .scn-active:hover { border-color: var(--accent); }
 
+/* ── Live OptimizationAgent recommendation card ────────────────────────── */
+.tool-call.status-error { border-color: rgba(160,40,40,0.5); }
+.status-error .tc-status { background: rgba(160,40,40,0.14); color: #a02828; }
+
+.rec-card {
+  display: flex; flex-direction: column; gap: 7px;
+  font-family: var(--mono); font-size: 11px;
+}
+.rec-hd {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+}
+.rec-title {
+  font-family: var(--sans, "Inter", system-ui);
+  font-weight: 600; font-size: 12.5px; color: var(--fg);
+  flex: 1 1 auto; min-width: 200px;
+}
+.rec-pill {
+  font-size: 9.5px; padding: 1px 6px; border-radius: 2px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  background: var(--bg-3); color: var(--fg-2);
+  border: 1px solid var(--line);
+}
+.rec-risk-low { background: rgba(74,124,42,0.14); color: var(--accent); border-color: rgba(74,124,42,0.4); }
+.rec-risk-medium { background: rgba(160,106,20,0.14); color: var(--warn); border-color: rgba(160,106,20,0.4); }
+.rec-risk-high { background: rgba(160,40,40,0.14); color: #a02828; border-color: rgba(160,40,40,0.4); }
+.rec-conf { color: var(--accent-2); border-color: rgba(45,107,90,0.4); background: rgba(45,107,90,0.10); }
+.rec-prior { color: var(--violet); border-color: rgba(106,74,150,0.4); background: rgba(106,74,150,0.10); }
+.rec-fallback { color: var(--fg-2); }
+
+.rec-rationale {
+  margin: 0;
+  font-family: var(--sans, "Inter", system-ui);
+  font-size: 11.5px; line-height: 1.45; color: var(--fg-1);
+}
+
+.rec-deltas {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  padding: 6px 7px;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 3px;
+}
+.rec-delta {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 2px 6px; background: var(--bg-3); border-radius: 2px;
+  font-size: 10.5px; color: var(--fg-2);
+}
+.rec-delta em {
+  font-style: normal; color: var(--fg-3); font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.rec-delta b { font-variant-numeric: tabular-nums; color: var(--fg); }
+.rec-delta.good b { color: var(--accent); }
+.rec-delta.bad b { color: #a02828; }
+
+.rec-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+  color: var(--fg-3); font-size: 10px;
+}
+.rec-meta code { color: var(--fg-1); background: var(--bg-3); padding: 1px 4px; border-radius: 2px; }
+.rec-meta-spacer { flex: 1 1 auto; }
+.rec-meta-jl { color: var(--fg-3); font-size: 10px; }
+
+.rec-actions {
+  display: flex; align-items: center; gap: 6px;
+  padding-top: 4px; border-top: 1px dashed var(--line);
+  margin-top: 1px;
+}
+.rec-btn {
+  font-family: var(--mono); font-size: 10.5px;
+  padding: 3px 10px; border-radius: 2px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  border: 1px solid var(--line);
+  background: var(--bg-1); color: var(--fg);
+}
+.rec-btn:hover:not(:disabled) { border-color: var(--line-2); background: var(--bg-3); }
+.rec-btn:disabled { opacity: 0.5; cursor: default; }
+.rec-btn-accept { color: var(--accent); border-color: rgba(74,124,42,0.4); }
+.rec-btn-accept:hover:not(:disabled) { background: rgba(74,124,42,0.10); }
+.rec-btn-reject { color: #a02828; border-color: rgba(160,40,40,0.4); }
+.rec-btn-reject:hover:not(:disabled) { background: rgba(160,40,40,0.08); }
+
+.rec-done { font-size: 10.5px; }
+.rec-done.rec-accept .rec-done-label { color: var(--accent); }
+.rec-done.rec-reject .rec-done-label { color: #a02828; }
+.rec-done code { color: var(--violet); background: rgba(106,74,150,0.10); padding: 1px 5px; border-radius: 2px; }
+
+.rec-err { color: #a02828; font-size: 10px; }
+
+/* TopBar additions for backend status + Logfire trace button */
+.status-dot.bad { background: #a02828; box-shadow: 0 0 0 2px rgba(160,40,40,0.18); }
+.tb-btn-disabled { opacity: 0.55; }
+.tb-btn-disabled:hover { background: transparent; }
+
+/* AgentNode error state — paired with the running /api/run failure path */
+.agent-node.state-error { border-color: rgba(160,40,40,0.5); box-shadow: 0 0 0 1px rgba(160,40,40,0.18) inset; }
+.state-error .an-state { color: #a02828; background: rgba(160,40,40,0.12); }
+

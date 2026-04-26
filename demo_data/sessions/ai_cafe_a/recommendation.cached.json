@@ -1,0 +1,22 @@
+{
+  "title": "Open the pickup lane by shifting the center two-top",
+  "rationale": "The center table closest to the counter compresses the queue and barista circulation lane. Moving it slightly down-right keeps seating intact while widening the pickup path where the busiest KPI window shows the highest crossing and obstruction counts.",
+  "target_id": "table_center_1",
+  "simulation": {
+    "action": "move_table",
+    "target_id": "table_center_1",
+    "from_position": [950, 548],
+    "to_position": [1040, 610],
+    "rotation_degrees": 4
+  },
+  "evidence_ids": ["kpi_ai_a_w2", "kpi_ai_a_w3"],
+  "expected_kpi_delta": {
+    "staff_customer_crossings": -3.0,
+    "queue_obstruction_seconds": -9.0,
+    "congestion_score": -0.16,
+    "table_detour_score": -0.4
+  },
+  "confidence": 0.78,
+  "risk": "low",
+  "fingerprint": "ai_cafe_a_open_pickup_lane_v1"
+}

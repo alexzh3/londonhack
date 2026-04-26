@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "building-pydantic-ai-agents": {
+      "source": "pydantic/skills",
+      "sourceType": "github",
+      "computedHash": "f30a3037bbb153cccc88d996ea8e74865cbdd788c416139d2b080ae78732354a"
+    },
+    "instrumentation": {
+      "source": "pydantic/skills",
+      "sourceType": "github",
+      "computedHash": "0727bffc6a92fdeaf675ae5796ae25341e193327e8c95cd06b188dc4a0a4e62e"
+    }
+  }
+}

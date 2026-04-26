@@ -34,6 +34,8 @@ ZoneKind = Literal["counter", "queue", "pickup", "seating", "staff_path", "entra
 
 FixtureSource = Literal["vision", "manual", "fixture"]
 
+SessionSourceKind = Literal["real", "ai_generated"]
+
 KPIField = Literal[
     "staff_walk_distance_px",
     "staff_customer_crossings",
@@ -88,7 +90,7 @@ class SceneObject(StrictModel):
 
 
 class ObjectInventory(StrictModel):
-    session_id: UUID
+    session_id: str  # slug, e.g. "ai_cafe_a"
     run_id: UUID
     source_frame_idx: int = Field(ge=0)
     source_timestamp_s: float = Field(ge=0.0)
@@ -130,7 +132,7 @@ class KPIReport(StrictModel):
     queue_obstruction_seconds: float = Field(ge=0.0)
     congestion_score: float = Field(ge=0.0, le=1.0)
     table_detour_score: float = Field(ge=0.0)
-    session_id: UUID
+    session_id: str  # slug, e.g. "ai_cafe_a"
     run_id: UUID
     memory_id: str
 
@@ -161,7 +163,7 @@ class OperationalPattern(StrictModel):
 class CafeEvidencePack(StrictModel):
     """Single typed boundary between perception fixtures and agents."""
 
-    session_id: UUID = Field(default_factory=uuid4)
+    session_id: str  # slug, e.g. "ai_cafe_a"
     run_id: UUID = Field(default_factory=uuid4)
     zones: list[Zone] = Field(min_length=1)
     object_inventory: ObjectInventory
@@ -169,12 +171,22 @@ class CafeEvidencePack(StrictModel):
     pattern: OperationalPattern
     org_rules: list[str] = Field(default_factory=list)
     prior_recommendations: list["LayoutChange"] = Field(default_factory=list)
+    # Populated by mubit.recall(session_id, pattern.id). Empty list if MuBit
+    # unavailable or no prior runs. Recall is scoped to (session_id, pattern_id)
+    # so cafes never see each other's recommendations.
 
 
 # ---------- Agent output ----------
 
 
-class SimulationSpec(StrictModel):
+class LayoutSimulation(StrictModel):
+    """Single-action MVP simulation spec.
+
+    Renamed from ``SimulationSpec`` to avoid collision with the Tier-2 multi-op
+    ``SimulationSpec`` defined in
+    ``docs/superpowers/specs/2026-04-25-simcafe-ui-design.md`` §3.5.
+    """
+
     action: SimulationAction
     target_id: str
     from_position: tuple[float, float]
@@ -183,10 +195,15 @@ class SimulationSpec(StrictModel):
 
 
 class LayoutChange(StrictModel):
+    """Pure agent output. Does NOT carry session_id / pattern_id; the
+    orchestrator wraps it in :class:`RecommendationMemoryPayload` when
+    persisting, so recall scoping stays out of the LLM's schema.
+    """
+
     title: str
     rationale: str
     target_id: str
-    simulation: SimulationSpec
+    simulation: LayoutSimulation
     evidence_ids: list[str] = Field(min_length=1)
     expected_kpi_delta: dict[KPIField, float] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -197,16 +214,42 @@ class LayoutChange(StrictModel):
 # ---------- Memory ----------
 
 
+class RecommendationMemoryPayload(StrictModel):
+    """Stored as ``MemoryRecord.payload`` for lane=recommendations."""
+
+    session_id: str
+    pattern_id: str
+    layout_change: LayoutChange
+
+
+class FeedbackMemoryPayload(StrictModel):
+    """Stored as ``MemoryRecord.payload`` for lane=feedback."""
+
+    session_id: str
+    pattern_id: str
+    proposal_fingerprint: str
+    decision: Literal["accept", "reject"]
+
+
 class MemoryRecord(StrictModel):
     lane: MemoryLane
     intent: MemoryIntent
-    payload: dict
+    payload: dict  # validated via the per-lane payload models above
     written_at: datetime
     mubit_id: str | None = None
     fallback_only: bool = False
 
 
 # ---------- MVP API models ----------
+
+
+class SessionManifest(StrictModel):
+    slug: str
+    label: str
+    video_path: str
+    source_kind: SessionSourceKind
+    notes: str | None = None
+    representative_frame_idx: int | None = None
 
 
 StageName = Literal["evidence_pack", "optimization_agent", "memory_write"]
@@ -226,7 +269,7 @@ class FixtureStatus(StrictModel):
 
 
 class StateResponse(StrictModel):
-    session_id: UUID
+    session_id: str  # slug, e.g. "ai_cafe_a"
     run_id: UUID
     fixtures: list[FixtureStatus]
     missing_required: list[str] = Field(default_factory=list)
@@ -246,18 +289,28 @@ class RunResponse(StrictModel):
     logfire_trace_url: str | None = None
 
 
+class RunRequest(StrictModel):
+    session_id: str = "ai_cafe_a"
+
+
 FeedbackDecision = Literal["accept", "reject"]
 
 
 class FeedbackRequest(StrictModel):
-    decision: FeedbackDecision
+    session_id: str
+    pattern_id: str
     proposal_fingerprint: str
+    decision: FeedbackDecision
     reason: str | None = None
 
 
 class FeedbackResponse(StrictModel):
     decision: FeedbackDecision
     memory_record: MemoryRecord
+
+
+class SessionsResponse(StrictModel):
+    sessions: list[SessionManifest]
 
 
 class MemoriesResponse(StrictModel):
