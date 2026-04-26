@@ -235,7 +235,7 @@ If MVP is green by hour 12, A starts Tier 1 (offline YOLO on `real_cctv.mp4` →
 
 Current status (2026-04-26):
 
-- `pyproject.toml` defines the uv-managed Python backend project.
+- `pyproject.toml` defines the uv-managed Python backend project, declares the setuptools build backend, and pins package discovery to `app*` so Render's `pip install .` does not try to package flat repo assets like `frontend/`, `demo_data/`, or local skills.
 - `demo_data/sessions/ai_cafe_a/` now contains the extracted 5s frame plus the six required JSON fixtures for the controlled mock CCTV session.
 - `app/` now has the first backend spine implemented: session discovery, fixture status, `CafeEvidencePack` build, `.env` loading, `OptimizationAgent` typed structured output with semantic retry/fallback via Pydantic AI `output_validator` + `ModelRetry`, decision-aware `PriorRecommendationMemory` recall derived from recommendation+feedback records, Logfire/Pydantic AI instrumentation, safe Logfire scrubbing for public fixture `session_id` values, MuBit primary memory writes/recall with always-on jsonl mirror fallback, CORS, and the six MVP routes.
 - `app/schemas.py` defines the strict Pydantic evidence, agent-output, memory, and API contracts. `RunResponse` includes `stages`, `layout_change`, `memory_record`, `prior_recommendation_count`, `used_fallback`, and `logfire_trace_url` — frontend can bind against the locked shapes immediately.

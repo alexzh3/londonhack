@@ -447,7 +447,10 @@ scripts/
   run_yolo_offline.py           # Tier 1 hook: produce real tracks.cached.json per session
 ```
 
-Current status (2026-04-26): `pyproject.toml`, `app/`, `app/api/`,
+Current status (2026-04-26): `pyproject.toml` now declares a setuptools
+build backend and pins package discovery to `app*` so Render's `pip install .`
+ignores flat repo assets,
+`app/`, `app/api/`,
 `app/agents/`, `demo_data/`, `frontend/`, `scripts/`, and
 `docs/architecture/` exist. `app/schemas.py` is implemented with strict
 Pydantic models for fixtures, `CafeEvidencePack`, `LayoutChange`, memory
