@@ -184,9 +184,13 @@ def test_bootstrap_swallows_per_agent_errors(monkeypatch):
 # --- default_specs sanity --------------------------------------------------
 
 
-def test_default_specs_returns_pattern_and_optimization_agents():
+def test_default_specs_returns_pattern_optimization_and_sim_agents():
     specs = default_specs()
-    assert {spec.local_name for spec in specs} == {"pattern_agent", "optimization_agent"}
+    assert {spec.local_name for spec in specs} == {
+        "pattern_agent",
+        "optimization_agent",
+        "sim_agent",
+    }
     for spec in specs:
         assert spec.system_prompt.strip(), f"{spec.agent_id} must have a non-empty prompt"
         assert spec.role

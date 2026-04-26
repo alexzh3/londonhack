@@ -151,6 +151,26 @@ const cafetwinApi = {
         reason: reason ?? null,
       },
     }),
+  // SimAgent: natural-language scenario prompt → ScenarioCommand. The agent
+  // reads the currently-active scenario as context (so "half staff" scales
+  // from the current value, not baseline) and returns new seats/baristas/
+  // footfall/style + a short rationale the UI can render in chat.
+  postSimPrompt: ({ sessionId, prompt, activeScenario }) =>
+    _request("/api/sim/prompt", {
+      method: "POST",
+      body: {
+        session_id: sessionId,
+        prompt,
+        active_scenario: {
+          name: activeScenario.name,
+          seats: activeScenario.seats,
+          baristas: activeScenario.baristas,
+          footfall: activeScenario.footfall,
+          style: activeScenario.style,
+          hours: activeScenario.hours,
+        },
+      },
+    }),
   getMemories: (sessionId) =>
     _request("/api/memories", sessionId ? { query: { session_id: sessionId } } : {}),
   getLogfireUrl: () => _request("/api/logfire_url"),

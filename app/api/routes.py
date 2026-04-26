@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from app import config
 from app.agents.optimization_agent import run_optimization
 from app.agents.pattern_agent import run_pattern_detection
+from app.agents.sim_agent import run_sim_prompt
 from app.evidence_pack import FixtureLoadError, build, build_pattern_evidence_bundle, state
 from app.fallback import validate_layout_change
 from app.logfire_setup import get_last_trace_url, set_last_trace_url, span, trace_url_from_span
@@ -27,6 +28,8 @@ from app.schemas import (
     RunRequest,
     RunResponse,
     SessionManifest,
+    SimPromptRequest,
+    SimPromptResponse,
     StageTiming,
     StateResponse,
 )
@@ -209,6 +212,31 @@ async def _run_event_stream(active_session_id: str) -> AsyncIterator[dict[str, A
         logfire_trace_url=trace_url,
     )
     yield _event("run_completed", {"response": response.model_dump(mode="json")})
+
+
+@router.post("/api/sim/prompt")
+async def sim_prompt(body: SimPromptRequest) -> SimPromptResponse:
+    """Natural-language prompt -> ScenarioCommand via SimAgent.
+
+    The frontend's chat input posts `{session_id, prompt, active_scenario}`
+    and gets back a ScenarioCommand that the client materialises onto the
+    scenario rail. Falls back to a deterministic heuristic when the live
+    agent is disabled (no API key / CAFETWIN_FORCE_FALLBACK=1); the
+    `used_fallback` flag lets the UI badge that distinction.
+    """
+    with span(
+        "sim_agent.run",
+        session_id=body.session_id,
+        prompt_len=len(body.prompt),
+    ) as sim_span:
+        command, used_fallback = await run_sim_prompt(body.prompt, body.active_scenario)
+        trace_url = trace_url_from_span(sim_span)
+    set_last_trace_url(trace_url)
+    return SimPromptResponse(
+        command=command,
+        used_fallback=used_fallback,
+        logfire_trace_url=trace_url,
+    )
 
 
 @router.post("/api/feedback")

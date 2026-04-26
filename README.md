@@ -8,6 +8,8 @@ existing Babel-in-browser JSX demo binds it all into a clickable UI.
 
 > POS tells operators what sold. CafeTwin shows why throughput stalled.
 
+**Live demo:** <https://frontend-tier1.vercel.app/cafetwin.html>
+
 ![CafeTwin Tier 1 overview](docs/cafetwin-tier1-overview.png)
 
 *Judge-facing overview — annotated CCTV input, recommended layout floor plan, the live `LayoutChange` recommendation card, and the four proof points. ([source HTML](docs/cafetwin-tier1-overview.html))*
