@@ -164,9 +164,10 @@ the real memory recall path against MuBit when configured, with
 ## Deploy
 
 The recommended split is **Vercel for the static frontend + Render for the
-FastAPI backend**. Vercel rewrites `/api/*` to the Render origin so the
-deployed frontend stays same-origin (no CORS preflight, no hardcoded API
-URL in `cafetwin.html`).
+FastAPI backend**. Vercel rewrites `/api/*` plus backend-served media paths
+(`/demo_data/*`, `/cafe_videos/*`) to the Render origin so the deployed
+frontend stays same-origin (no CORS preflight, no hardcoded API/video URL in
+`cafetwin.html`).
 
 Current hosted demo split:
 

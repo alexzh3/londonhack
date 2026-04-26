@@ -28,7 +28,7 @@ uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
 | Script | Purpose |
 |---|---|
 | `deploy_render.sh` | Walk through Render Blueprint setup; trigger a redeploy via `RENDER_DEPLOY_HOOK` if set; smoke-test the live URL with `--smoke`. |
-| `deploy_vercel.sh` | Generate `frontend/vercel.json` (rewrites `/api/*` to `CAFETWIN_RENDER_URL`) and run `vercel deploy --prod` from `frontend/`. |
+| `deploy_vercel.sh` | Generate `frontend/vercel.json` (rewrites `/api/*`, `/demo_data/*`, and `/cafe_videos/*` to `CAFETWIN_RENDER_URL`) and run `vercel deploy --prod` from `frontend/`. |
 
 Typical first-time deploy:
 

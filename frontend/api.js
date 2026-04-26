@@ -10,7 +10,8 @@
 //                                       resolve those differently for media
 //                                       resources, even with CORS allowed).
 //   - any other hostname               → "" (same-origin; deployed Vercel
-//                                           frontend uses /api/* rewrites
+//                                           frontend uses rewrites for /api/*,
+//                                           /demo_data/*, and /cafe_videos/*
 //                                           to the Render backend)
 //
 // Override `window.CAFETWIN_API_BASE` (set before this script loads) for
@@ -55,7 +56,9 @@ async function _request(path, { method = "GET", body, query } = {}) {
 }
 
 // Resolve a backend-relative asset path (e.g. "demo_data/sessions/.../frame.jpg")
-// against API_BASE so the browser fetches it from the FastAPI static mount.
+// against API_BASE so the browser fetches it from the FastAPI static mount. On
+// Vercel deployments API_BASE is empty and vercel.json rewrites these paths to
+// Render.
 // Pass through URLs that already have a scheme (http:// or https://).
 function assetUrl(relativePath) {
   if (!relativePath) return "";

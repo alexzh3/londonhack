@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/deploy_vercel.sh — deploy the static frontend to Vercel.
 #
-# Strategy: Vercel hosts cafetwin.html + assets, and Vercel rewrites all
-# /api/* requests to the Render backend. The deployed frontend stays same-
-# origin so no CORS preflight, no hardcoded backend URL in the JSX bundle.
+# Strategy: Vercel hosts cafetwin.html + static UI assets, and Vercel rewrites
+# /api/* plus backend-served media mounts (/demo_data/* and /cafe_videos/*) to
+# the Render backend. The deployed frontend stays same-origin so video URLs and
+# API calls do not need hardcoded backend origins in the JSX bundle.
 #
 # Prereqs:
 #   - A Vercel account.
@@ -97,7 +98,7 @@ else
 fi
 
 echo "[deploy_vercel] Render backend: $RENDER_URL"
-echo "[deploy_vercel] writing frontend/vercel.json with /api/* rewrite..."
+echo "[deploy_vercel] writing frontend/vercel.json with API + media rewrites..."
 
 # vercel.json is gitignored — generated fresh per deploy because the rewrite
 # target is environment-specific.
@@ -105,7 +106,9 @@ cat > frontend/vercel.json <<EOF
 {
   "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "$RENDER_URL/api/\$1" }
+    { "source": "/api/(.*)", "destination": "$RENDER_URL/api/\$1" },
+    { "source": "/demo_data/(.*)", "destination": "$RENDER_URL/demo_data/\$1" },
+    { "source": "/cafe_videos/(.*)", "destination": "$RENDER_URL/cafe_videos/\$1" }
   ],
   "headers": [
     {
@@ -128,9 +131,12 @@ cat <<EOF
 
 [deploy_vercel] Done.
 
-The deployed frontend serves cafetwin.html and rewrites /api/* to:
+The deployed frontend serves cafetwin.html and rewrites /api/* plus media
+paths (/demo_data/*, /cafe_videos/*) to:
   $RENDER_URL
 
-If the page loads but API calls 404, double-check that the Render backend is
-reachable at that URL (curl ${RENDER_URL}/api/sessions should return JSON).
+If the page loads but API calls or videos 404, double-check that the Render
+backend is reachable at that URL:
+  curl ${RENDER_URL}/api/sessions
+  curl -I ${RENDER_URL}/demo_data/sessions/ai_cafe_a/annotated_before.web.mp4
 EOF
