@@ -89,12 +89,14 @@
       React.useEffect(() => { setSplit(t.compareMode); }, [t.compareMode]);
 
       // Tier 1D — annotated CCTV pane. The toggle defaults ON for any session
-      // whose `annotated_video` asset is known to exist (so the user sees the
-      // "perception is real" view without clicking anything). Falls back to
-      // raw video when no offline overlays are cached. We nudge compareMode
-      // on the first time the toggle auto-engages so the demo opens to the
-      // killer split: annotated CCTV ‖ iso twin. Both `ai_cafe_a` (synthetic
-      // CCTV with cached YOLO overlays) and `real_cafe` (real CCTV) qualify.
+      // whose `annotated_video` asset is known to exist, so the user lands
+      // directly on the "perception is real" view without clicking anything.
+      // We deliberately leave `compareMode` (split.off) at its current value
+      // so the demo opens with the CCTV taking the full canvas — the user
+      // can still flip on `compare` to bring the iso twin alongside, but
+      // the cinematic single-pane CCTV is the killer landing shot. Both
+      // `ai_cafe_a` and `real_cafe` qualify since both have cached
+      // `annotated_before.web.mp4` from the offline perception pass.
       const _stateAssets = backend.state && backend.state.assets;
       const _annotatedRel = _stateAssets && _stateAssets.annotated_video;
       const _videoRel = _stateAssets && _stateAssets.video;
@@ -109,8 +111,14 @@
         if (!realCctvHasOverlays) return;
         _autoEngagedRef.current = true;
         setRealCctv(true);
-        setSplit(true);
-        setTweak("compareMode", true);
+        // Force the canvas into single-pane CCTV mode on first land. We
+        // overwrite a stale `compareMode: true` that an earlier version
+        // of this auto-engage used to persist into localStorage; without
+        // this, returning users would land on split mode instead of the
+        // intended cinematic full-frame CCTV. Users can still flip on
+        // `compare` from the toolbar to summon the iso twin alongside.
+        setSplit(false);
+        setTweak("compareMode", false);
       }, [realCctvHasOverlays]);
 
       const [layers, setLayers] = React.useState({ geom: true, people: true, heat: false, paths: false, grid: false });
