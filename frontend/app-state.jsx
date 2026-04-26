@@ -3,17 +3,14 @@
 // ── Scenario presets ──────────────────────────────────────────────────────
 // `baseline` numbers reflect the actual AI-cafe video frame: 5 two-tops +
 // 1 couch ≈ 12 seats, 1 barista, modest footfall. The other scenarios are
-// "what-if" comparisons that scale up from there. `+2.baristas` keeps the
-// same seat count as baseline (the hypothesis is "would another barista
-// shift unblock the bottleneck"), so seats:12 baristas:3.
+// "what-if" comparisons that scale up from there.
 const SCENARIO_PRESETS = {
-  "baseline":     { id: "00", name: "baseline",     style: "default",  seats: 12,  baristas: 1,  footfall: 32,  hours: 10 },
-  "10x.size":     { id: "01", name: "10x.size",     style: "default",  seats: 120, baristas: 8,  footfall: 320, hours: 14 },
-  "brooklyn":     { id: "02", name: "brooklyn",     style: "brooklyn", seats: 32,  baristas: 3,  footfall: 78,  hours: 12 },
-  "+2.baristas":  { id: "03", name: "+2.baristas",  style: "default",  seats: 12,  baristas: 3,  footfall: 48,  hours: 10 },
-  "tokyo":        { id: "04", name: "tokyo",        style: "tokyo",    seats: 14,  baristas: 2,  footfall: 95,  hours: 16 },
+  "baseline": { id: "00", name: "baseline", style: "default",  seats: 12,  baristas: 1, footfall: 32,  hours: 10 },
+  "10x.size": { id: "01", name: "10x.size", style: "default",  seats: 120, baristas: 8, footfall: 320, hours: 14 },
+  "brooklyn": { id: "02", name: "brooklyn", style: "brooklyn", seats: 32,  baristas: 3, footfall: 78,  hours: 12 },
+  "tokyo":    { id: "03", name: "tokyo",    style: "tokyo",    seats: 14,  baristas: 2, footfall: 95,  hours: 16 },
 };
-const SCENARIO_ORDER = ["baseline", "10x.size", "brooklyn", "+2.baristas", "tokyo"];
+const SCENARIO_ORDER = ["baseline", "10x.size", "brooklyn", "tokyo"];
 
 // ── Made-up KPI model ─────────────────────────────────────────────────────
 // Throughput cap is min(barista_capacity, footfall). Wait grows with queue
