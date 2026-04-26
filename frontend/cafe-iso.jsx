@@ -743,6 +743,10 @@ function _recClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 const REC_PX_PER_TILE = 80;
 const REC_MAX_TILES = 2.0;
+
+// Map known table fixture IDs to indices in the iso layout's
+// `tablePositions` so the agent's `move_table` / `move_chair` recommendations
+// land on the same table the user was looking at in the CCTV pane.
 const REC_TARGET_TO_TABLE_INDEX = {
   table_center_1: 3,
   table_mid_1: 4,
@@ -751,6 +755,29 @@ const REC_TARGET_TO_TABLE_INDEX = {
   table_window_1: 5,
   table_seating_1: 0,
 };
+
+// Map known non-table fixture IDs to their semantic iso-tile positions.
+// The agent emits camera-pixel coordinates (1924×1076 for ai_cafe_a, etc.),
+// but the iso scene is a procedural top-down twin where the counter sits on
+// the LEFT wall (x∈[0,2]) and the queue forms in front of it. A naive
+// linear pixel→tile conversion drops markers in the middle of the floor
+// instead of next to the counter, so per-fixture lookups override that for
+// the IDs we know about. Falls back to `_cameraToTile` for unknown IDs.
+const REC_TARGET_TO_ISO_POINT = {
+  // ai_cafe_a (left-wall counter, queue in front)
+  counter_1:               { x: 1.0, y: 2.8 },  // mid-counter
+  pickup_shelf_1:          { x: 1.6, y: 1.4 },  // top of counter, near pickup zone
+  queue_marker_1:          { x: 2.6, y: 5.0 },  // queue front (matches simPoints.queueFront)
+  // real_cafe (same iso template, different fixture IDs)
+  counter_main_1:          { x: 1.0, y: 2.8 },
+  pickup_shelf_right_1:    { x: 1.8, y: 2.0 },
+  prep_island_1:           { x: 1.2, y: 3.6 },
+  service_lane_marker_1:   { x: 2.6, y: 5.0 },
+  display_fridge_left_1:   { x: 0.6, y: 1.0 },
+  bar_stool_row_1:         { x: 2.4, y: 3.4 },
+  menu_board_1:            { x: 1.4, y: 0.4 },
+};
+
 const REC_CAMERA_BOUNDS = {
   ai_cafe_a: { w: 1924, h: 1076 },
   real_cafe: { w: 1279, h: 719 },
@@ -774,7 +801,12 @@ function recInfoFromLayout(layout, recommendation) {
       : _nearestTableIndex(layout, _cameraToTile(layout, recommendation, [fromX, fromY]));
     return { type: "table", idx, dxTile, dyTile, target: layout.tablePositions[idx] };
   }
-  const fromTile = _cameraToTile(layout, recommendation, [fromX, fromY]);
+  // Non-table targets: prefer the curated semantic position; otherwise
+  // fall back to the linear camera-to-tile mapping.
+  const isoPoint = REC_TARGET_TO_ISO_POINT[recommendation.targetId];
+  const fromTile = isoPoint
+    ? { x: isoPoint.x, y: isoPoint.y }
+    : _cameraToTile(layout, recommendation, [fromX, fromY]);
   return {
     type: "marker",
     dxTile,
