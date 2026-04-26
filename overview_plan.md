@@ -170,11 +170,10 @@ Upgrade the upstream layer; UI mostly unchanged.
 
 - **Tier 1A landed:** `demo_data/sessions/real_cafe/` exists for `cafe_videos/real_cctv.mp4` with a representative 20s frame, manual zones/inventory, fixture KPI windows, `pattern_real_service_lane_choke`, and cached fallback `real_cafe_open_right_service_lane_v1`. This makes the backend real-video path work before the heavier perception stack.
 - **Tier 1B landed:** `scripts/run_yolo_offline.py` runs YOLOv8n + ByteTrack offline. The primary clean detection demo is now the fake CCTV session: `demo_data/sessions/ai_cafe_a/tracks.cached.json` + `annotated_before.mp4` contain 11 person tracks / 1275 detections over 180 processed frames (`vid_stride=2`). The real CCTV session also has a cache: 48 tracks / 1856 detections over 490 processed frames (`vid_stride=3`), but the fake camera is visually cleaner for pitch screenshots and downstream KPI work.
+- **Tier 1C landed:** `app/vision/kpi.py` is a deterministic KPI engine that consumes cached YOLO/ByteTrack tracks and emits live `KPIReport` windows keyed to the fixture's window schedule + memory_ids (so PatternAgent's `evidence[*].memory_id` citations stay valid against live data). `evidence_pack.state()` and `build()` invoke it through `_maybe_live_kpi_windows()`; live KPIs engage when `session.source_kind == "real"` and `tracks.cached.json` exists. AI-generated mock sessions keep their narrative fixture KPIs (their synthetic people don't actually queue). Escape hatches: `CAFETWIN_FORCE_FIXTURE_KPI=1` (always fixture) and `CAFETWIN_FORCE_LIVE_KPI=1` (force live even on synthetic). Logfire span `kpi_engine.compute_window` joins the trace tree. Verified live: `real_cafe` /api/run shows the OptimizationAgent rationale citing the live numbers (e.g. `staff_walk_distance_px 487 → 617 → 1622 px (3.3× surge)`, `table_detour_score 0.6 → 1.0 → 2.4`) instead of fixture values.
 - Add a richer session selector (TopBar dropdown or Tweaks panel control) if time allows. The fast path is already available via `?session=real_cafe`.
-- Run the deterministic KPI engine live on cached tracks + zones (replaces precomputed `kpi_windows.json`).
-- Replace fixture KPIs with the live engine output so `PatternAgent` (already shipped in MVP) reasons over real per-request numbers; the chain becomes `live YOLO/ByteTrack tracks → live KPI engine → PatternAgent → OptimizationAgent`.
 - Add 3 more memory writes: KPI summary, object inventory, pattern.
-- Logfire trace grows to 6–7 spans.
+- Logfire trace already at 6 spans on `/api/run` (`api.run`, `evidence_pack.build`, `kpi_engine.compute_window`, `pattern_agent.run` + nested, `optimization_agent.run` + nested, `memory.write`).
 
 The MVP pitch becomes "the perception layer is also real, on real footage."
 

@@ -162,8 +162,8 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 | Component | MVP | Tier 1 | Tier 2 |
 |---|---|---|---|
 | `zones.json` | hand-drawn | hand-drawn (no zone agent ever) | hand-drawn |
-| `tracks.cached.json` | hand-authored or skipped | live YOLO+ByteTrack offline | same as Tier 1 |
-| `kpi_windows.json` | precomputed numbers | live `kpi_engine` per request | same as Tier 1 |
+| `tracks.cached.json` | hand-authored or skipped | live YOLO+ByteTrack offline (Tier 1B ✅) | same as Tier 1 |
+| `kpi_windows.json` | precomputed numbers | live `app/vision/kpi.py` per request, gated on `source_kind=real` (Tier 1C ✅; AI-mock sessions keep narrative fixture) | same as Tier 1 |
 | `pattern_fixture.json` | live `PatternAgent` (fixture is fallback) | unchanged | unchanged |
 | `PatternAgent` | live Pydantic AI (`PatternEvidenceBundle → OperationalPattern`, normalized canonical `pattern.id`) | unchanged | unchanged |
 | `OptimizationAgent` | live Pydantic AI | unchanged | unchanged |
@@ -173,7 +173,7 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 | Twin panel | existing iso renderer (`cafe-iso.jsx`), driven by demo presets + optional `simulation` shift | same as MVP | R3F box prefabs reading `TwinLayout`; iso = lowend fallback |
 | Chat | input visible but disabled / hidden | same as MVP | input activated; supported-prompts-only |
 | Scenario rail | demo presets + 1 agent-driven `recommended` chip | same as MVP | + 2–3 prebaked concept chips (each = one `SceneBuilderAgent` call) |
-| Logfire span count | 5 on `/api/run` (`api.run`, `evidence_pack.build`, `pattern_agent.run` + nested Pydantic AI auto-spans, `optimization_agent.run` + nested, `memory.write`) + 1 on `/api/feedback` | +KPI auto-spans | + scene_builder spans on `/api/apply` |
+| Logfire span count | 5 on `/api/run` (`api.run`, `evidence_pack.build`, `pattern_agent.run` + nested Pydantic AI auto-spans, `optimization_agent.run` + nested, `memory.write`) + 1 on `/api/feedback` | 6 on `/api/run` (Tier 1C adds `kpi_engine.compute_window` inside `evidence_pack.build`) | + scene_builder spans on `/api/apply` |
 | Routes | `/api/sessions`, `/api/state`, `/api/run`, `/api/feedback`, `/api/memories`, `/api/logfire_url` | same as MVP | + `/api/apply`, optional `/api/twin/{scenario}`, `/api/chat` |
 | Sponsor services | Anthropic, MuBit, Logfire | + (none) | + (none) |
 
@@ -324,12 +324,15 @@ sequenceDiagram
 
 MVP `pattern_agent.run` lives in the trace too — it's a real Pydantic AI span auto-instrumented by `instrument_pydantic_ai()`, sandwiched between `evidence_pack.build` and `optimization_agent.run`.
 
-Tier 1 / Tier 2 add-ons (not in MVP, sketched for context only):
+Tier 1 / Tier 2 add-ons:
 
-- `kpi_engine.compute_window` × N (Tier 1, replacing precomputed
-  `kpi_windows.json`).
-- Live `tracks.cached.json` from YOLO/ByteTrack offline (Tier 1, replacing
-  hand-authored or skipped fixture).
+- `kpi_engine.compute_window` (Tier 1C ✅ landed; one span inside
+  `evidence_pack.build`, fired only when live KPIs engage — see
+  `app/vision/kpi.py`). Replaces precomputed `kpi_windows.json` numbers
+  for `source_kind=real` sessions while preserving the fixture window
+  schedule + memory_ids so `PatternAgent` evidence citations stay valid.
+- Live `tracks.cached.json` from YOLO/ByteTrack offline (Tier 1B ✅ landed
+  via `app/vision/tracks.py` + `scripts/run_yolo_offline.py`).
 - `scene_builder_agent.run` × 2 (Tier 2, on `/api/apply`) producing observed
   + recommended `TwinLayout`s.
 
@@ -1264,6 +1267,17 @@ Tier 1A real-video checks:
 - [x] `annotated_before.mp4` is readable by ffmpeg and shows YOLO/ByteTrack boxes with track IDs and zone labels.
 - [x] `uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2` produces the preferred fake-session `tracks.cached.json` and `annotated_before.mp4`.
 - [x] `load_tracks_cache("demo_data/sessions/ai_cafe_a/tracks.cached.json")` validates a `TracksCache` with 11 tracks, 1275 detections, 180 processed frames, and role counts `staff=1`, `customer=10`, `unknown=0`.
+
+Tier 1C live-KPI engine checks:
+
+- [x] `app/vision/kpi.py::compute_kpi_windows(tracks, session_id, run_id, fixture_windows, zones)` is deterministic and emits `list[KPIReport]` with the same length, `window_start_s`, `window_end_s`, and `memory_id` as `fixture_windows` (so `PatternAgent` evidence citations stay valid against live data).
+- [x] Live KPIs gate on `session.json::source_kind == "real"` AND `tracks.cached.json` present. AI-mock sessions keep the narrative fixture KPIs by default; `CAFETWIN_FORCE_LIVE_KPI=1` overrides for testing; `CAFETWIN_FORCE_FIXTURE_KPI=1` always returns to fixture.
+- [x] `state("real_cafe")` and `build("real_cafe")` return KPI windows with peaks `[2, 3, 2]` derived from tracks (matching fixture peaks because they were tuned from the same scene).
+- [x] `state("ai_cafe_a")` returns the fixture KPIs (peaks `[2, 3, 3]`); the synthetic session's people sit in `seating` rather than `queue`.
+- [x] `evidence_pack.build()` returns `kpi_windows` with `memory_id ∈ {kpi_real_cafe_w1, kpi_real_cafe_w2, kpi_real_cafe_w3}` for `real_cafe` so the cached `pattern_real_service_lane_choke` evidence remains a valid subset.
+- [x] Logfire trace contains a `kpi_engine.compute_window` span inside `evidence_pack.build` when live KPIs engage (only on `source_kind=real` sessions with tracks).
+- [x] Live `/api/run` on `real_cafe` produces an `OptimizationAgent.rationale` that cites the live numbers (e.g. `staff_walk_distance_px 487 → 617 → 1622 px`, `table_detour_score 0.6 → 1.0 → 2.4`) instead of fixture values.
+- [x] `tests/test_kpi_engine.py` covers: empty windows (schema-valid frames_sampled), distinct-customer queue peak, sampling-cadence-aware obstruction seconds, distinct-pair crossings within threshold, walk-distance summation, schedule preservation, in-window-only filtering, congestion clamp `[0, 1]`, both env escape hatches, both default gating paths, memory_id preservation through live, and missing-tracks-cache → fixture fallback.
 
 ## Pitch copy (best-case demo recommendation)
 

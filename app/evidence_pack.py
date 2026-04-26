@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from uuid import uuid4
+import logging
+import os
+from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -18,7 +20,12 @@ from app.schemas import (
     StateResponse,
     Zone,
 )
-from app.sessions import fixture_statuses, missing_required, session_dir
+from app.logfire_setup import span as logfire_span
+from app.sessions import fixture_statuses, load_manifest, missing_required, session_dir
+from app.vision.kpi import compute_kpi_windows
+from app.vision.tracks import load_tracks_cache
+
+logger = logging.getLogger(__name__)
 
 
 class FixtureLoadError(RuntimeError):
@@ -38,6 +45,62 @@ def _load_fixture(session_id: str, filename: str, adapter: TypeAdapter):
         return adapter.validate_python(_load_json(session_id, filename))
     except (OSError, ValueError, ValidationError) as exc:
         raise FixtureLoadError(session_id, [filename]) from exc
+
+
+def _maybe_live_kpi_windows(
+    session_id: str,
+    run_id: UUID,
+    fixture_windows: list[KPIReport],
+    zones: list[Zone],
+) -> list[KPIReport] | None:
+    """Compute Tier 1C live KPIs from ``tracks.cached.json`` when available.
+
+    Returns the live list keyed to the fixture's window schedule/memory_ids,
+    or ``None`` to signal callers to keep the fixture windows as-is.
+
+    Live KPIs engage when all of these hold:
+    - Session manifest marks ``source_kind == "real"`` (AI-generated mock
+      scenes keep their narrative fixture numbers so the demo story stays
+      coherent — their synthetic people don't actually queue).
+      ``CAFETWIN_FORCE_LIVE_KPI=1`` overrides this for testing.
+    - ``tracks.cached.json`` is present on disk.
+    - ``CAFETWIN_FORCE_FIXTURE_KPI != "1"`` (demo escape hatch).
+    """
+    if os.getenv("CAFETWIN_FORCE_FIXTURE_KPI") == "1":
+        return None
+
+    tracks_path = session_dir(session_id) / "tracks.cached.json"
+    if not tracks_path.exists():
+        return None
+
+    force_live = os.getenv("CAFETWIN_FORCE_LIVE_KPI") == "1"
+    if not force_live:
+        try:
+            manifest = load_manifest(session_id)
+        except (OSError, ValueError, ValidationError):
+            return None
+        if manifest.source_kind != "real":
+            return None
+
+    try:
+        tracks_cache = load_tracks_cache(tracks_path)
+    except (OSError, ValueError, ValidationError) as exc:
+        logger.warning("Failed to load %s for live KPIs: %s", tracks_path, exc)
+        return None
+
+    with logfire_span(
+        "kpi_engine.compute_window",
+        session_id=session_id,
+        window_count=len(fixture_windows),
+        track_count=len(tracks_cache.tracks),
+    ):
+        return compute_kpi_windows(
+            tracks_cache=tracks_cache,
+            session_id=session_id,
+            run_id=run_id,
+            fixture_windows=fixture_windows,
+            zones=zones,
+        )
 
 
 def state(session_id: str = config.DEFAULT_SESSION_ID) -> StateResponse:
@@ -61,7 +124,12 @@ def state(session_id: str = config.DEFAULT_SESSION_ID) -> StateResponse:
     # Normalise the slug across all fixtures regardless of what's stored in
     # them — the input arg is the source of truth.
     inventory = inventory.model_copy(update={"session_id": session_id})
-    kpi_windows = [w.model_copy(update={"session_id": session_id}) for w in kpi_windows]
+
+    live_windows = _maybe_live_kpi_windows(session_id, inventory.run_id, kpi_windows, zones)
+    if live_windows is not None:
+        kpi_windows = live_windows
+    else:
+        kpi_windows = [w.model_copy(update={"session_id": session_id}) for w in kpi_windows]
 
     return StateResponse(
         session_id=session_id,
@@ -101,10 +169,15 @@ def build(
     # session_id is the source of truth; whatever the fixture stored is
     # informational and overridden here.
     inventory = inventory.model_copy(update={"session_id": session_id, "run_id": run_id})
-    kpi_windows = [
-        window.model_copy(update={"session_id": session_id, "run_id": run_id})
-        for window in kpi_windows
-    ]
+
+    live_windows = _maybe_live_kpi_windows(session_id, run_id, kpi_windows, zones)
+    if live_windows is not None:
+        kpi_windows = live_windows
+    else:
+        kpi_windows = [
+            window.model_copy(update={"session_id": session_id, "run_id": run_id})
+            for window in kpi_windows
+        ]
 
     return CafeEvidencePack(
         session_id=session_id,
