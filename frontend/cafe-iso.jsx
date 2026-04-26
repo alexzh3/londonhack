@@ -212,6 +212,35 @@ function FloorMat({ x, y, w = 2, d = 1.5, color = "#5a3a28" }) {
 // barista at her actual workstation and queues customers in the right
 // place, instead of the default top-edge counter geometry that the
 // procedural grid layouts assume.
+// Six base table positions chosen to match the cafe video. Index 0 is
+// the "couple table" near the couch (the natural target for service-lane
+// moves). When the seats slider asks for more than the canonical 12
+// (= 6 × 2-top), we extend with `BASELINE_OVERFLOW_TABLES` below; when it
+// asks for fewer we slice. This keeps the cafetwin scene reactive to the
+// `seats` slider on the *baseline* / *recommended* scenarios while still
+// preserving the hand-tuned positions for the demo's default 12-seat shot.
+const BASELINE_BASE_TABLES = [
+  { x: 5.5, y: 2.0 },     // T0: couple table near couch
+  { x: 8.5, y: 2.4 },     // T1: middle-back table
+  { x: 11.5, y: 2.0 },    // T2: back-right window table (newspaper guy)
+  { x: 8.0, y: 4.5 },     // T3: middle-floor table
+  { x: 11.5, y: 4.4 },    // T4: middle-right window
+  { x: 12.0, y: 6.0 },    // T5: front-right window (woman with laptop)
+];
+
+// Overflow table positions in remaining floor space. These keep clear of
+// the left-wall counter (x ≤ 2), the back-wall couch / bookshelf / plant
+// alcove (y ≤ 1.4 for x ∈ [4.4, 13.0]), and the two central floor mats
+// (the mats sit *under* tables visually so it's fine to land on them).
+const BASELINE_OVERFLOW_TABLES = [
+  { x: 6.0, y: 6.0 },     // T6:  front-center
+  { x: 9.5, y: 6.0 },     // T7:  front-center-right
+  { x: 4.5, y: 4.5 },     // T8:  middle near counter
+  { x: 4.5, y: 6.0 },     // T9:  front near counter
+  { x: 6.5, y: 4.0 },     // T10: middle-front-left
+  { x: 9.5, y: 3.8 },     // T11: middle-front-center
+];
+
 const EXPLICIT_BASELINE_LAYOUT = {
   floorW: 14,
   floorH: 7,
@@ -222,17 +251,9 @@ const EXPLICIT_BASELINE_LAYOUT = {
   counterSegments: [
     { x: 0, y: 0, w: 2, d: 5.5, showFixtures: true },
   ],
-  // Five 2-top tables. Index 0 is the "couple table" near the couch (the
-  // natural target for service-lane-style moves). Positions chosen to
-  // match the actual furniture footprint in the video.
-  tablePositions: [
-    { x: 5.5, y: 2.0 },     // T0: couple table near couch
-    { x: 8.5, y: 2.4 },     // T1: middle-back table
-    { x: 11.5, y: 2.0 },    // T2: back-right window table (newspaper guy)
-    { x: 8.0, y: 4.5 },     // T3: middle-floor table
-    { x: 11.5, y: 4.4 },    // T4: middle-right window
-    { x: 12.0, y: 6.0 },    // T5: front-right window (woman with laptop)
-  ],
+  // Default 6 × 2-top = 12 seats — the canonical baseline shot. The
+  // generator below replaces this when `seats` differs.
+  tablePositions: BASELINE_BASE_TABLES,
   // 2 chairs per table — wood chairs in the video sit across from each
   // other on the long axis of the table, not around it.
   chairOffsets: [{ dx: -0.6, dy: 0 }, { dx: 0.6, dy: 0 }],
@@ -289,9 +310,22 @@ function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3
   // scenarios use the procedural grid below — they're "what-if" twins,
   // not 1:1 reproductions of any specific cafe, so the grid stays the
   // right tool for them.
+  //
+  // The seats slider drives table count via 2-tops (matches the video's
+  // wood-chair-pair seating and the controls panel's `tableCountFor`
+  // estimate). We pull from the canonical 6 base positions first, then
+  // extend with overflow positions when the user asks for more seats; if
+  // they ask for fewer we slice. Default seats=12 → first 6 positions ⇒
+  // the iso scene reads exactly like the AI-cafe video frame.
   if (name === "baseline" || name === "recommended") {
+    const requestedTables = Math.max(1, Math.ceil(seats / 2));
+    const allPositions = [...BASELINE_BASE_TABLES, ...BASELINE_OVERFLOW_TABLES];
+    const tablePositions = allPositions.slice(
+      0, Math.min(requestedTables, allPositions.length)
+    );
     return {
       ...EXPLICIT_BASELINE_LAYOUT,
+      tablePositions,
       baristas,
       style,
       shirtColors,
@@ -347,6 +381,47 @@ function simHash(seed, i) {
   return x - Math.floor(x);
 }
 
+// Compute home positions for `n` baristas along the counter's vertical
+// extent. For a `simPoints`-equipped layout (the hand-tuned baseline),
+// they spread evenly across the counter's first segment and stay clamped
+// to the segment, so a generous baristas slider doesn't push them outside
+// the counter footprint. Procedural grid layouts fall back to the legacy
+// "spread along the top-edge counter at y=-1.2" behaviour.
+function _placeBaristas(layout) {
+  const n = Math.max(1, layout.baristas);
+  const sp = layout.simPoints || {};
+  const homes = [];
+  if (sp.baristaHome) {
+    const seg = (layout.counterSegments && layout.counterSegments[0]) || null;
+    const segY = seg ? seg.y : 0;
+    const segD = seg ? seg.d : 5.5;
+    const margin = 0.4;
+    const y0 = segY + margin;
+    const y1 = segY + segD - margin;
+    for (let i = 0; i < n; i++) {
+      const bx = sp.baristaHome.x;
+      const by = n === 1 ? sp.baristaHome.y : y0 + (i / (n - 1)) * (y1 - y0);
+      homes.push({ x: bx, y: by });
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const bx = 1.5 + (i / Math.max(1, n - 1)) * (layout.counterW - 1.5);
+      const by = -1.2;
+      homes.push({ x: bx, y: by });
+    }
+  }
+  return homes;
+}
+
+function _initBaristas(layout) {
+  return _placeBaristas(layout).map((h, i) => ({
+    id: i, home: { x: h.x, y: h.y },
+    x: h.x, y: h.y,
+    target: { x: h.x, y: h.y },
+    state: "idle", action: "", busyUntil: 0,
+  }));
+}
+
 function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTime = null, speed = 1 }) {
   const [tick, setTick] = React.useState(0);
   const stateRef = React.useRef(null);
@@ -356,7 +431,6 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
   // (Re)init on layout/scenario change
   React.useEffect(() => {
     const customers = [];
-    const baristas = [];
     // The procedural grid layout doesn't carry simPoints, so we synthesise
     // them from `counterW` / `floorH` and pretend the counter sits along
     // the top edge (legacy behaviour). The hand-tuned baseline overrides
@@ -374,25 +448,7 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     const makeDrink    = sp.makeDrinkPoint || null;
     const servePoint   = sp.servePoint    || null;
 
-    for (let i = 0; i < layout.baristas; i++) {
-      let bx, by;
-      if (sp.baristaHome) {
-        // Custom layout: spread the (potentially multiple) baristas
-        // along the counter's vertical extent, since the counter is on
-        // a wall, not the top edge.
-        bx = sp.baristaHome.x;
-        by = sp.baristaHome.y + (i - (layout.baristas - 1) / 2) * 1.0;
-      } else {
-        bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
-        by = -1.2;
-      }
-      baristas.push({
-        id: i, home: { x: bx, y: by },
-        x: bx, y: by,
-        target: { x: bx, y: by },
-        state: "idle", action: "", busyUntil: 0,
-      });
-    }
+    const baristas = _initBaristas(layout);
 
     // pre-seed some customers already seated for non-empty starting state
     const seedCount = Math.min(layout.tablePositions.length,
@@ -439,21 +495,9 @@ function useCafeSim({ layout, footfall, scenarioKey, running = true, externalTim
     lastExtRef.current = externalTime;
     if (delta < 0) {
       // scrubbed backward — re-init. Reuse the same simPoints-aware
-      // barista placement as the main init effect above.
-      const customers = []; const baristas = [];
-      const sp = layout.simPoints || {};
-      for (let i = 0; i < layout.baristas; i++) {
-        let bx, by;
-        if (sp.baristaHome) {
-          bx = sp.baristaHome.x;
-          by = sp.baristaHome.y + (i - (layout.baristas - 1) / 2) * 1.0;
-        } else {
-          bx = 1.5 + (i / Math.max(1, layout.baristas - 1)) * (layout.counterW - 1.5);
-          by = -1.2;
-        }
-        baristas.push({ id: i, home: { x: bx, y: by }, x: bx, y: by,
-          target: { x: bx, y: by }, state: "idle", action: "", busyUntil: 0 });
-      }
+      // barista placement helper as the main init effect above.
+      const customers = [];
+      const baristas = _initBaristas(layout);
       stateRef.current = { ...S, customers, baristas, time: externalTime,
         nextSpawn: externalTime, orderQueue: [], drinkQueue: [],
         tableUsed: new Array(layout.tablePositions.length).fill(false), nextId: 1 };
