@@ -1020,7 +1020,7 @@ The MVP frontend is the existing `frontend/cafetwin.html` Babel-in-browser demo 
 ### What does **not** change in the existing demo
 
 - `SCENARIO_PRESETS` and `computeKpis()` in `app-state.jsx` stay as-is. They power `baseline`, `10x.size`, `brooklyn`, `+2.baristas`, `tokyo` — all decorative and never claimed to be agent output.
-- `cafe-iso.jsx`, `app-canvas.jsx` — extended (not rewritten) to surface the agent recommendation: `CafeScene` accepts a `recommendation` prop derived from `LayoutChange.simulation`; `CafeLayout` translates the hashed-target table+chairs+seated-customers by a tween-driven offset; `RecOverlay` renders the pre-Apply pulsing-halo + arrow + dashed destination ghost. `MainCanvas`/`CanvasPane` thread `recommendation` to the right (active) pane only — the baseline pane stays clean for honest split-compare. `tweaks-panel.jsx`, `cafetwin.css` — untouched.
+- `cafe-iso.jsx`, `app-canvas.jsx` — extended (not rewritten) to surface the agent recommendation: `CafeScene` accepts a `recommendation` prop derived from `LayoutChange.simulation`; `CafeLayout` translates the hashed-target table+chairs+seated-customers by a tween-driven offset; `RecOverlay` renders the pre-Apply pulsing-halo + arrow + dashed destination ghost. `MainCanvas`/`CanvasPane` thread `recommendation` to the right (active) pane only — the baseline pane stays clean for honest split-compare. `cafetwin.css` fixes the chat-panel grid track (`minmax(0, 1fr)` + `.chat-stream { min-height: 0; overflow-y: auto; }`) AND adds `.chat-stream > * { flex: 0 0 auto }` so the flex-column children (`tool-call`, `chat-msg`, etc.) don't shrink to fit the panel — without that rule the rec-card's intrinsic ~700px collapses to ~250px and `.tool-call { overflow: hidden }` clips the accept/reject buttons. `ChatPanel` adds an auto-scroll effect keyed on `layoutChange.fingerprint` that aligns the rec-card's top to the chat-stream's top whenever a new recommendation arrives, so the user sees title + buttons without manual scrolling. `cafetwin.html` defaults the active scenario to `baseline` and bumps local asset query strings to `v=10` (CSS) / `v=11` (JSX) so browsers fetch the latest assets.
 - The HTML loader, the UMD React bundle, the Babel-standalone tag — untouched.
 
 ### What is added (additive only)
@@ -1028,7 +1028,7 @@ The MVP frontend is the existing `frontend/cafetwin.html` Babel-in-browser demo 
 - `frontend/api.js` — ~40 lines of `fetch` wrappers exporting `listSessions`, `getState`, `postRun`, `postFeedback`, `getMemories`, `getLogfireUrl`.
 - `frontend/cafetwin.html` — one new `<script src="api.js">` tag before the JSX scripts, and a new `<Modal open={openModal === "memories"}>` block alongside the existing modals.
 - `frontend/app-state.jsx` — a `useBackend()` hook + a `scenarioFromLayoutChange(lc)` helper that converts a `LayoutChange` into the demo's scenario shape so the rail can render it.
-- `frontend/app-panels.jsx` — `AgentFlow` accepts an optional `stages` prop; `ChatPanel` renders a real `LayoutChange` ToolCall + Apply/Accept/Reject buttons when a `layoutChange` prop is present; `TopBar` Logfire button uses `logfireUrl`.
+- `frontend/app-panels.jsx` — `AgentFlow` accepts an optional `stages` prop; `ChatPanel` renders a real `LayoutChange` ToolCall with prominent `accept + apply` / `reject` controls immediately under the recommendation title when a `layoutChange` prop is present; `TopBar` Logfire button uses `logfireUrl`.
 
 ## KPI engine (Tier 1, NOT MVP)
 

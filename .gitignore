@@ -27,6 +27,9 @@ build/
 # Runtime demo output (memory writes accumulate here at demo time)
 demo_data/mubit_fallback.jsonl
 
+# Playwright MCP session artifacts (snapshots, console logs, network logs)
+.playwright-mcp/
+
 # Per-agent local config / scratch dirs
 .codex
 .agents/

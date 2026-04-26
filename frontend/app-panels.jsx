@@ -345,6 +345,24 @@ function LiveRecommendation({
     evidence_ids: lc.evidence_ids,
   }, null, 2);
   const deltas = Object.entries(lc.expected_kpi_delta || {});
+  const decisionControls = feedback ? (
+    <div className={`rec-actions rec-done rec-${feedback.decision}`}>
+      <span className="rec-done-label">
+        {feedback.decision === "accept" ? "✓ accepted" : "✗ rejected"}
+      </span>
+      {feedback.mubitId && <code>{feedback.mubitId}</code>}
+      {feedback.fallbackOnly && <span className="rec-meta-jl">jsonl-only</span>}
+    </div>
+  ) : (
+    <div className="rec-actions">
+      <button className="rec-btn rec-btn-accept" disabled={submitting}
+        onClick={() => submit("accept")}>accept + apply</button>
+      <button className="rec-btn rec-btn-reject" disabled={submitting}
+        onClick={() => submit("reject")}>reject</button>
+      {submitting && <span className="rec-meta-jl">writing memory…</span>}
+      {submitError && <span className="rec-err">{submitError}</span>}
+    </div>
+  );
 
   return (
     <ToolCall
@@ -362,6 +380,7 @@ function LiveRecommendation({
             )}
             {usedFallback && <span className="rec-pill rec-fallback">cached fallback</span>}
           </div>
+          {decisionControls}
           <p className="rec-rationale">{lc.rationale}</p>
           <div className="rec-deltas">
             {deltas.map(([k, v]) => (
@@ -377,24 +396,6 @@ function LiveRecommendation({
             <span className="rec-meta-spacer" />
             <span><code>{sim.action}</code> · <code>{lc.target_id}</code></span>
           </div>
-          {feedback ? (
-            <div className={`rec-actions rec-done rec-${feedback.decision}`}>
-              <span className="rec-done-label">
-                {feedback.decision === "accept" ? "✓ accepted" : "✗ rejected"}
-              </span>
-              {feedback.mubitId && <code>{feedback.mubitId}</code>}
-              {feedback.fallbackOnly && <span className="rec-meta-jl">jsonl-only</span>}
-            </div>
-          ) : (
-            <div className="rec-actions">
-              <button className="rec-btn rec-btn-accept" disabled={submitting}
-                onClick={() => submit("accept")}>accept</button>
-              <button className="rec-btn rec-btn-reject" disabled={submitting}
-                onClick={() => submit("reject")}>reject</button>
-              {submitting && <span className="rec-meta-jl">writing memory…</span>}
-              {submitError && <span className="rec-err">{submitError}</span>}
-            </div>
-          )}
         </div>
       }
     />
@@ -413,10 +414,37 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
     style: scenario.style,
     venue_footprint_m2: kpis.footprint,
   }, null, 2);
+
+  // Scroll the *recommendation card* into view whenever a fresh one arrives
+  // (new fingerprint). The buttons live right under the rec-hd inside the
+  // card, so aligning the rec-card to the top of the chat-stream guarantees
+  // the user sees title + accept/reject without further scrolling.
+  // For the loading/error flip, just scroll to bottom so the spinner / error
+  // tool-call lands in view.
+  const streamRef = React.useRef(null);
+  const fingerprint = layoutChange && layoutChange.fingerprint;
+  React.useEffect(() => {
+    const el = streamRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const rec = el.querySelector(".rec-card");
+      if (rec) {
+        // Compute target scroll: align rec-card's top to chat-stream's top
+        // (with a small offset for breathing room above).
+        const elRect = el.getBoundingClientRect();
+        const recRect = rec.getBoundingClientRect();
+        const offset = (recRect.top - elRect.top) + el.scrollTop - 8;
+        el.scrollTop = Math.max(0, offset);
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  }, [fingerprint, backendLoading, backendError, scenario.name]);
+
   return (
     <div className="panel panel-chat">
       <div className="panel-hd"><span className="panel-title">scenario.chat</span><span className="panel-sub">claude-haiku · ctx 18.2k</span></div>
-      <div className="chat-stream">
+      <div className="chat-stream" ref={streamRef}>
         <div className="chat-divider"><span>session opened · 14:02:18</span></div>
         <ChatMessage from="agent" time="14:02:21" traceId="01h9k2..">
           <p>scanned <code>cafe_floor.mp4</code> · detected <b>{base.seats / 3 | 0} tables</b>, <b>{base.seats} chairs</b>, <b>{base.baristas} baristas</b>. footprint ≈ <b>{base.kpis.footprint} m²</b>.</p>

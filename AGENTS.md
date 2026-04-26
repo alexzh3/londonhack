@@ -38,5 +38,6 @@ Local skills live under `.agents/skills/`. Invoke them via the `skill` tool befo
 
 - **`building-pydantic-ai-agents`** (`.agents/skills/building-pydantic-ai-agents/`) — invoke before writing or editing any Pydantic AI agent (`OptimizationAgent`, future `PatternAgent` / `SceneBuilderAgent`). Covers `Agent` setup, structured output, tools, streaming, hooks, retries, and testing patterns. Required reading before touching `app/agents/`.
 - **`instrumentation`** (`.agents/skills/instrumentation/`) — invoke before adding or editing Logfire spans, including `app/logfire_setup.py`, the `/api/run` span tree, and any `logfire.span(...)` / `logfire.instrument_pydantic_ai()` call. Catches subtle ordering/config mistakes that silently drop traces.
+- **`browser-automation`** (`.agents/skills/browser-automation/`) — invoke whenever a task requires actually driving a browser (open `localhost:3000`, click through a form, read console errors, scrape a rendered page, take screenshots, verify the demo UI). Backed by the Playwright MCP server registered in `.devin/config.json`; tools appear under `mcp__playwright__*`. Use `webfetch` instead for static HTML.
 
 Discover all available skills with `skill list .` from the repo root.
