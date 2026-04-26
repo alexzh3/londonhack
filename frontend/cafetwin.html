@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" />
-  <link rel="stylesheet" href="cafetwin.css?v=10" />
+  <link rel="stylesheet" href="cafetwin.css?v=11" />
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -20,11 +20,11 @@
   <!-- Backend fetch wrappers (plain JS, must load before the JSX bundle uses them) -->
   <script src="api.js?v=9"></script>
 
-  <script type="text/babel" src="tweaks-panel.jsx?v=11"></script>
-  <script type="text/babel" src="app-state.jsx?v=11"></script>
-  <script type="text/babel" src="cafe-iso.jsx?v=11"></script>
-  <script type="text/babel" src="app-panels.jsx?v=11"></script>
-  <script type="text/babel" src="app-canvas.jsx?v=11"></script>
+  <script type="text/babel" src="tweaks-panel.jsx?v=12"></script>
+  <script type="text/babel" src="app-state.jsx?v=12"></script>
+  <script type="text/babel" src="cafe-iso.jsx?v=12"></script>
+  <script type="text/babel" src="app-panels.jsx?v=12"></script>
+  <script type="text/babel" src="app-canvas.jsx?v=12"></script>
 
   <script type="text/babel">
     const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -125,11 +125,20 @@
         const merged = { ...preset, ...ov };
         return { ...merged, kpis: computeKpis(merged) };
       };
+      // Materialise the agent's LayoutChange as a peer to the user-spawned
+      // scenarios. The chip slides in right after baseline so the demo flow
+      // (baseline → AI proposal → custom what-ifs) reads left-to-right. We
+      // dep on `recFingerprint` rather than `layoutChange` itself so the memo
+      // is stable across renders that don't actually change the proposal.
       const scenarios = React.useMemo(() => {
-        const base = SCENARIO_ORDER.map((n) => buildScenario(SCENARIO_PRESETS[n]));
+        const baseline = buildScenario(SCENARIO_PRESETS["baseline"]);
+        const others = SCENARIO_ORDER.slice(1).map((n) => buildScenario(SCENARIO_PRESETS[n]));
         const extras = extraScenarios.map((s, i) => buildScenario({ ...s, id: String(5 + i).padStart(2, "0") }));
-        return [...base, ...extras];
-      }, [overrides, extraScenarios]);
+        const recScn = layoutChange ? scenarioFromLayoutChange(layoutChange, baseline) : null;
+        return recScn
+          ? [baseline, recScn, ...others, ...extras]
+          : [baseline, ...others, ...extras];
+      }, [overrides, extraScenarios, recFingerprint]);
 
       const baseScn   = scenarios.find((s) => s.name === "baseline");
       const activeScn = scenarios.find((s) => s.name === activeName) || baseScn;

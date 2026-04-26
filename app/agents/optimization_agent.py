@@ -48,7 +48,7 @@ def _agent_model_spec():
 
 
 try:
-    from pydantic_ai import Agent
+    from pydantic_ai import Agent, ModelRetry, RunContext
 
     optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
         _agent_model_spec(),
@@ -56,7 +56,19 @@ try:
         output_type=LayoutChange,
         instructions=INSTRUCTIONS,
         retries=1,
+        output_retries=1,
+        defer_model_check=True,
     )
+
+    @optimization_agent.output_validator
+    async def validate_agent_output(
+        ctx: RunContext[CafeEvidencePack],
+        output: LayoutChange,
+    ) -> LayoutChange:
+        errors = validate_layout_change(output, ctx.deps)
+        if errors:
+            raise ModelRetry("Fix these LayoutChange validation errors:\n- " + "\n- ".join(errors))
+        return output
 except Exception:
     optimization_agent = None
 
@@ -69,19 +81,9 @@ async def run_optimization(pack: CafeEvidencePack, session_id: str) -> tuple[Lay
 
     try:
         result = await optimization_agent.run(_optimization_prompt(pack), deps=pack)
-        change = result.output
-        errors = validate_layout_change(change, pack)
-        if not errors:
-            return change, False
-
-        result = await optimization_agent.run(_retry_prompt(pack, change, errors), deps=pack)
-        retry_change = result.output
-        if not validate_layout_change(retry_change, pack):
-            return retry_change, False
+        return result.output, False
     except Exception:
         return fallback, True
-
-    return fallback, True
 
 
 def _optimization_prompt(pack: CafeEvidencePack) -> str:
@@ -89,17 +91,6 @@ def _optimization_prompt(pack: CafeEvidencePack) -> str:
         "Optimize this cafe layout from the evidence pack. "
         "Use only cited evidence IDs.\n\n"
         f"{pack.model_dump_json()}"
-    )
-
-
-def _retry_prompt(pack: CafeEvidencePack, change: LayoutChange, errors: list[str]) -> str:
-    error_lines = "\n- ".join(errors)
-    return (
-        "The previous LayoutChange failed semantic validation. "
-        "Return one corrected LayoutChange only.\n\n"
-        f"Validation errors:\n- {error_lines}\n\n"
-        f"Previous output:\n{change.model_dump_json()}\n\n"
-        f"Evidence pack:\n{pack.model_dump_json()}"
     )
 
 

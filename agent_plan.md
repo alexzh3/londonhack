@@ -31,16 +31,16 @@ Legend: `[REAL]` = live code at demo time. `[mock]` = fixture or prebaked artifa
   ┌───────────────────────────┐       ┌──────────────────────────────────┐    ┌─────────────────────────────┐
   │ zones.json           [mock]│      │ evidence_pack.py          [REAL] │    │ cafetwin.html               │
   │ object_inventory.json[mock]│      │   build() → CafeEvidencePack     │    │ + api.js          (NEW)      │
-  │ kpi_windows.json     [mock]│ ───▶ │   ↳ recall_prior_recommendations │    │ + useBackend()    (NEW)      │
+  │ kpi_windows.json     [mock]│ ───▶ │   ↳ recall_decision_memory       │    │ + useBackend()    (NEW)      │
   │ pattern_fixture.json [mock]│      │                                  │    │                              │
   │ recommendation.cached[mock]│      │ agents/optimization_agent.py     │    │ TopBar (logfire URL wired)   │
   └────────────┬──────────────┘       │   Pydantic AI · Claude    [REAL] │──▶ │ AgentFlow (5 nodes ← stages) │
-               │                      │   ↳ retry-once + validate        │    │ KPI cards (kpi_windows)      │
+               │                      │   ↳ output_validator + retry     │    │ KPI cards (kpi_windows)      │
                │                      │   ↳ fallback to cached           │    │ ChatPanel ToolCall renders   │
                │                      │                                  │    │   real LayoutChange + Apply  │
                │                      │ memory.py                 [REAL] │    │ ScenarioRail: synthesized    │
-               │                      │   write_memory()   ┐             │    │   presets + recommended chip │
-               │                      │   recall_prior_…() │             │    │   (built from LayoutChange)  │
+               │                      │   write_memory() raw events       │    │   presets + recommended chip │
+               │                      │   recall_memory_view()            │    │   (built from LayoutChange)  │
                │                      └────────┬───────────┴──┬──────────┘    │ Iso twin (cafe-iso.jsx)      │
                │                               │              │               │   split-compare on Apply,    │
                │                               ▼              ▼               │   optionally shifts target   │
@@ -179,7 +179,7 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 ### Sponsor services used at demo time (all tiers)
 
 - **Anthropic Claude** — drives `OptimizationAgent` (and `PatternAgent` in Tier 1+, `SceneBuilderAgent` in Tier 2). MVP agent falls back to cached JSON on failure.
-- **MuBit** — `remember()` for memory writes; `recall()` for prior recommendations. Degrades silently when `MUBIT_API_KEY` unset.
+- **MuBit** — durable raw event store for recommendations + feedback; recall builds a derived, decision-aware memory view so the agent sees accepted/rejected prior proposals. Degrades silently to jsonl when `MUBIT_API_KEY` unset.
 - **Logfire** — auto-instruments Pydantic AI; manual spans for evidence pack build, KPI compute (Tier 1), validation, memory write, MuBit recall.
 - **Render** — backend hosting (configured at deploy time, not visible in the runtime diagrams above).
 
@@ -187,9 +187,11 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 
 What happens end-to-end when the demo loads and when the user clicks **Accept** / **Reject**. Every arrow is a real function call or network hop at demo time.
 
-The diagram below mirrors the current code (MVP). `memory.py` now attempts
-MuBit first when `MUBIT_API_KEY` is set, and always mirrors to local jsonl so
-the demo survives a MuBit outage.
+The diagram below captures the MVP memory target. `memory.py` treats MuBit +
+jsonl as a durable raw event store, then derives a decision-aware view by
+joining recommendation records with feedback records on the proposal
+fingerprint. MuBit is attempted first when `MUBIT_API_KEY` is set; jsonl is
+always mirrored so the demo survives a MuBit outage.
 
 ```mermaid
 sequenceDiagram
@@ -211,19 +213,20 @@ sequenceDiagram
 
     Note over API,LF: open span evidence_pack.build
     API->>API: state(session_id) → fixture status, pattern.id
-    API->>MEM: recall_recommendations(session_id, pattern_id)
+    API->>MEM: recall_prior_memory(session_id, pattern_id)
     alt MUBIT_API_KEY set
         Note over MEM,LF: span memory.recall.mubit
-        MEM->>MB: POST /v2/control/activity + query lane=recommendations
-        MB-->>MEM: prior MemoryRecord entries
+        MEM->>MB: POST /v2/control/activity + query lanes=recommendations,feedback
+        MB-->>MEM: recommendation + feedback MemoryRecord entries
     else no MuBit key or MuBit error
         MEM-->>MEM: continue with jsonl fallback
     end
     Note over MEM,LF: span memory.recall.jsonl
     MEM->>JL: read + filter by (session_id, pattern_id)
-    JL-->>MEM: prior LayoutChange dicts
-    MEM-->>API: deduped list[dict]
-    API->>API: build CafeEvidencePack(zones, inventory, kpis, pattern, prior_recs)
+    JL-->>MEM: recommendation + feedback MemoryRecord entries
+    MEM->>MEM: join feedback.proposal_fingerprint → layout_change.fingerprint
+    MEM-->>API: deduped list[PriorRecommendationMemory]
+    API->>API: build CafeEvidencePack(zones, inventory, kpis, pattern, prior_memory)
     Note over API,LF: close span evidence_pack.build · stage evidence_pack done
 
     Note over API,LF: open span optimization_agent.run
@@ -233,19 +236,18 @@ sequenceDiagram
         RO->>AGT: agent.run(prompt, deps=pack)
         AGT->>GW: chat(output_type=LayoutChange)
         GW-->>AGT: parsed LayoutChange
-        AGT-->>RO: change
-        RO->>RO: validate_layout_change(change, pack)
-        alt errors == []
+        AGT->>AGT: @output_validator validate_layout_change(change, ctx.deps)
+        alt semantic validation passes
+            AGT-->>RO: validated LayoutChange
             RO-->>API: (change, used_fallback=False)
-        else has errors → retry once with stricter prompt
-            RO->>AGT: agent.run(retry_prompt, deps=pack)
-            AGT->>GW: chat(retry)
-            GW-->>AGT: retry_change
-            AGT-->>RO: retry_change
-            RO->>RO: validate_layout_change(retry_change, pack)
-            alt errors == []
-                RO-->>API: (retry_change, used_fallback=False)
-            else still invalid OR any exception
+        else semantic validation fails
+            AGT-->>GW: raise ModelRetry(validation errors)
+            GW-->>AGT: corrected LayoutChange
+            AGT->>AGT: @output_validator validates corrected output
+            alt retry passes
+                AGT-->>RO: validated corrected LayoutChange
+                RO-->>API: (change, used_fallback=False)
+            else retry exhausted OR any exception
                 RO-->>API: (cached, used_fallback=True)
             end
         end
@@ -354,11 +356,14 @@ GET /api/state?session_id=ai_cafe_a ──────────────�
   fixture status + KPI windows + zones + object inventory + pattern
   ↓
 POST /api/run {session_id: ai_cafe_a} ─────────────
-  recall_recommendations(session_id, pattern.id)   (MuBit when configured + jsonl fallback)
+  recall_prior_memory(session_id, pattern.id)      (MuBit when configured + jsonl fallback)
   ↓
-  build CafeEvidencePack(session_id, prior_recommendations=...)   (typed input bundle)
+  join recommendations + feedback into decision-aware prior memory
   ↓
-  run_optimization                          (Pydantic AI, retry-once on validation, cached fallback)
+  build CafeEvidencePack(session_id, prior_recommendation_memories=...)   (typed input bundle)
+  ↓
+  run_optimization                          (Pydantic AI output_validator + ModelRetry,
+                                            cached fallback if live run fails)
   ↓
   validate_layout_change (defensive HTTP check) → 502 if still invalid
   ↓
@@ -367,7 +372,8 @@ POST /api/run {session_id: ai_cafe_a} ─────────────
   UI binds RunResponse: AgentFlow nodes light from stages[]; ChatPanel ToolCall
   renders the real LayoutChange; ScenarioRail materialises a `recommended` chip;
   TopBar Logfire link uses logfire_trace_url; "Seen before" chip if
-  prior_recommendation_count > 0
+  prior_recommendation_count > 0, with accepted/rejected memory available
+  to the agent prompt
   ↓
 user clicks Apply (or selects the recommended chip)
   ↓
@@ -404,7 +410,7 @@ app/
   agents/
     optimization_agent.py       # live Pydantic AI agent → LayoutChange
     # scene_builder_agent.py    # Tier 2 only
-  memory.py                     # local jsonl writer + MuBit best-effort wrapper
+  memory.py                     # MuBit/jsonl raw event store + derived recall view
   logfire_setup.py              # init + span helpers
   api/
     main.py                     # FastAPI app + CORSMiddleware
@@ -449,8 +455,9 @@ records, API responses, and Tier 2 twin layouts. `demo_data/sessions/ai_cafe_a/`
 now contains the extracted 5s frame and all six required JSON fixtures.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
-MVP routes. `OptimizationAgent` now retries semantic validation failures once
-before using the cached recommendation, and `/api/memories?session_id=...`
+MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
+`ModelRetry` for semantic validation failures before using the cached
+recommendation, and `/api/memories?session_id=...`
 filters local jsonl records server-side by `payload.session_id`. `tests/`
 covers the fixture contract, route response models, agent semantic retry, and
 memory filtering (`pytest` 10 passed; `ruff check app tests` passed). `.agents/`
@@ -623,6 +630,28 @@ class OperationalPattern(BaseModel):
     affected_zones: list[str]
 
 
+# ---------- Derived memory view for agent input ----------
+
+class PriorRecommendationMemory(BaseModel):
+    """Decision-aware memory derived from raw recommendation + feedback events.
+
+    MuBit/jsonl store the raw events. `memory.py` joins feedback by
+    `proposal_fingerprint == layout_change.fingerprint` before the agent sees
+    it, so the optimizer learns from accepted/rejected proposals rather than
+    merely seeing an append-only audit log.
+    """
+    session_id: str
+    pattern_id: str
+    fingerprint: str
+    title: str
+    target_id: str
+    layout_change: "LayoutChange"
+    decision: Literal["accept", "reject", "unknown"] = "unknown"
+    reason: str | None = None
+    last_seen_at: datetime
+    source: Literal["mubit", "jsonl", "merged"]
+
+
 # ---------- Agent input bundle ----------
 
 class CafeEvidencePack(BaseModel):
@@ -637,11 +666,11 @@ class CafeEvidencePack(BaseModel):
     kpi_windows: list[KPIReport]
     pattern: OperationalPattern  # MVP: the fixture pattern. Tier 1: PatternAgent output.
     org_rules: list[str] = Field(default_factory=list)
-    prior_recommendations: list["LayoutChange"] = Field(default_factory=list)
-    # Populated by mubit.recall(session_id, pattern_id). Empty list if MuBit
-    # unavailable or no prior runs — agent handles both cases. Recall is
-    # scoped to (session_id, pattern_id) so cafes never see each other's
-    # recommendations.
+    prior_recommendation_memories: list[PriorRecommendationMemory] = Field(default_factory=list)
+    # Populated by recall_prior_memory(session_id, pattern_id). Empty list if
+    # MuBit/jsonl have no prior runs. Recall is scoped to (session_id,
+    # pattern_id) so cafes never see each other's recommendations. Each entry
+    # carries accept/reject/unknown feedback derived from raw MemoryRecords.
 
 
 # ---------- Agent output ----------
@@ -712,7 +741,8 @@ class MemoryRecord(BaseModel):
 Notes:
 
 - `LayoutChange` stays a pure agent-output type; `session_id` / `pattern_id` ride on the `RecommendationMemoryPayload` wrapper, so the LLM never has to copy them and recall stays correctly scoped.
-- `evidence_ids` is a flat `list[str]` rather than `list[EvidenceRef]` to make the Pydantic AI prompt simpler and the post-validation trivial.
+- `PriorRecommendationMemory` is not a raw write payload. It is the derived recall view built by joining recommendation and feedback records. This is the object the optimizer should reason over for "accepted before" / "rejected before" behavior.
+- `evidence_ids` is a flat `list[str]` rather than `list[EvidenceRef]` to make the Pydantic AI prompt simpler and semantic validation trivial.
 - `expected_kpi_delta` keys are typed via `KPIField` literal, so the agent cannot hallucinate field names.
 - `confidence` is bounded `[0,1]` by `Field`.
 
@@ -724,7 +754,7 @@ Notes:
 
 ```python
 import os
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelRetry, RunContext
 from app.schemas import CafeEvidencePack, LayoutChange
 
 optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
@@ -732,8 +762,21 @@ optimization_agent: Agent[CafeEvidencePack, LayoutChange] | None = Agent(
     deps_type=CafeEvidencePack,
     output_type=LayoutChange,
     instructions=OPTIMIZATION_INSTRUCTIONS,
-    retries=1,
+    retries=1,         # request/tool level retry budget
+    output_retries=1,  # semantic LayoutChange retry via output_validator
+    defer_model_check=True,  # tests/imports work when live provider keys are absent
 )
+
+
+@optimization_agent.output_validator
+async def validate_agent_output(
+    ctx: RunContext[CafeEvidencePack],
+    output: LayoutChange,
+) -> LayoutChange:
+    errors = validate_layout_change(output, ctx.deps)
+    if errors:
+        raise ModelRetry("Fix these LayoutChange validation errors:\n- " + "\n- ".join(errors))
+    return output
 ```
 
 `CAFETWIN_OPTIMIZATION_MODEL` stays overrideable for demo tuning. Per the
@@ -774,14 +817,25 @@ HARD RULES — you will be rejected if you violate any of these:
 Prefer ONE high-confidence move. Keep rationale to 2-3 sentences citing the
 specific pattern. Do not propose multiple changes.
 
-If prior_recommendations is non-empty, briefly acknowledge in the rationale
-that this pattern has been seen before (e.g. "Repeats a prior recommendation
-that was accepted"). If empty, do not mention prior memory.
+Use prior_recommendation_memories as decision-aware memory:
+
+- If a prior recommendation was accepted and the current evidence is still
+  compatible, prefer a compatible move or explicitly adapt it.
+- If a prior recommendation was rejected, do not repeat the same
+  fingerprint/target unless you explain what changed in the evidence.
+- If prior memory exists, briefly acknowledge it in the rationale (e.g.
+  "Adapts a previously accepted pickup-lane change" or "Avoids the rejected
+  table_center_1 move"). If empty, do not mention prior memory.
 ```
 
-### Post-validation + fallback
+### Pydantic AI output validation + fallback
 
-After the agent returns, we run a second-pass validator before returning to the UI:
+Pydantic AI validates the raw JSON/schema shape via `output_type=LayoutChange`.
+CafeTwin's evidence-aware semantic checks run inside an `@agent.output_validator`.
+When those checks fail, the validator raises `ModelRetry`, so the same Pydantic
+AI run asks the model for one corrected `LayoutChange` with the validation
+errors. The API still runs a final defensive `layout_change.validate` span before
+returning to the UI.
 
 ```python
 def validate_layout_change(change: LayoutChange, pack: CafeEvidencePack) -> list[str]:
@@ -804,28 +858,17 @@ async def run_optimization(pack: CafeEvidencePack, session_id: str) -> tuple[Lay
     with logfire.span("optimization_agent.run", session_id=pack.session_id):
         try:
             result = await optimization_agent.run(_optimization_prompt(pack), deps=pack)
-            change = result.output
+            return result.output, False
         except Exception as e:
             logfire.warn("optimization_agent failed", error=str(e))
             return load_cached_recommendation(session_id), True
-
-    with logfire.span("layout_change.validate"):
-        errors = validate_layout_change(change, pack)
-        if not errors:
-            return change, False
-        # Retry once with a stricter reminder in the full live-agent path.
-        retry = await optimization_agent.run(_retry_prompt(pack, change, errors), deps=pack)
-        if not validate_layout_change(retry.output, pack):
-            return retry.output, False
-        logfire.warn("optimization_agent validation failed twice, using fallback")
-        return load_cached_recommendation(session_id), True
 ```
 
 `load_cached_recommendation(session_id)` reads `demo_data/sessions/<session_id>/recommendation.cached.json` and returns it parsed as `LayoutChange`. Each session ships its own cached fallback that must satisfy `validate_layout_change` against that session's fixture pack — see §Acceptance checks.
 
 ## Memory layer
 
-MuBit is the **primary** memory store in MVP when `MUBIT_API_KEY` is set. The local jsonl is a hot fallback that is always written so a MuBit outage at demo time degrades gracefully (no demo break). The backend reads MuBit first when scoped by `session_id`, then merges/dedupes local jsonl records.
+MuBit is the **primary** durable memory store in MVP when `MUBIT_API_KEY` is set. The local jsonl is a hot fallback that is always written so a MuBit outage at demo time degrades gracefully (no demo break). Conceptually, MuBit + jsonl are the **raw event store**: every recommendation and every Accept/Reject click is preserved as a `MemoryRecord`. The optimizer should not consume those raw events directly; `memory.py` builds a derived `PriorRecommendationMemory` view by joining feedback records to recommendation records by fingerprint.
 
 ```python
 # app/memory.py
@@ -845,40 +888,63 @@ async def write_memory(record: MemoryRecord) -> MemoryRecord:
     return record
 
 
-async def recall_prior_recommendations(
+async def recall_prior_memory(
     session_id: str,
     pattern_id: str,
     limit: int = 3,
-) -> list[LayoutChange]:
-    """Recall prior LayoutChange recommendations for this session+pattern.
-    Scoping by both keys ensures cafes never see each other's recommendations
-    even if pattern_ids collide.
+) -> list[PriorRecommendationMemory]:
+    """Recall decision-aware prior recommendations for this session+pattern.
+
+    Reads recommendation + feedback raw events from MuBit first, then jsonl,
+    joins feedback.proposal_fingerprint to layout_change.fingerprint, and
+    returns a deduped view that carries decision=accept/reject/unknown.
     """
-    hits = []
+    raw_records = []
     if _mubit_available():
         with span("memory.recall.mubit", session_id=session_id, pattern_id=pattern_id):
-            hits.extend(await _best_effort_mubit_query(...))
+            raw_records.extend(await _best_effort_mubit_query(...))
     with span("memory.recall.jsonl", session_id=session_id, pattern_id=pattern_id):
-        hits.extend(read_jsonl_records(...))
-    return dedupe_by_layout_fingerprint(hits)[:limit]
+        raw_records.extend(read_jsonl_records(...))
+    return build_prior_memory_view(raw_records, session_id, pattern_id)[:limit]
 ```
 
 If `MUBIT_API_KEY` is unset, `_mubit_remember` / `_mubit_query` are skipped cleanly: writes still hit jsonl, recalls read jsonl only, and the demo still works. This is what `MemoryRecord.fallback_only` flags.
+
+### Raw event store vs derived memory view
+
+The raw records are useful for auditability and `/api/memories`; the derived view is what makes memory meaningful to the agent.
+
+```text
+lane=recommendations:
+  payload.layout_change.fingerprint = ai_cafe_a_open_pickup_lane_v1
+
+lane=feedback:
+  payload.proposal_fingerprint = ai_cafe_a_open_pickup_lane_v1
+  payload.decision = accept
+
+derived PriorRecommendationMemory:
+  fingerprint = ai_cafe_a_open_pickup_lane_v1
+  decision = accept
+  layout_change = <original LayoutChange>
+```
+
+This keeps MuBit usage simple and durable while avoiding the weak pattern of feeding the agent an append-only list with no outcome semantics.
 
 ### MVP writes
 
 - After successful recommendation: one `MemoryRecord` on lane `location:demo:recommendations`, intent `lesson`, with `payload = RecommendationMemoryPayload(session_id, pattern_id, layout_change).model_dump()`. The `session_id` + `pattern_id` are read from the `CafeEvidencePack`, not from the LLM output.
 - After Accept/Reject feedback: one `MemoryRecord` on lane `location:demo:feedback`, intent `feedback`, with `payload = FeedbackMemoryPayload(session_id, pattern_id, proposal_fingerprint, decision).model_dump()`.
+- MuBit text content should be human-readable first and exact JSON second: a short summary (`Session`, `Pattern`, `Recommendation`, `Expected impact`, `Decision`) followed by `CAFETWIN_MEMORY_RECORD_JSON=...`. This improves semantic recall while preserving robust parsing.
 
 ### MVP reads
 
-- `/api/run` loads fixture state to get `pattern.id`, calls `recall_recommendations(session_id, pattern.id)`, then passes the parsed prior recommendations into `evidence_pack.build(..., prior_recommendations=...)`.
+- `/api/run` loads fixture state to get `pattern.id`, calls `recall_prior_memory(session_id, pattern.id)`, then passes the derived prior memory into `evidence_pack.build(..., prior_recommendation_memories=...)`.
 - `GET /api/memories?session_id=...` queries MuBit activity scoped by `session_id`, filters parsed `MemoryRecord.payload.session_id` client-side, and merges with jsonl entries. If MuBit is unavailable, it returns jsonl only. Without `session_id`, the endpoint returns local jsonl records only because MuBit activity requires a run/session scope.
 
 ### UI surface
 
 - Memories expander row shows `[mubit_id]` chip when present (e.g. `mem_a1b2c3`), or `[local]` when fallback-only.
-- Recommendation card shows a "Seen before" chip with count when `prior_recommendations` is non-empty.
+- Recommendation card shows a "Seen before" chip with count when `prior_recommendation_memories` is non-empty. If the current prior set includes decisions, the UI may later show accepted/rejected counts, but the MVP-critical behavior is in the optimizer prompt.
 
 ### Tier 1 adds
 
@@ -1103,7 +1169,7 @@ renderer and R3F behind a feature flag.
 
 | Risk | Mitigation |
 |---|---|
-| Pydantic AI agent returns invalid `LayoutChange` | Post-validate, retry once with stricter prompt, fall back to `recommendation.cached.json` |
+| Pydantic AI agent returns semantically invalid `LayoutChange` | `@agent.output_validator` raises `ModelRetry` once with validation errors; if exhausted, fall back to `recommendation.cached.json` |
 | Anthropic API down/slow at demo time | Same fallback; keep the cached recommendation visually identical to a real one |
 | MuBit unavailable | Writes still hit jsonl; recall returns `[]`; UI falls back to jsonl read; "Seen before" chip simply doesn't render |
 | Logfire unavailable | Spans no-op gracefully; top-bar link disables if `/api/logfire_url` errors |
@@ -1127,17 +1193,17 @@ Runtime checks:
 - [x] `LayoutChange.evidence_ids` is non-empty and ⊆ pattern fixture's evidence IDs.
 - [x] `LayoutChange.expected_kpi_delta` has ≥ 1 entry; all keys are valid `KPIField`s.
 - [x] `MemoryRecord.payload` for the recommendation includes the correct `session_id` + `pattern_id`.
-- [x] `OptimizationAgent` semantic validation retries once with a stricter prompt before falling back.
+- [x] `OptimizationAgent` semantic validation uses Pydantic AI `@agent.output_validator` + `ModelRetry` before falling back.
 - [x] `GET /api/memories?session_id=ai_cafe_a` filters jsonl records server-side by `payload.session_id`.
 - [x] Live Pydantic AI Gateway `/api/run` path returns `used_fallback=false` with a semantically valid `LayoutChange`.
 - [x] On page load, `ChatPanel` ToolCall renders the real `LayoutChange`.
 - [x] `AgentFlow` node states animate from real stage timestamps.
-- [ ] `ScenarioRail` shows a `recommended` chip.
+- [x] `ScenarioRail` shows a `recommended` chip — built via `scenarioFromLayoutChange(lc, base)` in `app-state.jsx`, rendered with the violet AI badge in `<Scenario>`'s `isRecommended` branch in `app-panels.jsx`, top-2 `expected_kpi_delta` entries shown as the chip's meta rows.
 - [ ] Clicking `recommended` / Apply enters split-compare and animates KPI deltas from `expected_kpi_delta`.
 - [x] Clicking Accept/Reject writes a `MemoryRecord` to MuBit when configured AND to `mubit_fallback.jsonl`, with `payload.session_id == "ai_cafe_a"`.
 - [x] `GET /api/memories?session_id=...` returns merged MuBit+jsonl data and preserves `mubit_id` when present.
 - [ ] Memories modal shows merged MuBit+jsonl data; rows display `mubit_id` chips when present.
-- [ ] When MuBit is up and a prior recommendation for `(ai_cafe_a, pattern_id)` exists, the recommendation card shows a "Seen before" chip and the agent's rationale acknowledges it.
+- [ ] When MuBit/jsonl contain prior recommendation + feedback records for `(ai_cafe_a, pattern_id)`, recall derives `PriorRecommendationMemory` with `decision=accept/reject/unknown`, the recommendation card shows a "Seen before" chip, and the agent's rationale adapts to the accepted/rejected history.
 - [x] Forced-fallback `/api/run` returns a non-empty `logfire_trace_url` and flushes Logfire spans when local Logfire env is present.
 - [x] MuBit trace children replace/augment jsonl-only spans (`memory.recall.mubit`, `memory.write.mubit`).
 - [ ] If `ANTHROPIC_API_KEY` is unset/invalid, the fallback path still produces a valid recommendation card.
@@ -1167,7 +1233,7 @@ Risk: low. Maintains 1.2m walkway clearance.
 - Cafe, not restaurant.
 - One seeded video, no live camera.
 - Fixture-backed perception; live agent reasoning.
-- MuBit is the primary memory store; jsonl is a hot fallback always written in parallel.
+- MuBit is the primary raw memory store; jsonl is a hot fallback always written in parallel; optimizer recall uses a derived accepted/rejected memory view.
 - One Pydantic AI agent live in MVP (`OptimizationAgent`). `PatternAgent` is Tier 1; `SceneBuilderAgent` is Tier 2.
 - Frontend is the existing `cafetwin.html` Babel-in-browser demo. No Vite port for MVP.
 - 3D twin is the existing iso renderer in `cafe-iso.jsx`. R3F is non-goal until Tier 2.

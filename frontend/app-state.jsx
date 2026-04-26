@@ -65,6 +65,34 @@ function deltaStr(curr, base, kind = "abs") {
   return (d >= 0 ? "+" : "") + d;
 }
 
+// ── scenarioFromLayoutChange ──────────────────────────────────────────────
+// Materialise the OptimizationAgent's LayoutChange into a Scenario-shaped
+// object so it can sit alongside user-spawned scenarios in the rail. The
+// layout change does NOT alter staffing or capacity — it only relocates one
+// table — so seats/baristas/footfall/style/hours inherit from the baseline.
+// Throughput/wait/revenue therefore stay close to baseline; the agent's
+// real signal lives in `layoutChange.expected_kpi_delta` (different KPI
+// universe — staff_customer_crossings etc.) and is surfaced via the
+// chip's recommended-only render branch in <Scenario>.
+function scenarioFromLayoutChange(lc, base) {
+  if (!lc || !base) return null;
+  const merged = {
+    name: "recommended",
+    id: "ai",
+    style: base.style,
+    seats: base.seats,
+    baristas: base.baristas,
+    footfall: base.footfall,
+    hours: base.hours,
+  };
+  return {
+    ...merged,
+    kpis: computeKpis(merged),  // identical to baseline today; placeholder for a future projector
+    isRecommended: true,
+    layoutChange: lc,
+  };
+}
+
 // ── useBackend ────────────────────────────────────────────────────────────
 // Drives /api/state + /api/run on mount per session_id. Holds {state, run,
 // loading, error}. submitFeedback() is exposed for the Accept/Reject buttons
@@ -166,7 +194,7 @@ function Modal({ open, onClose, title, sub, children, footer }) {
 
 Object.assign(window, {
   SCENARIO_PRESETS, SCENARIO_ORDER,
-  computeKpis, fmtMoney, deltaStr,
+  computeKpis, fmtMoney, deltaStr, scenarioFromLayoutChange,
   Modal,
   useBackend, AGENT_FLOW_NODE_TO_STAGE, stageDurationMs, fmtLatency,
 });

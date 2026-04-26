@@ -521,7 +521,65 @@ function Sparkline({ kpi, base, color }) {
 
 function Scenario({ scn, base, active, onClick, onOpen, ghost }) {
   const k = scn.kpis;
-  const cls = `scn ${active ? "scn-active" : ""} ${ghost ? "scn-ghost" : ""}`;
+  const isRec = !!scn.isRecommended;
+  const cls = `scn ${active ? "scn-active" : ""} ${ghost ? "scn-ghost" : ""} ${isRec ? "scn-recommended" : ""}`;
+  // Recommended chip: surfaced from LayoutChange.expected_kpi_delta — these
+  // are agent-native KPIs (staff_customer_crossings, queue_obstruction_seconds,
+  // congestion_score, table_detour_score, staff_walk_distance_px), NOT the
+  // decorative throughput/wait/revenue used by the rest of the rail. We pick
+  // the two strongest signals (most-negative deltas) and render them as the
+  // chip's two meta rows so the AI's promised wins are visible at a glance.
+  if (isRec) {
+    const lc = scn.layoutChange;
+    const deltas = Object.entries(lc.expected_kpi_delta || {});
+    // Sort by absolute magnitude (largest impact first); always show the
+    // top 2 so the chip stays visually balanced.
+    const ranked = [...deltas].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    const [topA, topB] = [ranked[0], ranked[1]];
+    const fmtDelta = (v) => {
+      if (v === 0) return "0";
+      const formatted = Number.isInteger(v) ? v.toString() : v.toFixed(1);
+      return v > 0 ? `+${formatted}` : formatted;  // toFixed already includes the "-" sign for negatives
+    };
+    // Compact labels for the 5 KPI fields the agent actually emits today.
+    // Falling back to the raw key keeps the chip readable if the schema
+    // grows without us updating this mapping.
+    const KPI_LABEL = {
+      staff_customer_crossings: "crossings",
+      queue_obstruction_seconds: "queue obstr",
+      congestion_score: "congestion",
+      table_detour_score: "detour",
+      staff_walk_distance_px: "walk dist",
+    };
+    const shortKey = (k) => KPI_LABEL[k] || k.replace(/_/g, " ");
+    return (
+      <div className={cls} onClick={onClick} onDoubleClick={onOpen}>
+        <div className="scn-hd">
+          <span className="scn-ai-badge" title="agent recommendation">AI</span>
+          <span className="scn-name">{scn.name}</span>
+          <span className="scn-id">#{scn.id}</span>
+        </div>
+        <div className="scn-spark"><Sparkline kpi={k} base={base.kpis} color="var(--accent-2)" /></div>
+        {topA && (
+          <div className="scn-meta">
+            <span className="scn-kpi">{shortKey(topA[0])}</span>
+            <span className={`scn-kpi-v ${topA[1] < 0 ? "good" : topA[1] > 0 ? "bad" : ""}`}>{fmtDelta(topA[1])}</span>
+          </div>
+        )}
+        {topB ? (
+          <div className="scn-meta">
+            <span className="scn-kpi">{shortKey(topB[0])}</span>
+            <span className={`scn-kpi-v ${topB[1] < 0 ? "good" : topB[1] > 0 ? "bad" : ""}`}>{fmtDelta(topB[1])}</span>
+          </div>
+        ) : (
+          <div className="scn-meta">
+            <span className="scn-kpi">conf</span>
+            <span className="scn-kpi-v">{Math.round((lc.confidence || 0) * 100)}%</span>
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className={cls} onClick={onClick} onDoubleClick={onOpen}>
       <div className="scn-hd">

@@ -644,6 +644,36 @@ button { font: inherit; color: inherit; cursor: default; }
 }
 .scn-dim { opacity: 0.55; }
 
+/* Recommended chip — the agent's LayoutChange materialised as a peer to the
+   user's what-if scenarios. Uses the violet accent (also used by the
+   "seen Nx before" pill) so the visual language for AI/memory-derived
+   surfaces stays consistent. .scn-active still wins border/glow when the
+   user activates the recommended chip — the violet bg shows through. */
+.scn-recommended {
+  border-color: var(--violet);
+  background: linear-gradient(180deg, rgba(106,74,150,0.10), var(--bg-2));
+  color: var(--fg);
+}
+.scn-recommended:hover { border-color: var(--violet); }
+.scn-recommended .scn-spark { color: var(--accent-2); }
+.scn-recommended.scn-active {
+  border-color: var(--violet);
+  background: linear-gradient(180deg, rgba(106,74,150,0.18), var(--bg-1));
+  box-shadow: 0 0 0 1px rgba(106,74,150,0.30);
+}
+.scn-recommended.scn-active .scn-spark { color: var(--violet); }
+.scn-ai-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 14px;
+  padding: 0 4px;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em;
+  border-radius: 2px;
+  background: var(--violet); color: var(--bg-1);
+}
+.scn-kpi-v.good { color: var(--accent); }
+.scn-kpi-v.bad  { color: var(--danger); }
+
 .scn-hd { display: flex; align-items: center; gap: 6px; font-size: 11px; }
 .scn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); }
 .scn-dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
