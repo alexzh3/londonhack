@@ -470,14 +470,14 @@ frontend/                       # existing Babel-in-browser demo — bind backen
   tweaks-panel.jsx              # editable tweaks panel (already built; gains session select)
   cafetwin.css                  # 32KB stylesheet (already built)
   api.js                        # NEW: fetch wrappers — listSessions, getState, postRun, postFeedback, getMemories, getLogfireUrl
+models/                         # gitignored local model cache
+  ultralytics/                  # active YOLO .pt weights used by vision scripts
+images/                         # gitignored generated screenshots / annotated still images
 scripts/
   build_fixtures.py             # one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding
   run_yolo_offline.py           # Tier 1B: produce tracks.cached.json + annotated_before.mp4
   detect_layout_objects.py      # Tier 1B: produce object_detections.cached.json static layout cache
-  benchmark_static_detectors.py # Tier 1B: compare YOLOv8x / RT-DETR-x / YOLO11x fairly
   review_layout_objects_moondream.py  # Tier 1B: optional Moondream open-vocab detector
-  benchmark_moondream_local.py        # Tier 1B: preflight local Moondream edge runtime
-  benchmark_moondream_05b_mf.py       # Tier 1B: exact legacy Moondream 0.5B .mf/ONNX path
   review_layout_objects_agent.py      # Tier 1B: Pydantic AI reviewer -> reviewed object cache
 ```
 
@@ -496,18 +496,17 @@ Tier 1B lane via `app/vision/objects.py` and `scripts/detect_layout_objects.py`:
 the script runs high-accuracy YOLOv8x over the representative frame plus sampled
 video frames, aggregates duplicate furniture detections, and writes
 `object_detections.cached.json` for both `ai_cafe_a` and `real_cafe`.
-`benchmark_static_detectors.py` compares YOLOv8x, RT-DETR-x, and YOLO11x on
-the same frames; RT-DETR-x is higher-recall but visibly noisier, so the base
-cache stays YOLOv8x while the Pydantic AI `ObjectReviewAgent` writes stricter
-`object_detections.reviewed.cached.json` caches from detector candidates plus
-optional Moondream evidence. `review_layout_objects_moondream.py` supports both
-cloud API mode and local Photon/Kestrel mode (`--local --model moondream2`);
-`benchmark_moondream_local.py` records edge-runtime viability before attempting
-large local model downloads. `benchmark_moondream_05b_mf.py` is the exact
-legacy 0.5B `.mf.gz` path from the `vikhyatk/moondream2` `onnx` branch: it
-downloads/unpacks the user-supplied `moondream-0_5b-int8.mf.gz` archive (the
-branch also exposes a sibling `int4` archive) and runs the extracted ONNX graph
-through ONNX Runtime.
+Archived benchmark results in `docs/vision_benchmarks.md` compare YOLOv8x,
+RT-DETR-x, YOLO11x, local Moondream Photon/Kestrel, and the legacy Moondream
+0.5B `.mf` ONNX artifacts. RT-DETR-x is higher-recall but visibly noisier, so
+the base cache stays YOLOv8x while the Pydantic AI `ObjectReviewAgent` writes
+stricter `object_detections.reviewed.cached.json` caches from detector
+candidates plus optional Moondream evidence. `review_layout_objects_moondream.py`
+supports both cloud API mode and local Photon/Kestrel mode
+(`--local --model moondream2`). Heavy local artifacts are organized under
+ignored folders: `models/ultralytics/` for active YOLO `.pt` weights and
+`images/` for generated screenshots plus annotated still images; benchmark-only
+scripts and weights were removed after archiving the results.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -1295,12 +1294,11 @@ Tier 1A real-video checks:
 - [x] `uv run scripts/detect_layout_objects.py --session ai_cafe_a` runs high-accuracy YOLOv8x static layout detection and writes `object_detections.cached.json` with 31 aggregated furniture detections (`chair=15`, `dining table=7`, `couch=1`, `potted plant=8`) from 345 raw detections across 9 frames.
 - [x] `uv run scripts/detect_layout_objects.py --session real_cafe` writes `object_detections.cached.json` with 12 aggregated detections (`chair=11`, `dining table=1`) from 84 raw detections across 9 frames; real CCTV static furniture recall remains harder/noisier than the fake session.
 - [x] `load_object_detections_cache(...)` validates both static object caches and asserts geometry/source-frame/zone integrity.
-- [x] `uv run scripts/benchmark_static_detectors.py --session ai_cafe_a --no-annotated` compares YOLOv8x (31 objects), RT-DETR-x (48, higher recall/noisier), and YOLO11x (37, larger false table/counter boxes) on the same 9 frames.
+- [x] Archived detector benchmarks compare YOLOv8x (31 objects on `ai_cafe_a`, 12 on `real_cafe`), RT-DETR-x (48 / 28, higher recall/noisier), and YOLO11x (37 / 12, larger false table/counter boxes). Results live in `docs/vision_benchmarks.md`; the benchmark script and benchmark-only weights were removed after capture.
 - [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. Moondream integration is implemented but not run locally because `MOONDREAM_API_KEY` is not in the process environment.
-- [x] `uv run scripts/benchmark_moondream_local.py --session ai_cafe_a` and `--session real_cafe` preflight local Moondream Photon/Kestrel. Both record `status=skipped_insufficient_vram` on the local MX330 (`2048 MB total`, `1993 MB free`) instead of downloading/running a model that needs more VRAM; pass `--force` only on a stronger edge GPU.
-- [x] `uv run scripts/benchmark_moondream_05b_mf.py --session ai_cafe_a --preflight-only` validates the exact legacy 0.5B `.mf.gz` source from `vikhyatk/moondream2/tree/onnx`. The user-supplied URL is `moondream-0_5b-int8.mf.gz` (621,619,051 bytes, commit `9dddae84d54db4ac56fe37817aeaeb502ed083e2`); the branch also has `moondream-0_5b-int4.mf.gz`.
-- [x] Full CPU ONNX runs of `benchmark_moondream_05b_mf.py` completed for both sessions using the supplied int8 archive: `ai_cafe_a` produced 1 kept object from 3 raw legacy regions in ~28.5s, and `real_cafe` produced 1 kept object from 13 raw legacy regions in ~34.9s. The boxes are weak/noisy for cafe furniture, so this remains a benchmark/provenance path rather than the promoted demo detector.
-- [x] The sibling int4 archive downloads/unpacks from the same `onnx` branch, but ONNX Runtime CPU fails the extracted graph with a `MatMulNBits` shape error (`quantized_weight` expected `{1024,64,64}`, got `{8192,8,64}`), so int4 is documented as present but not locally runnable through this CPU runtime yet.
+- [x] Archived local Moondream Photon/Kestrel preflight records `status=skipped_insufficient_vram` on the local MX330 (`2048 MB total`, `1993 MB free`), below the 2600 MB threshold. Results live in `docs/vision_benchmarks.md`.
+- [x] Archived exact legacy 0.5B `.mf.gz` ONNX results from `vikhyatk/moondream2/tree/onnx`: supplied int8 archive is 621,619,051 bytes and runs on CPU but produces weak/noisy boxes (`ai_cafe_a`: 1 kept / 3 raw regions, `real_cafe`: 1 kept / 13 raw regions); sibling int4 archive is present but fails ONNX Runtime CPU with a `MatMulNBits` quantized-weight shape error. Benchmark script and local `.mf`/ONNX files were removed after archiving.
+- [x] Local model/image artifacts are no longer dumped in the repo root. Active weights (`yolov8n.pt`, `yolov8x.pt`) live under `models/ultralytics/`; unused or benchmark-only weights (`yolo11n.pt`, `yolo12n.pt`, `yolov8m.pt`, `rtdetr-x.pt`, `yolo11x.pt`) were removed after user confirmation / benchmark archival. Generated screenshots and annotated still images live under `images/`.
 
 Tier 1C live-KPI engine checks:
 
@@ -1321,7 +1319,7 @@ Tier 1D visible-perception checks (real CCTV in the canvas):
 - [x] `frontend/api.js::cafetwinApi.assetUrl(rel)` resolves backend-relative asset paths against `API_BASE` and mirrors the page's hostname (avoids the Chromium `localhost`/`127.0.0.1` mismatch that broke media element loading).
 - [x] `<RealCCTVPane>` in `frontend/app-canvas.jsx` plays `assets.annotated_video` via `<video autoplay loop muted playsInline>` with a "YOLOv8n · ByteTrack · zone polygons" badge and overlay HUD (fps/trk/src). When no overlay video exists, falls back to the raw `assets.video` and badges as "raw CCTV".
 - [x] New `cctv` toolbar toggle (next to `compare`). When ON in split mode, the left pane is the real CCTV and the right pane is the iso twin (active scenario + recommendation). When ON without split, the canvas shows real CCTV alone. Disabled state when no asset is available.
-- [x] On `?session=real_cafe`, both `realCctv` and `compareMode` auto-engage on first state load via a `useRef`-guarded effect (so the demo opens directly to the killer split: real CCTV ‖ iso twin).
+- [x] On any session whose `assets.annotated_video` exists (`real_cafe`, `ai_cafe_a` after gpt-5.5's Tier 1B ran on the synthetic CCTV), both `realCctv` and `compareMode` auto-engage on first state load via a `useRef`-guarded effect — so the demo opens directly to the killer split: annotated CCTV ‖ iso twin. Hardcoded "real CCTV" labels neutralised to "CCTV" / "annotated CCTV" since the same pane handles both real and AI-generated sources.
 - [x] Verified end-to-end via Playwright MCP: `paneWidth=435, paneHeight=610, paused=false, currentTime>0` on real_cafe split-pane, and `paneWidth=877, currentTime>0` on ai_cafe_a single-pane after manual toggle.
 
 Tier 1E MuBit Agent Card checks (sponsor-platform depth):

@@ -38,7 +38,7 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
           className={`cv-toggle ${realCctv ? "on" : ""} ${realCctvAvailable ? "" : "cv-toggle-disabled"}`}
           onClick={() => realCctvAvailable && setRealCctv(!realCctv)}
           title={realCctvAvailable
-            ? "Toggle real CCTV with YOLO/ByteTrack overlays"
+            ? "Toggle annotated CCTV with YOLO/ByteTrack overlays"
             : "No tracks.cached video for this session"}
           disabled={!realCctvAvailable}>
           <span className="cv-toggle-dot" />
@@ -61,10 +61,12 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
   );
 }
 
-// Real-CCTV pane — plays the offline YOLO+ByteTrack annotated video (or
-// raw CCTV when overlays aren't available). Same outer chrome as
+// Annotated-CCTV pane — plays the offline YOLO+ByteTrack annotated video
+// (or raw CCTV when overlays aren't available). Same outer chrome as
 // `CanvasPane` so it slots into the split-compare layout. Tier 1D: makes
 // the "perception is real" claim visible to anyone watching the demo.
+// Used for both `real_cafe` (real CCTV) and `ai_cafe_a` (AI-generated
+// CCTV processed through the same offline YOLO pipeline).
 function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -76,7 +78,7 @@ function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
   }, [src]);
   return (
     <div className="cv-pane cv-real-pane">
-      <div className="cv-axes"><span>x →</span><span>↓ y</span><span>real CCTV</span></div>
+      <div className="cv-axes"><span>x →</span><span>↓ y</span><span>CCTV</span></div>
       {src ? (
         <video
           ref={ref}
@@ -90,7 +92,7 @@ function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
         />
       ) : (
         <div className="cv-real-empty">
-          <div>no real CCTV asset</div>
+          <div>no annotated CCTV asset</div>
           <small>run <code>scripts/run_yolo_offline.py</code> to generate one</small>
         </div>
       )}
@@ -308,15 +310,15 @@ function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, se
   // scenario (right pane in split mode, the only pane otherwise). The
   // baseline pane stays untouched so the user can see "before vs proposed"
   // without the proposal contaminating the baseline frame.
-  // When the user has the real CCTV toggle on we replace whichever pane
-  // would have shown the *baseline* iso scene with the actual annotated
-  // video. In split mode that means: left = real CCTV, right = iso twin
+  // When the user has the cctv toggle on we replace whichever pane would
+  // have shown the *baseline* iso scene with the actual annotated video.
+  // In split mode that means: left = annotated CCTV, right = iso twin
   // (active scenario, with the agent's recommended shift). With split off
   // and realCctv on, we drop the iso entirely and show the video alone —
-  // useful when the pitch lens is "look, real perception" rather than
+  // useful when the pitch lens is "look, perception is real" rather than
   // "look, before vs after."
   const showRealLeft = !!(realCctv && realCctvUrl);
-  const realLabel = sessionLabel || "real CCTV";
+  const realLabel = sessionLabel || "CCTV";
   const realSub = realCctvHasOverlays
     ? "tracks.cached.json · zone polygons"
     : "raw CCTV (no overlays cached)";
