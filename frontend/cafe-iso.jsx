@@ -115,7 +115,7 @@ function Plant({ x, y }) {
   );
 }
 
-function Counter({ x, y, w, d, style = "default" }) {
+function Counter({ x, y, w, d, style = "default", showFixtures = true }) {
   const palette = {
     default: { top: "#5a4836", left: "#46382a", right: "#33291e" },
     brooklyn: { top: "#3a2c1e", left: "#28201a", right: "#1a1410" },
@@ -124,16 +124,149 @@ function Counter({ x, y, w, d, style = "default" }) {
   return (
     <g>
       <IsoBox x={x} y={y} w={w} d={d} h={18} {...palette} />
-      <IsoBox x={x + 0.3} y={y + 0.2} w={0.6} d={0.6} h={26}
-        top="#c8c4bb" left="#a09c93" right="#7a766d" />
-      <IsoBox x={x + w - 0.9} y={y + 0.2} w={0.5} d={0.5} h={22}
-        top="#3a3328" left="#2a251c" right="#1c1812" />
+      {showFixtures && (
+        <>
+          <IsoBox x={x + 0.3} y={y + 0.2} w={0.6} d={0.6} h={26}
+            top="#c8c4bb" left="#a09c93" right="#7a766d" />
+          <IsoBox x={x + w - 0.9} y={y + 0.2} w={0.5} d={0.5} h={22}
+            top="#3a3328" left="#2a251c" right="#1c1812" />
+        </>
+      )}
     </g>
   );
 }
 
+// Cosy lounge couch — long upholstered bench against the back wall, modelled
+// after the brown leather couch behind the couple's table in the AI-cafe
+// video. Built as a low base IsoBox plus three "cushion" IsoBoxes on top so
+// it reads as a piece of seating, not a generic counter.
+function Couch({ x, y, w = 2.6, d = 0.85 }) {
+  const base = { top: "#7a4d36", left: "#5e3a26", right: "#46291a" };
+  const cushion = { top: "#a36d50", left: "#8a563b", right: "#6e3f29" };
+  const seatW = (w - 0.2) / 3;
+  return (
+    <g>
+      <IsoBox x={x} y={y} w={w} d={d} h={6} {...base} />
+      {[0, 1, 2].map((i) => (
+        <IsoBox key={i} x={x + 0.1 + i * seatW} y={y + 0.05} w={seatW - 0.1} d={d - 0.1} h={11}
+          {...cushion} />
+      ))}
+    </g>
+  );
+}
+
+// Tall bookshelf against the back wall (the wood-and-books column behind
+// the couch in the video). Renders as a slim deep IsoBox with a set of
+// horizontal shelf strokes drawn on the front face.
+function Bookshelf({ x, y, w = 1.4, d = 0.7 }) {
+  const c00 = ISO.toScreen(x - 0.5, y - 0.5);
+  const top = "#5a4030";
+  const left = "#3e2c20";
+  const right = "#2a1d14";
+  const shelfH = 30;
+  const lines = [];
+  for (let i = 1; i <= 4; i++) {
+    const y0 = c00.sy - shelfH * (i / 5);
+    lines.push(
+      <line key={i} x1={c00.sx} y1={y0} x2={c00.sx + (w * ISO.tileW) / 2} y2={y0 + (w * ISO.tileH) / 2}
+        stroke="#8a6448" strokeWidth="0.6" opacity="0.7" />
+    );
+  }
+  return (
+    <g>
+      <IsoBox x={x} y={y} w={w} d={d} h={shelfH} top={top} left={left} right={right} />
+      {lines}
+    </g>
+  );
+}
+
+// Floor mat / area rug — drawn as a flat darker quadrilateral on top of
+// the tile grid. Two of these run down the central walkway in the AI-cafe
+// video; mirroring them in the iso scene grounds the layout visually.
+function FloorMat({ x, y, w = 2, d = 1.5, color = "#5a3a28" }) {
+  const c00 = ISO.toScreen(x - 0.5, y - 0.5);
+  const c10 = ISO.toScreen(x + w - 0.5, y - 0.5);
+  const c11 = ISO.toScreen(x + w - 0.5, y + d - 0.5);
+  const c01 = ISO.toScreen(x - 0.5, y + d - 0.5);
+  return (
+    <polygon points={`${c00.sx},${c00.sy} ${c10.sx},${c10.sy} ${c11.sx},${c11.sy} ${c01.sx},${c01.sy}`}
+      fill={color} stroke={shade(color, -0.25)} strokeWidth="0.4" opacity="0.85" />
+  );
+}
+
 // ── Procedural layout ─────────────────────────────────────────────────────
+// `EXPLICIT_BASELINE_LAYOUT` mirrors the AI-cafe video frame at
+// `demo_data/sessions/ai_cafe_a/frame.jpg`: an L-shaped counter (espresso
+// bar across the top, register column down the left), a brown leather
+// couch + bookshelf in the back-middle alcove, five 2-top tables (one
+// near the couch, three along the right window wall, one in the central
+// floor), two area rugs in the central walkway, and a couple of plants.
+// The chair offsets give two seats per table to match the 2-top wood
+// chairs visible in the video. We use this when scenarioName === "baseline"
+// instead of the procedural grid so the demo's iso twin reads as the same
+// physical cafe as the looping CCTV pane to its left.
+const EXPLICIT_BASELINE_LAYOUT = {
+  floorW: 13,
+  floorH: 9,
+  counterW: 5,
+  // Multi-segment counter forms the L. The "primary" segment is the top
+  // one, where the espresso machine + grinder live and where the queue
+  // ends. The left segment is the register/POS extension running down
+  // toward the floor.
+  counterSegments: [
+    { x: 1, y: -1, w: 5, d: 1, showFixtures: true },
+    { x: 0, y: 0, w: 1, d: 4, showFixtures: false },
+  ],
+  // Five 2-top tables, ordered roughly back-to-front so the recommendation
+  // hash points at varied targets. Index 0 is the "couple table" by the
+  // couch (the natural target for `service_lane_marker_1`-style moves).
+  tablePositions: [
+    { x: 5.5, y: 2.4 },
+    { x: 9.0, y: 2.6 },
+    { x: 11.4, y: 2.4 },
+    { x: 7.5, y: 5.5 },
+    { x: 11.2, y: 5.4 },
+    { x: 11.0, y: 7.4 },
+  ],
+  // 2 chairs per table (wood chairs in the video are arranged across from
+  // each other, not around the table — keeps the scene readable).
+  chairOffsets: [{ dx: -0.6, dy: 0 }, { dx: 0.6, dy: 0 }],
+  // Background extras: couch + bookshelf along back wall, a few plants
+  // dotted around, two floor mats in the central walkway. Order doesn't
+  // matter — the renderer sorts by sortY.
+  extras: [
+    { type: "couch", x: 6.7, y: 0.4, w: 2.4, d: 0.8 },
+    { type: "bookshelf", x: 5.2, y: 0.0, w: 1.2, d: 0.7 },
+    { type: "plant", x: 4.4, y: 0.3 },
+    { type: "plant", x: 9.5, y: 0.3 },
+    { type: "plant", x: 12.2, y: 0.4 },
+    { type: "plant", x: -0.5, y: 5.0 },
+    { type: "mat", x: 5.0, y: 4.0, w: 2.4, d: 1.4, color: "#6a4530" },
+    { type: "mat", x: 5.0, y: 6.6, w: 2.4, d: 1.4, color: "#6a4530" },
+  ],
+};
+
+
 function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3, name = "" }) {
+  const shirtColors = ["#a86b4a", "#4a6a96", "#9a4a6a", "#c8a050", "#5a7a4a", "#a04050",
+                       "#3d6f8a", "#8a4d3d", "#6e9050", "#a0805a", "#7a4a6a", "#506a96"];
+
+  // The "baseline" scenario (and the agent's "recommended" derivative —
+  // which is literally baseline + one table shifted) use an explicit
+  // hand-tuned layout that matches the cafe in the looping CCTV pane next
+  // to it (see frame.jpg in demo_data/sessions/ai_cafe_a/). All other
+  // scenarios use the procedural grid below — they're "what-if" twins,
+  // not 1:1 reproductions of any specific cafe, so the grid stays the
+  // right tool for them.
+  if (name === "baseline" || name === "recommended") {
+    return {
+      ...EXPLICIT_BASELINE_LAYOUT,
+      baristas,
+      style,
+      shirtColors,
+    };
+  }
+
   const tables = Math.max(1, Math.ceil(seats / chairsPerTable));
   const cols = Math.max(2, Math.ceil(Math.sqrt(tables * 1.6)));
   const rows = Math.ceil(tables / cols);
@@ -153,9 +286,6 @@ function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3
     { dx: -0.6, dy: 0 }, { dx: 0.6, dy: 0 }, { dx: 0, dy: -0.6 }, { dx: 0, dy: 0.6 },
   ].slice(0, chairsPerTable);
 
-  const shirtColors = ["#a86b4a", "#4a6a96", "#9a4a6a", "#c8a050", "#5a7a4a", "#a04050",
-                       "#3d6f8a", "#8a4d3d", "#6e9050", "#a0805a", "#7a4a6a", "#506a96"];
-
   return {
     floorW: Math.ceil(floorW),
     floorH: Math.ceil(floorH),
@@ -165,6 +295,8 @@ function generateLayout({ seats, baristas, style = "default", chairsPerTable = 3
     tablePositions,
     chairOffsets,
     shirtColors,
+    extras: [],
+    counterSegments: null,
   };
 }
 
@@ -609,14 +741,50 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
     }
   }
 
-  const objects = [];
-  // counter
-  objects.push({ key: "counter", sortY: -2,
-    el: <Counter x={1} y={-1} w={layout.counterW} d={1} style={layout.style} /> });
+  // Floor mats render *under* every other entity but *over* the floor tile
+  // grid, so they're added separately from the sortY-stacked `objects`
+  // list. Only baseline carries mats today (extras list).
+  const matEls = (layout.extras || [])
+    .filter((e) => e.type === "mat")
+    .map((e, i) => (<FloorMat key={`mat${i}`} x={e.x} y={e.y} w={e.w} d={e.d} color={e.color} />));
 
-  // plants
-  objects.push({ key: "p1", sortY: layout.floorH, el: <Plant x={-1} y={layout.floorH - 1} /> });
-  objects.push({ key: "p2", sortY: layout.floorH, el: <Plant x={layout.floorW - 1} y={layout.floorH - 1} /> });
+  const objects = [];
+
+  // Counter — multi-segment when the layout supplies `counterSegments`
+  // (baseline = L-shape espresso bar + register column), otherwise the
+  // single-segment top-edge counter the procedural layout produces.
+  if (layout.counterSegments && layout.counterSegments.length) {
+    layout.counterSegments.forEach((seg, i) => {
+      objects.push({ key: `counter${i}`, sortY: seg.x + seg.y - 2,
+        el: <Counter x={seg.x} y={seg.y} w={seg.w} d={seg.d}
+              style={layout.style} showFixtures={seg.showFixtures !== false} /> });
+    });
+  } else {
+    objects.push({ key: "counter", sortY: -2,
+      el: <Counter x={1} y={-1} w={layout.counterW} d={1} style={layout.style} /> });
+  }
+
+  // Background extras (couch, bookshelf, plants) — opt-in via the layout's
+  // `extras` array. Procedural scenarios fall back to the legacy
+  // bottom-corner plants so the empty back wall doesn't read as bare.
+  const extras = layout.extras || [];
+  if (extras.length) {
+    extras.forEach((e, i) => {
+      if (e.type === "couch") {
+        objects.push({ key: `couch${i}`, sortY: e.x + e.y,
+          el: <Couch x={e.x} y={e.y} w={e.w} d={e.d} /> });
+      } else if (e.type === "bookshelf") {
+        objects.push({ key: `bs${i}`, sortY: e.x + e.y - 0.1,
+          el: <Bookshelf x={e.x} y={e.y} w={e.w} d={e.d} /> });
+      } else if (e.type === "plant") {
+        objects.push({ key: `p${i}`, sortY: e.x + e.y, el: <Plant x={e.x} y={e.y} /> });
+      }
+      // mats are handled above (they render under everything else)
+    });
+  } else {
+    objects.push({ key: "p1", sortY: layout.floorH, el: <Plant x={-1} y={layout.floorH - 1} /> });
+    objects.push({ key: "p2", sortY: layout.floorH, el: <Plant x={layout.floorW - 1} y={layout.floorH - 1} /> });
+  }
 
   // tables + chairs — when a recommendation is being applied, the target
   // table (and the chairs orbiting it) translate together by recTween *
@@ -669,6 +837,7 @@ function CafeLayout({ layout, sim, recInfo, recTween = 0 }) {
   return (
     <g>
       {floor}
+      {matEls}
       {objects.map(o => <g key={o.key}>{o.el}</g>)}
     </g>
   );

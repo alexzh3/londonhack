@@ -67,25 +67,24 @@ from `.env` if not set in the calling shell.
 MVP scripts generate or validate fixture artifacts. Tier 1 adds YOLO / ByteTrack
 and KPI-engine scripts behind the same `demo_data/` contracts.
 
-- `build_fixtures.py` — one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding.
 - `run_yolo_offline.py` — Tier 1B: run YOLOv8n + ByteTrack offline and produce `tracks.cached.json` plus `annotated_before.mp4` per session.
 - `detect_layout_objects.py` — Tier 1B static layout pass: run high-accuracy YOLOv8x over the representative frame plus sampled video frames, aggregate duplicate furniture detections, and produce `object_detections.cached.json` per session.
-- `benchmark_static_detectors.py` — compare YOLOv8x, RT-DETR-x, and YOLO11x on the exact same sampled frames; outputs ignored `object_detector_benchmark/` reports for visual/model selection.
-- `review_layout_objects_moondream.py` — optional Moondream cloud VLM pass (`MOONDREAM_API_KEY` required) for open-vocabulary static object detections.
-- `benchmark_moondream_local.py` — preflight/benchmark local Moondream Photon/Kestrel (`review_layout_objects_moondream.py --local`) and record whether the edge GPU has enough VRAM to run it.
-- `benchmark_moondream_05b_mf.py` — exact legacy Moondream 0.5B `.mf.gz` ONNX path from `vikhyatk/moondream2`'s `onnx` branch. Defaults to the user-supplied `moondream-0_5b-int8.mf.gz`; use `--artifact 0.5b-int4-sibling` for the sibling int4 archive.
-- `review_layout_objects_agent.py` — Pydantic AI review/merge pass: consumes detector cache plus optional Moondream cache, emits `object_review.cached.json`, and writes a stricter `object_detections.reviewed.cached.json`.
+- `review_layout_objects_agent.py` — Pydantic AI review/merge pass: consumes detector cache, emits `object_review.cached.json`, and writes a stricter `object_detections.reviewed.cached.json`.
 - `transcode_annotated_for_web.sh` — Tier 1D: transcode `annotated_before.mp4` (cv2 default `mp4v` codec, browser-incompatible) to `annotated_before.web.mp4` (H.264) so the frontend's real CCTV pane can play it.
+
+Local heavy artifacts stay out of the repo root:
+
+- `models/ultralytics/` — active YOLO `.pt` weights used by the tracking and static-detection scripts.
+- `images/` — generated screenshots and annotated still-image outputs. Overlay videos remain next to their session caches under `demo_data/sessions/<session>/`.
+
+Ad-hoc benchmark scripts, the optional Moondream generator, and benchmark-only
+model weights were removed after capturing the results. See
+`docs/vision_benchmarks.md` for the archived YOLO / RT-DETR / YOLO11x and
+Moondream benchmark numbers.
 
 ```bash
 uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
 uv run scripts/detect_layout_objects.py --session ai_cafe_a
-uv run scripts/benchmark_static_detectors.py --session ai_cafe_a --no-annotated
-MOONDREAM_API_KEY=... uv run scripts/review_layout_objects_moondream.py --session ai_cafe_a
-uv run scripts/benchmark_moondream_local.py --session ai_cafe_a
-uv run scripts/benchmark_moondream_05b_mf.py --session ai_cafe_a --preflight-only
-uv run scripts/benchmark_moondream_05b_mf.py --session ai_cafe_a --no-annotated
-uv run scripts/review_layout_objects_moondream.py --session ai_cafe_a --local --model moondream2 --device cuda
 uv run scripts/review_layout_objects_agent.py --session ai_cafe_a
 uv run scripts/detect_layout_objects.py --session real_cafe
 ./scripts/transcode_annotated_for_web.sh

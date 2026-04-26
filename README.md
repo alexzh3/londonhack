@@ -41,26 +41,22 @@ uv run scripts/detect_layout_objects.py --session ai_cafe_a
 uv run scripts/detect_layout_objects.py --session real_cafe
 uv run scripts/review_layout_objects_agent.py --session ai_cafe_a
 uv run scripts/review_layout_objects_agent.py --session real_cafe
-uv run scripts/benchmark_moondream_local.py --session ai_cafe_a
-uv run scripts/benchmark_moondream_05b_mf.py --session ai_cafe_a --preflight-only
 ```
 
 The tracking script writes `tracks.cached.json` and `annotated_before.mp4`;
 the static layout script writes high-accuracy YOLOv8x
 `object_detections.cached.json` artifacts under each session, and the review
 script writes `object_review.cached.json` plus the stricter
-`object_detections.reviewed.cached.json`. The optional Moondream pass runs via
-`scripts/review_layout_objects_moondream.py` when `MOONDREAM_API_KEY` is set;
-the same script supports local Photon/Kestrel mode via `--local`, and
-`benchmark_moondream_local.py` records whether the current edge GPU can run it.
-`benchmark_moondream_05b_mf.py` is the separate legacy Moondream 0.5B ONNX path:
-it downloads/unpacks the `.mf.gz` artifacts from the `vikhyatk/moondream2`
-`onnx` branch, including the exact user-supplied `moondream-0_5b-int8.mf.gz`
-and the sibling `int4` artifact. On the local MX330 laptop the Photon/Kestrel
-benchmark skips safely because only ~2GB VRAM is free; the legacy 0.5B int8
-ONNX path runs on CPU but has weak/noisy cafe furniture boxes, so YOLOv8x plus
-ObjectReviewAgent remains the demo cache. The fake `ai_cafe_a` video currently
-gives the cleanest detection overlay.
+`object_detections.reviewed.cached.json`. The archived detector and Moondream
+benchmark results live in `docs/vision_benchmarks.md`; the optional Moondream
+generator and other benchmark/prototype-only scripts were pruned because
+YOLOv8x plus ObjectReviewAgent remains the demo cache. The fake `ai_cafe_a`
+video currently gives the cleanest detection overlay.
+
+Local/generated vision artifacts are grouped by type and ignored by git:
+active Ultralytics weights live under `models/ultralytics/`, generated
+screenshots/annotated still images under `images/`, and benchmark-only scripts
+or prototype model weights have been removed after archiving their results.
 
 For the Tier 1D real-CCTV pane in the frontend, transcode the annotated
 videos to H.264 (Chromium HTML5 `<video>` rejects the `cv2.VideoWriter`

@@ -182,7 +182,12 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 - **Anthropic Claude** — drives `PatternAgent` and `OptimizationAgent` in MVP, sequenced on every `/api/run` call (`SceneBuilderAgent` in Tier 2). Both MVP agents fall back to their cached JSON fixtures on live failure so the demo never breaks.
 - **MuBit** — durable raw event store for recommendations + feedback; recall builds a derived, decision-aware memory view so the agent sees accepted/rejected prior proposals. Degrades silently to jsonl when `MUBIT_API_KEY` unset.
 - **Logfire** — auto-instruments Pydantic AI; manual spans for evidence pack build, KPI compute (Tier 1), validation, memory write, MuBit recall.
-- **Render** — backend hosting via `render.yaml`; the Tier 1 blueprint pins `branch: tier_1` and provisions service `cafetwin-backend-tier1`.
+- **Render** — backend hosting via `render.yaml`; the Tier 1 blueprint pins `branch: tier_1` and provisions service `cafetwin-backend-tier1`. Build uses `uv sync --frozen --no-dev --no-install-project` so dependency install does not trip setuptools flat-layout package discovery on `frontend/`, `demo_data/`, or `cafe_videos/`.
+
+### Judge-facing overview asset
+
+- `docs/cafetwin-tier1-overview.html` is the editable 16:9 source for a judge-facing Tier 1 product overview. It renders the `real_cafe` frame with annotated-perception callouts, the typed PatternAgent -> OptimizationAgent pipeline, and the demo UI recommendation/memory/trace story.
+- `docs/cafetwin-tier1-overview.png` is the generated 1600 x 900 deck/README-ready artifact.
 
 ## Sequence — `/api/run` and `/api/feedback`
 
@@ -474,11 +479,13 @@ models/                         # gitignored local model cache
   ultralytics/                  # active YOLO .pt weights used by vision scripts
 images/                         # gitignored generated screenshots / annotated still images
 scripts/
-  build_fixtures.py             # one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding
+  setup.sh / dev.sh             # local bootstrap and backend+frontend dev loop
+  test.sh / smoke.sh            # pytest+ruff and running-backend shape smoke test
+  deploy_render.sh / deploy_vercel.sh  # hosted backend/frontend deployment helpers
   run_yolo_offline.py           # Tier 1B: produce tracks.cached.json + annotated_before.mp4
   detect_layout_objects.py      # Tier 1B: produce object_detections.cached.json static layout cache
-  review_layout_objects_moondream.py  # Tier 1B: optional Moondream open-vocab detector
   review_layout_objects_agent.py      # Tier 1B: Pydantic AI reviewer -> reviewed object cache
+  transcode_annotated_for_web.sh      # Tier 1D: H.264 transcode for browser video
 ```
 
 Current status (2026-04-26): `pyproject.toml`, `app/`, `app/api/`,
@@ -501,12 +508,12 @@ RT-DETR-x, YOLO11x, local Moondream Photon/Kestrel, and the legacy Moondream
 0.5B `.mf` ONNX artifacts. RT-DETR-x is higher-recall but visibly noisier, so
 the base cache stays YOLOv8x while the Pydantic AI `ObjectReviewAgent` writes
 stricter `object_detections.reviewed.cached.json` caches from detector
-candidates plus optional Moondream evidence. `review_layout_objects_moondream.py`
-supports both cloud API mode and local Photon/Kestrel mode
-(`--local --model moondream2`). Heavy local artifacts are organized under
-ignored folders: `models/ultralytics/` for active YOLO `.pt` weights and
-`images/` for generated screenshots plus annotated still images; benchmark-only
-scripts and weights were removed after archiving the results.
+candidates. The optional Moondream generator was pruned after its benchmark
+results were archived because it is not part of the stable demo path. Heavy
+local artifacts are organized under ignored folders: `models/ultralytics/` for
+active YOLO `.pt` weights and `images/` for generated screenshots plus
+annotated still images; benchmark/prototype-only scripts and weights were
+removed after archiving the results.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -1295,7 +1302,7 @@ Tier 1A real-video checks:
 - [x] `uv run scripts/detect_layout_objects.py --session real_cafe` writes `object_detections.cached.json` with 12 aggregated detections (`chair=11`, `dining table=1`) from 84 raw detections across 9 frames; real CCTV static furniture recall remains harder/noisier than the fake session.
 - [x] `load_object_detections_cache(...)` validates both static object caches and asserts geometry/source-frame/zone integrity.
 - [x] Archived detector benchmarks compare YOLOv8x (31 objects on `ai_cafe_a`, 12 on `real_cafe`), RT-DETR-x (48 / 28, higher recall/noisier), and YOLO11x (37 / 12, larger false table/counter boxes). Results live in `docs/vision_benchmarks.md`; the benchmark script and benchmark-only weights were removed after capture.
-- [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. Moondream integration is implemented but not run locally because `MOONDREAM_API_KEY` is not in the process environment.
+- [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. The optional Moondream generator script was pruned after benchmark archival because it is not part of the stable demo path.
 - [x] Archived local Moondream Photon/Kestrel preflight records `status=skipped_insufficient_vram` on the local MX330 (`2048 MB total`, `1993 MB free`), below the 2600 MB threshold. Results live in `docs/vision_benchmarks.md`.
 - [x] Archived exact legacy 0.5B `.mf.gz` ONNX results from `vikhyatk/moondream2/tree/onnx`: supplied int8 archive is 621,619,051 bytes and runs on CPU but produces weak/noisy boxes (`ai_cafe_a`: 1 kept / 3 raw regions, `real_cafe`: 1 kept / 13 raw regions); sibling int4 archive is present but fails ONNX Runtime CPU with a `MatMulNBits` quantized-weight shape error. Benchmark script and local `.mf`/ONNX files were removed after archiving.
 - [x] Local model/image artifacts are no longer dumped in the repo root. Active weights (`yolov8n.pt`, `yolov8x.pt`) live under `models/ultralytics/`; unused or benchmark-only weights (`yolo11n.pt`, `yolo12n.pt`, `yolov8m.pt`, `rtdetr-x.pt`, `yolo11x.pt`) were removed after user confirmation / benchmark archival. Generated screenshots and annotated still images live under `images/`.

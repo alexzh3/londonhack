@@ -21,6 +21,8 @@ from typing import Any
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+ULTRALYTICS_MODEL_DIR = ROOT_DIR / "models" / "ultralytics"
+IMAGE_OUTPUT_DIR = ROOT_DIR / "images" / "static_layout_objects"
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
@@ -91,7 +93,7 @@ def main() -> int:
     session_dir = ROOT_DIR / "demo_data" / "sessions" / args.session
     output_path = Path(args.output) if args.output else session_dir / "object_detections.cached.json"
     annotated_path = None if args.no_annotated else (
-        Path(args.annotated) if args.annotated else session_dir / "object_detections.annotated.jpg"
+        Path(args.annotated) if args.annotated else IMAGE_OUTPUT_DIR / f"{args.session}.jpg"
     )
     zones = load_zones(session_dir / "zones.json")
     target_classes = _parse_classes(args.classes, include_person=args.include_person)
@@ -102,7 +104,7 @@ def main() -> int:
         raise SystemExit("No frames loaded for object detection")
 
     session_frame = frames[0]
-    model = YOLO(args.model)
+    model = YOLO(_resolve_model_path(args.model))
     raw_detections: list[RawDetection] = []
     frame_detection_counts: dict[str, int] = {}
 
@@ -447,6 +449,17 @@ def _display_path(path: Path) -> str:
         return str(path.relative_to(ROOT_DIR))
     except ValueError:
         return str(path)
+
+
+def _resolve_model_path(model: str) -> str:
+    path = Path(model)
+    if path.is_absolute():
+        return str(path)
+    if len(path.parts) > 1:
+        rooted = ROOT_DIR / path
+        return str(rooted if rooted.exists() else path)
+    local_model = ULTRALYTICS_MODEL_DIR / model
+    return str(local_model if local_model.exists() else model)
 
 
 def _class_sort_key(class_name: LayoutObjectClass) -> int:

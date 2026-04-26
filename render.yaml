@@ -24,10 +24,12 @@ services:
     plan: free
     region: oregon
 
-    # Render auto-detects pyproject.toml and runs `pip install .`. The build
-    # command below is explicit so future readers don't have to guess.
-    buildCommand: pip install --upgrade pip && pip install .
-    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    # Install dependencies from uv.lock without installing the repo itself as a
+    # package. The app runs from the checkout root, which avoids setuptools'
+    # flat-layout auto-discovery seeing frontend/demo_data/cafe_videos as
+    # accidental packages during `pip install .`.
+    buildCommand: uv sync --frozen --no-dev --no-install-project
+    startCommand: uv run --no-sync uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
 
     healthCheckPath: /api/sessions
 

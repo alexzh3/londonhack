@@ -29,7 +29,11 @@ build/
 demo_data/mubit_fallback.jsonl
 
 # Downloaded model weights for local/offline vision scripts
+models/
 *.pt
+
+# Generated visual artifacts and screenshots
+images/
 
 # Vision pipeline overlay videos (pitch artifacts; multi-MB; not runtime data).
 # Source CCTV under cafe_videos/ stays tracked. The H.264 web-safe transcode
