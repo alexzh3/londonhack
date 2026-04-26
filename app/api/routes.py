@@ -8,7 +8,8 @@ from fastapi import APIRouter, Body, HTTPException
 
 from app import config
 from app.agents.optimization_agent import run_optimization
-from app.evidence_pack import FixtureLoadError, build, state
+from app.agents.pattern_agent import run_pattern_detection
+from app.evidence_pack import FixtureLoadError, build, build_pattern_evidence_bundle, state
 from app.fallback import validate_layout_change
 from app.logfire_setup import get_last_trace_url, set_last_trace_url, span, trace_url_from_span
 from app.memory import list_memories, new_memory_record, recall_prior_memory, write_memory
@@ -56,9 +57,23 @@ async def run(
                 state_response = state(active_session_id)
                 if state_response.missing_required:
                     raise FixtureLoadError(active_session_id, state_response.missing_required)
-                prior_memories = await recall_prior_memory(active_session_id, state_response.pattern.id)
-                pack = build(active_session_id, prior_recommendation_memories=prior_memories)
+                pattern_bundle = build_pattern_evidence_bundle(state_response)
             stages.append(_stage("evidence_pack", start))
+
+            start = _now()
+            with span("pattern_agent.run", session_id=active_session_id):
+                pattern, pattern_used_fallback = await run_pattern_detection(
+                    pattern_bundle, active_session_id
+                )
+            prior_memories = await recall_prior_memory(active_session_id, pattern.id)
+            pack = build(
+                active_session_id,
+                prior_recommendation_memories=prior_memories,
+                pattern=pattern,
+            )
+            stages.append(
+                _stage("pattern_agent", start, "fallback" if pattern_used_fallback else "done")
+            )
 
             start = _now()
             with span("optimization_agent.run", session_id=active_session_id):

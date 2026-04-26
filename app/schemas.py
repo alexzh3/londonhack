@@ -160,6 +160,18 @@ class OperationalPattern(StrictModel):
 # ---------- Agent input bundle ----------
 
 
+class PatternEvidenceBundle(StrictModel):
+    """PatternAgent input. Subset of the perception fixtures the agent needs to
+    reason about which operational friction is dominant. Excludes the prior
+    recommendation memories (those scope OptimizationAgent, not pattern detection)
+    so PatternAgent stays focused on perception → pattern mapping."""
+
+    session_id: str  # slug, e.g. "ai_cafe_a"
+    zones: list[Zone] = Field(min_length=1)
+    object_inventory: ObjectInventory
+    kpi_windows: list[KPIReport] = Field(min_length=1)
+
+
 class CafeEvidencePack(StrictModel):
     """Single typed boundary between perception fixtures and agents."""
 
@@ -265,7 +277,7 @@ class SessionManifest(StrictModel):
     representative_frame_idx: int | None = None
 
 
-StageName = Literal["evidence_pack", "optimization_agent", "memory_write"]
+StageName = Literal["evidence_pack", "pattern_agent", "optimization_agent", "memory_write"]
 
 
 class StageTiming(StrictModel):

@@ -13,6 +13,7 @@ from app.schemas import (
     KPIReport,
     ObjectInventory,
     OperationalPattern,
+    PatternEvidenceBundle,
     PriorRecommendationMemory,
     StateResponse,
     Zone,
@@ -77,8 +78,14 @@ def state(session_id: str = config.DEFAULT_SESSION_ID) -> StateResponse:
 def build(
     session_id: str = config.DEFAULT_SESSION_ID,
     prior_recommendation_memories: list[PriorRecommendationMemory] | None = None,
+    pattern: OperationalPattern | None = None,
 ) -> CafeEvidencePack:
-    """Load and validate the session fixture bundle for the OptimizationAgent."""
+    """Load and validate the session fixture bundle for the OptimizationAgent.
+
+    When ``pattern`` is provided (e.g. from a live PatternAgent run), it is
+    used directly; otherwise ``pattern_fixture.json`` is loaded as the
+    canonical fallback. This keeps backward compatibility for any caller
+    that still treats build() as the pattern source of truth."""
     missing = missing_required(session_id)
     if missing:
         raise FixtureLoadError(session_id, missing)
@@ -86,7 +93,8 @@ def build(
     run_id = uuid4()
     inventory = _load_fixture(session_id, "object_inventory.json", TypeAdapter(ObjectInventory))
     kpi_windows = _load_fixture(session_id, "kpi_windows.json", TypeAdapter(list[KPIReport]))
-    pattern = _load_fixture(session_id, "pattern_fixture.json", TypeAdapter(OperationalPattern))
+    if pattern is None:
+        pattern = _load_fixture(session_id, "pattern_fixture.json", TypeAdapter(OperationalPattern))
     zones = _load_fixture(session_id, "zones.json", TypeAdapter(list[Zone]))
 
     # Stamp the slug + run_id consistently across nested models. The input
@@ -111,6 +119,27 @@ def build(
             "Cite only evidence IDs present in the operational pattern.",
         ],
         prior_recommendation_memories=prior_recommendation_memories or [],
+    )
+
+
+def build_pattern_evidence_bundle(state_response: StateResponse) -> PatternEvidenceBundle:
+    """Construct the PatternAgent input from a populated StateResponse.
+
+    State is the source of truth for the perception fixtures; this just
+    repackages the subset PatternAgent needs without duplicating the slug
+    normalization logic from build()."""
+    if state_response.object_inventory is None:
+        raise FixtureLoadError(state_response.session_id, ["object_inventory.json"])
+    return PatternEvidenceBundle(
+        session_id=state_response.session_id,
+        zones=state_response.zones,
+        object_inventory=state_response.object_inventory.model_copy(
+            update={"session_id": state_response.session_id}
+        ),
+        kpi_windows=[
+            window.model_copy(update={"session_id": state_response.session_id})
+            for window in state_response.kpi_windows
+        ],
     )
 
 

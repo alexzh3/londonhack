@@ -48,9 +48,12 @@ def test_run_endpoint_returns_valid_fallback_response(monkeypatch, tmp_path):
 
     assert [stage.name for stage in response.stages] == [
         "evidence_pack",
+        "pattern_agent",
         "optimization_agent",
         "memory_write",
     ]
+    pattern_stage = next(s for s in response.stages if s.name == "pattern_agent")
+    assert pattern_stage.status == "fallback"
     assert response.layout_change.fingerprint == "ai_cafe_a_open_pickup_lane_v1"
     assert response.used_fallback is True
     assert response.memory_record.fallback_only is True
@@ -67,9 +70,12 @@ def test_run_endpoint_returns_real_cafe_fallback_response(monkeypatch, tmp_path)
 
     assert [stage.name for stage in response.stages] == [
         "evidence_pack",
+        "pattern_agent",
         "optimization_agent",
         "memory_write",
     ]
+    pattern_stage = next(s for s in response.stages if s.name == "pattern_agent")
+    assert pattern_stage.status == "fallback"
     assert response.layout_change.fingerprint == "real_cafe_open_right_service_lane_v1"
     assert response.used_fallback is True
     assert response.memory_record.payload["session_id"] == "real_cafe"

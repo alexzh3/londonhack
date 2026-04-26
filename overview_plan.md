@@ -9,9 +9,9 @@ CafeTwin turns overhead cafe video into spatial operations intelligence: it surf
 ## Build Philosophy (locked)
 
 ```
-MVP    = real intelligence (one typed Pydantic AI agent + traced reasoning + memory),
+MVP    = real intelligence (two typed Pydantic AI agents in sequence + traced reasoning + memory),
          mocked spectacle (existing Babel-in-browser JSX demo, fixture-backed perception)
-Tier 1 = realer perception (live KPI engine + offline YOLO + PatternAgent or typed pattern builder)
+Tier 1 = realer perception (live KPI engine + offline YOLO/ByteTrack tracks; PatternAgent already shipped in MVP)
 Tier 2 = richer spectacle (R3F twin, scene-builder agent, chat, scenario rail, hero asset)
 ```
 
@@ -33,7 +33,8 @@ The rule: **what is mock stays mock; what is real (or could be real with a small
 
 | Surface | Status | Source |
 |---|---|---|
-| `OptimizationAgent` → `LayoutChange` | **REAL** | Pydantic AI + Claude, typed `output_type=LayoutChange`, semantic `output_validator` retry, per-session cached fallback |
+| `PatternAgent` → `OperationalPattern` | **REAL** | Pydantic AI + Claude, typed `output_type=OperationalPattern`, `PatternEvidenceBundle` deps, semantic `output_validator` retry, `pattern.id` normalized to canonical for stable recall, fixture fallback |
+| `OptimizationAgent` → `LayoutChange` | **REAL** | Pydantic AI + Claude, typed `output_type=LayoutChange`, consumes the live PatternAgent's pattern, semantic `output_validator` retry, per-session cached fallback |
 | Logfire trace + top-bar link | **REAL** | `RunResponse.logfire_trace_url` |
 | Memory writes + recall (MuBit + jsonl) | **REAL** | Raw recommendation/feedback events are stored durably; `/api/run` derives decision-aware prior memory for the optimizer |
 | Memories modal (new) | **REAL** | `GET /api/memories` |
@@ -48,7 +49,7 @@ The rule: **what is mock stays mock; what is real (or could be real with a small
 | Time scrubber, speed buttons, play/pause | **MOCK** | Animate the existing iso scene only |
 | Tweaks panel | **MOCK** | Existing settings; not bound |
 | Free-form chat input | **MOCK** (disabled in MVP) | Activated in Tier 2 with regex routing |
-| Session selector | **DEFERRED to Tier 1** | Only meaningful once `real_cafe` is authored |
+| Session selector | **Tier 1A URL param** | `cafetwin.html?session=real_cafe` selects the real-video session; default URL still uses `ai_cafe_a` |
 
 The decorative POS-style KPIs and the real operational KPIs are different metric kinds, which is fine for the pitch: *"POS tells you what sold (those decorative chips); CafeTwin shows why throughput stalled (these operational signals)."*
 
@@ -87,10 +88,10 @@ The decorative POS-style KPIs and the real operational KPIs are different metric
 | Layer | Role | What's real / mocked |
 |---|---|---|
 | **Perception** (`demo_data/`) | Provide a typed `CafeEvidencePack` to the agent | Mocked: hand-authored or precomputed fixtures |
-| **Intelligence** (`OptimizationAgent` + Memory) | Reason over the pack, recall prior decisions, emit a validated `LayoutChange`, write back to memory | **Real**: Pydantic AI + Anthropic + MuBit + Logfire |
+| **Intelligence** (`PatternAgent` → `OptimizationAgent` + Memory) | PatternAgent detects the dominant operational pattern from the bundle; OptimizationAgent reasons over the pattern + recalled prior decisions, emits a validated `LayoutChange`, writes back to memory | **Real**: Pydantic AI + Anthropic + MuBit + Logfire |
 | **Presentation** (existing `frontend/cafetwin.html` + JSX) | Render the typed outputs into the existing Babel-in-browser demo via additive bindings; iso twin remains the spectacle surface | Real bindings (KPI numbers, recommendation card, agent-flow timings, Logfire link, memories) over the unchanged JSX shell; decorative scenarios stay synthesized |
 
-**One-line read:** fixtures feed one real Pydantic AI agent (`OptimizationAgent`) that emits a typed `LayoutChange`; the existing JSX demo binds that output (plus stage timings, Logfire URL, and memory records) into its already-built panels. Memory (MuBit + jsonl) stores raw recommendation/feedback events and derives accepted/rejected prior lessons for the next run. Logfire wraps the pipeline. No SceneBuilderAgent, no `/api/apply`, no Vite port for MVP.
+**One-line read:** fixtures feed two real Pydantic AI agents in sequence — `PatternAgent` emits a typed `OperationalPattern`, then `OptimizationAgent` emits a typed `LayoutChange` informed by that pattern + decision-aware prior memory; the existing JSX demo binds that output (plus stage timings, Logfire URL, and memory records) into its already-built panels. Memory (MuBit + jsonl) stores raw recommendation/feedback events and derives accepted/rejected prior lessons for the next run. Logfire wraps the pipeline. No SceneBuilderAgent, no `/api/apply`, no Vite port for MVP.
 
 See `agent_plan.md §Visual Architecture` for module-level detail and the per-call sequence diagram.
 
@@ -123,11 +124,16 @@ GET  /api/memories?session_id=...          → merged MuBit + jsonl, scoped to s
 GET  /api/logfire_url                      → cached trace URL for top-bar
 ```
 
-`/api/run` calls: load fixtures for `session_id` → recall raw recommendation + feedback records from MuBit/jsonl scoped to `(session_id, pattern_id)` → derive decision-aware prior memory by joining feedback to recommendations by fingerprint → build `CafeEvidencePack` → `OptimizationAgent` → typed `LayoutChange` → memory write (payload wraps `LayoutChange` with `session_id` + `pattern_id`).
+`/api/run` calls: load fixtures for `session_id` → build `PatternEvidenceBundle` → `PatternAgent` → typed `OperationalPattern` (canonical id-normalized) → recall raw recommendation + feedback records from MuBit/jsonl scoped to `(session_id, pattern_id)` → derive decision-aware prior memory by joining feedback to recommendations by fingerprint → build `CafeEvidencePack` (with the live pattern + prior memory) → `OptimizationAgent` → typed `LayoutChange` → memory write (payload wraps `LayoutChange` with `session_id` + `pattern_id`).
 
-Stages (mirror `app/schemas.py::StageName`): `evidence_pack`, `optimization_agent`, `memory_write`.
+Stages (mirror `app/schemas.py::StageName`): `evidence_pack`, `pattern_agent`, `optimization_agent`, `memory_write`.
 
-**One live Pydantic AI agent** in MVP — `OptimizationAgent`. It uses typed structured output (`output_type=LayoutChange`) plus a semantic `@agent.output_validator` that raises `ModelRetry` once when evidence IDs, targets, or simulation fields do not match the evidence pack. If the live run still fails, the API falls back to the per-session cached recommendation under `demo_data/sessions/<slug>/recommendation.cached.json`. `SceneBuilderAgent` is deferred to Tier 2. A session selector is **deferred to Tier 1** (lands when `real_cafe` is authored); MVP defaults `session_id = "ai_cafe_a"` everywhere.
+**Two live Pydantic AI agents** in MVP, sequenced on every `/api/run`:
+
+1. **`PatternAgent`** (`PatternEvidenceBundle → OperationalPattern`) — detects the dominant operational pattern from KPI windows + scene inventory + zones. Uses typed structured output, `@agent.output_validator` raising `ModelRetry` when `evidence[*].memory_id` ⊄ `kpi_windows[*].memory_id` or `affected_zones` ⊄ `zones[*].id`. `pattern.id` is normalized post-run to the canonical session fixture ID so `PriorRecommendationMemory` recall stays scoped consistently. Falls back to `demo_data/sessions/<slug>/pattern_fixture.json` on live failure.
+2. **`OptimizationAgent`** (`CafeEvidencePack → LayoutChange`) — reasons over the live pattern + decision-aware prior memory + perception fixtures. Same Pydantic AI pattern: typed structured output, `output_validator` + `ModelRetry`, cached fallback under `recommendation.cached.json`.
+
+`SceneBuilderAgent` is deferred to Tier 2. MVP defaults to `session_id = "ai_cafe_a"`; Tier 1A can select the real session with `cafetwin.html?session=real_cafe`.
 
 ### UI binding map (existing components ← backend fields)
 
@@ -163,10 +169,10 @@ Then click the Logfire link in the top bar to show the real trace.
 Upgrade the upstream layer; UI mostly unchanged.
 
 - **Tier 1A landed:** `demo_data/sessions/real_cafe/` exists for `cafe_videos/real_cctv.mp4` with a representative 20s frame, manual zones/inventory, fixture KPI windows, `pattern_real_service_lane_choke`, and cached fallback `real_cafe_open_right_service_lane_v1`. This makes the backend real-video path work before the heavier perception stack.
-- Run YOLO + ByteTrack offline on `cafe_videos/real_cctv.mp4` to produce real `tracks.cached.json` + `annotated_before.mp4`. Use the output to replace the Tier 1A manual KPI/inventory fixtures with live-derived perception.
-- Add the session selector (TopBar dropdown or Tweaks panel control) — only meaningful once a second session exists.
+- **Tier 1B landed:** `scripts/run_yolo_offline.py` runs YOLOv8n + ByteTrack offline. The primary clean detection demo is now the fake CCTV session: `demo_data/sessions/ai_cafe_a/tracks.cached.json` + `annotated_before.mp4` contain 11 person tracks / 1275 detections over 180 processed frames (`vid_stride=2`). The real CCTV session also has a cache: 48 tracks / 1856 detections over 490 processed frames (`vid_stride=3`), but the fake camera is visually cleaner for pitch screenshots and downstream KPI work.
+- Add a richer session selector (TopBar dropdown or Tweaks panel control) if time allows. The fast path is already available via `?session=real_cafe`.
 - Run the deterministic KPI engine live on cached tracks + zones (replaces precomputed `kpi_windows.json`).
-- Add a second live agent — either `PatternAgent` (Pydantic AI) or a deterministic pattern builder — so the chain is `KPI engine → PatternAgent → OptimizationAgent`.
+- Replace fixture KPIs with the live engine output so `PatternAgent` (already shipped in MVP) reasons over real per-request numbers; the chain becomes `live YOLO/ByteTrack tracks → live KPI engine → PatternAgent → OptimizationAgent`.
 - Add 3 more memory writes: KPI summary, object inventory, pattern.
 - Logfire trace grows to 6–7 spans.
 
@@ -214,7 +220,7 @@ Upgrade the UI; backend gains a second agent.
 
 ## Sponsor-tool fit
 
-- **Pydantic AI:** one typed agent in MVP — `OptimizationAgent` emitting validated `LayoutChange`. Tier 2 adds `SceneBuilderAgent`.
+- **Pydantic AI:** two typed agents in MVP, sequenced on every `/api/run` — `PatternAgent` (typed `OperationalPattern`) feeds `OptimizationAgent` (typed `LayoutChange`). Both use `output_validator` + `ModelRetry` + cached fixture fallback. Tier 2 adds `SceneBuilderAgent`.
 - **Logfire:** one trace per `/api/run` covering evidence pack + recall, optimization agent, validation, and memory write. Plus a smaller `/api/feedback` trace.
 - **MuBit:** primary memory store. MVP uses writes for raw recommendation + feedback events, then recall derives a decision-aware view of prior recommendations on the same pattern so the optimizer can favor accepted ideas and avoid rejected repeats. The UI surfaces this as a "Seen before" chip and the Memories modal. Tier 1 adds KPI/inventory/pattern lanes. Local jsonl is a hot fallback always written in parallel per AGENTS.md.
 - **Render:** hosted demo URL.
@@ -239,13 +245,14 @@ Current status (2026-04-26):
 - `pyproject.toml` defines the uv-managed Python backend project.
 - `demo_data/sessions/ai_cafe_a/` now contains the extracted 5s frame plus the six required JSON fixtures for the controlled mock CCTV session.
 - `demo_data/sessions/real_cafe/` now contains a Tier 1A real-video fixture pack from `cafe_videos/real_cctv.mp4`: extracted 20s frame, six required JSON fixtures, real-video service-lane choke pattern, and cached `LayoutChange` targeting `service_lane_marker_1`.
+- `app/vision/tracks.py` defines the Tier 1 track-cache contract. `scripts/run_yolo_offline.py` uses PEP 723 inline dependencies (`ultralytics`, `opencv-python-headless`, `lap`) and defaults to CPU so it works on the local MX330 laptop where current PyTorch wheels cannot execute CUDA kernels. The generated `ai_cafe_a` cache is the preferred fake-session detection path (`schema_version="cafetwin.tracks.v1"`, 11 tracks, 1275 detections, role counts `staff=1`, `customer=10`, `unknown=0`); `real_cafe` also has a cache (48 tracks, 1856 detections, role counts `staff=15`, `customer=24`, `unknown=9`).
 - `app/` now has the first backend spine implemented: session discovery, fixture status, `CafeEvidencePack` build, `.env` loading, `OptimizationAgent` typed structured output with semantic retry/fallback via Pydantic AI `output_validator` + `ModelRetry`, decision-aware `PriorRecommendationMemory` recall derived from recommendation+feedback records, Logfire/Pydantic AI instrumentation, safe Logfire scrubbing for public fixture `session_id` values, MuBit primary memory writes/recall with always-on jsonl mirror fallback, CORS, and the six MVP routes.
 - `app/schemas.py` defines the strict Pydantic evidence, agent-output, memory, and API contracts. `RunResponse` includes `stages`, `layout_change`, `memory_record`, `prior_recommendation_count`, `used_fallback`, and `logfire_trace_url` — frontend can bind against the locked shapes immediately.
 - `GET /api/memories?session_id=...` queries MuBit when configured, merges/dedupes with local jsonl records, and reports `source` as `mubit`, `jsonl`, or `merged`.
 - Live `/api/run` smoke with local Logfire + Pydantic AI Gateway env returns `used_fallback=false`, a validated `LayoutChange`, `logfire_trace_url`, and a jsonl memory write. The latest observed live fingerprint is `move_table_center_1_reduce_pickup_pinch_v1`.
 - Forced-fallback validation for `real_cafe` passes: `/api/sessions` discovers it, `/api/state?session_id=real_cafe` returns all fixtures/assets, `validate_layout_change(load_cached_recommendation("real_cafe"), build("real_cafe"))` has no errors, and `/api/run {"session_id":"real_cafe"}` returns the cached `real_cafe_open_right_service_lane_v1` with the standard 3-stage response shape.
-- `tests/` covers session discovery, fixture parsing, cached recommendation validation, `/api/state`, `/api/run`, `/api/feedback`, `/api/memories` filtering and MuBit merge behavior, derived accept/reject/unknown prior recommendation memory, Logfire trace URL construction/caching, Logfire `session_id` scrub allowlisting, `OptimizationAgent` `output_validator`/`ModelRetry` semantic retry/fallback, and MuBit-backed memory writes/recall without hitting the real service. Current verification: `pytest` 24 passed; `ruff check app tests` passed.
-- `frontend/` is the Babel-in-browser demo: `cafetwin.html`, `app-state.jsx`, `app-canvas.jsx`, `app-panels.jsx`, `cafe-iso.jsx`, `cafetwin.css`, plus `api.js`. `tweaks-panel.jsx` is loaded only for its `useTweaks` hook (state container); the floating Tweaks panel itself is removed. **Wired in-app:** `useBackend("ai_cafe_a")` drives `/api/state` + `/api/run` on mount and exposes `submitFeedback`. `TopBar` surfaces: the Logfire button (opens `RunResponse.logfire_trace_url` in a new tab when present), a backend-status dot (loading / ready / error) showing the active session, and a **dark-theme toggle** between the tokens status and share button (sun/moon icons, flips `<html data-theme>` via a `useEffect` so the full warm-dark palette in `cafetwin.css` engages). `AgentFlow` 5 visual nodes light up from `RunResponse.stages[]` with real latencies; the 5th node is relabelled `memory` to match `memory_write`. `ChatPanel` renders the real `LayoutChange` via `LiveRecommendation` (title, rationale, KPI deltas, evidence + risk + confidence pills, "seen before" chip when `prior_recommendation_count > 0`, "cached fallback" pill when `used_fallback`, the `accept + apply` / `reject` controls directly under the recommendation title call `/api/feedback`), and its stream uses `minmax(0, 1fr)` + `min-height: 0` + `.chat-stream > * { flex: 0 0 auto }` (locks intrinsic size of `tool-call`/`chat-msg` so the rec-card isn't squashed and clipped by `.tool-call { overflow: hidden }`). `ChatPanel` auto-scrolls the rec-card's top into view whenever a fresh `fingerprint` arrives, so the user always sees title + accept/reject buttons without manual scrolling. The default active scenario is `baseline` so decorative scenario chat no longer pushes the recommendation down on first load. On Accept the iso scene's `CafeScene` now visibly translates the recommended target table (and its chairs + seated customers) along the agent's `simulation.from_position → to_position` vector via `recInfoFromLayout` + `useScalarTween` — pre-Apply a pulsing halo + dashed destination ghost + arrow flag the proposal; the right (active) pane animates while the left (baseline) pane stays clean for split-compare. `CanvasToolbar` stubs (`plan` / `3d` view modes, `geom` / `people` / `paths` layer chips) are visually marked as preview-only so they don't look broken. Decorative scenario presets remain untouched per "what is mock stays mock."
+- `tests/` covers session discovery, fixture parsing, cached recommendation validation, `/api/state`, `/api/run`, `/api/feedback`, `/api/memories` filtering and MuBit merge behavior, derived accept/reject/unknown prior recommendation memory, Logfire trace URL construction/caching, Logfire `session_id` scrub allowlisting, `OptimizationAgent` `output_validator`/`ModelRetry` semantic retry/fallback, and MuBit-backed memory writes/recall without hitting the real service. Current verification: `pytest` 27 passed; `ruff check app tests` passed.
+- `frontend/` is the Babel-in-browser demo: `cafetwin.html`, `app-state.jsx`, `app-canvas.jsx`, `app-panels.jsx`, `cafe-iso.jsx`, `cafetwin.css`, plus `api.js`. `tweaks-panel.jsx` is loaded only for its `useTweaks` hook (state container); the floating Tweaks panel itself is removed. **Wired in-app:** `useBackend(SESSION_ID)` drives `/api/state` + `/api/run` on mount and exposes `submitFeedback`; `SESSION_ID` defaults to `ai_cafe_a` and can be overridden with `?session=real_cafe`. `TopBar` surfaces: the Logfire button (opens `RunResponse.logfire_trace_url` in a new tab when present), a backend-status dot (loading / ready / error) showing the active session, and a **dark-theme toggle** between the tokens status and share button (sun/moon icons, flips `<html data-theme>` via a `useEffect` so the full warm-dark palette in `cafetwin.css` engages). `AgentFlow` 5 visual nodes light up from `RunResponse.stages[]` with real latencies; the 5th node is relabelled `memory` to match `memory_write`. `ChatPanel` renders the real `LayoutChange` via `LiveRecommendation` (title, rationale, KPI deltas, evidence + risk + confidence pills, "seen before" chip when `prior_recommendation_count > 0`, "cached fallback" pill when `used_fallback`, the `accept + apply` / `reject` controls directly under the recommendation title call `/api/feedback`), and its stream uses `minmax(0, 1fr)` + `min-height: 0` + `.chat-stream > * { flex: 0 0 auto }` (locks intrinsic size of `tool-call`/`chat-msg` so the rec-card isn't squashed and clipped by `.tool-call { overflow: hidden }`). `ChatPanel` auto-scrolls the rec-card's top into view whenever a fresh `fingerprint` arrives, so the user always sees title + accept/reject buttons without manual scrolling. The default active scenario is `baseline` so decorative scenario chat no longer pushes the recommendation down on first load. On Accept the iso scene's `CafeScene` now visibly translates the recommended target table (and its chairs + seated customers) along the agent's `simulation.from_position → to_position` vector via `recInfoFromLayout` + `useScalarTween` — pre-Apply a pulsing halo + dashed destination ghost + arrow flag the proposal; the right (active) pane animates while the left (baseline) pane stays clean for split-compare. `CanvasToolbar` stubs (`plan` / `3d` view modes, `geom` / `people` / `paths` layer chips) are visually marked as preview-only so they don't look broken. Decorative scenario presets remain untouched per "what is mock stays mock."
 - `docs/architecture/` contains short build notes for the MVP spine, project structure, and fixture contract.
 - `.venv/` and `.agents/` are local ignored artifacts. `.agents/handoff.md` is for multi-agent coordination only and should stay out of git. `.env.example` is the only env template that may be tracked.
 
