@@ -39,12 +39,21 @@ uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
 uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
 uv run scripts/detect_layout_objects.py --session ai_cafe_a
 uv run scripts/detect_layout_objects.py --session real_cafe
+uv run scripts/review_layout_objects_agent.py --session ai_cafe_a
+uv run scripts/review_layout_objects_agent.py --session real_cafe
+uv run scripts/benchmark_moondream_local.py --session ai_cafe_a
 ```
 
 The tracking script writes `tracks.cached.json` and `annotated_before.mp4`;
 the static layout script writes high-accuracy YOLOv8x
-`object_detections.cached.json` artifacts under each session. The fake
-`ai_cafe_a` video currently gives the cleanest detection overlay.
+`object_detections.cached.json` artifacts under each session, and the review
+script writes `object_review.cached.json` plus the stricter
+`object_detections.reviewed.cached.json`. The optional Moondream pass runs via
+`scripts/review_layout_objects_moondream.py` when `MOONDREAM_API_KEY` is set;
+the same script supports local Photon/Kestrel mode via `--local`, and
+`benchmark_moondream_local.py` records whether the current edge GPU can run it.
+On the local MX330 laptop the benchmark skips safely because only ~2GB VRAM is
+free. The fake `ai_cafe_a` video currently gives the cleanest detection overlay.
 
 For the Tier 1D real-CCTV pane in the frontend, transcode the annotated
 videos to H.264 (Chromium HTML5 `<video>` rejects the `cv2.VideoWriter`

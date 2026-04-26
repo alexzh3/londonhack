@@ -476,6 +476,7 @@ scripts/
   detect_layout_objects.py      # Tier 1B: produce object_detections.cached.json static layout cache
   benchmark_static_detectors.py # Tier 1B: compare YOLOv8x / RT-DETR-x / YOLO11x fairly
   review_layout_objects_moondream.py  # Tier 1B: optional Moondream open-vocab detector
+  benchmark_moondream_local.py        # Tier 1B: preflight local Moondream edge runtime
   review_layout_objects_agent.py      # Tier 1B: Pydantic AI reviewer -> reviewed object cache
 ```
 
@@ -498,7 +499,10 @@ video frames, aggregates duplicate furniture detections, and writes
 the same frames; RT-DETR-x is higher-recall but visibly noisier, so the base
 cache stays YOLOv8x while the Pydantic AI `ObjectReviewAgent` writes stricter
 `object_detections.reviewed.cached.json` caches from detector candidates plus
-optional Moondream evidence.
+optional Moondream evidence. `review_layout_objects_moondream.py` supports both
+cloud API mode and local Photon/Kestrel mode (`--local --model moondream2`);
+`benchmark_moondream_local.py` records edge-runtime viability before attempting
+large local model downloads.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -1288,6 +1292,7 @@ Tier 1A real-video checks:
 - [x] `load_object_detections_cache(...)` validates both static object caches and asserts geometry/source-frame/zone integrity.
 - [x] `uv run scripts/benchmark_static_detectors.py --session ai_cafe_a --no-annotated` compares YOLOv8x (31 objects), RT-DETR-x (48, higher recall/noisier), and YOLO11x (37, larger false table/counter boxes) on the same 9 frames.
 - [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. Moondream integration is implemented but not run locally because `MOONDREAM_API_KEY` is not in the process environment.
+- [x] `uv run scripts/benchmark_moondream_local.py --session ai_cafe_a` and `--session real_cafe` preflight local Moondream Photon/Kestrel. Both record `status=skipped_insufficient_vram` on the local MX330 (`2048 MB total`, `1993 MB free`) instead of downloading/running a model that needs more VRAM; pass `--force` only on a stronger edge GPU.
 
 Tier 1C live-KPI engine checks:
 

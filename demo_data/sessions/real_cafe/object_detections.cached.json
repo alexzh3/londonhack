@@ -1,0 +1,475 @@
+{
+  "schema_version": "cafetwin.objects.v1",
+  "session_id": "real_cafe",
+  "source": "ultralytics_yolo_static_objects",
+  "model": "yolov8x.pt",
+  "generated_at": "2026-04-26T06:09:29.102013Z",
+  "image": {
+    "width": 1280,
+    "height": 720
+  },
+  "target_classes": [
+    "chair",
+    "dining table",
+    "couch",
+    "potted plant"
+  ],
+  "conf_threshold": 0.12,
+  "iou_threshold": 0.6,
+  "aggregate_iou_threshold": 0.35,
+  "zone_ids": [
+    "counter",
+    "pickup",
+    "queue",
+    "staff_path",
+    "seating",
+    "entrance"
+  ],
+  "frames": [
+    {
+      "frame_id": "session_frame",
+      "source": "session_frame",
+      "image_path": "demo_data/sessions/real_cafe/frame.jpg",
+      "frame_idx": null,
+      "timestamp_s": null,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 8
+    },
+    {
+      "frame_id": "video_01",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 163,
+      "timestamp_s": 5.433333333333334,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 11
+    },
+    {
+      "frame_id": "video_02",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 327,
+      "timestamp_s": 10.9,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 12
+    },
+    {
+      "frame_id": "video_03",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 490,
+      "timestamp_s": 16.333333333333332,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 12
+    },
+    {
+      "frame_id": "video_04",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 653,
+      "timestamp_s": 21.766666666666666,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 10
+    },
+    {
+      "frame_id": "video_05",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 817,
+      "timestamp_s": 27.233333333333334,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 10
+    },
+    {
+      "frame_id": "video_06",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 980,
+      "timestamp_s": 32.666666666666664,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 8
+    },
+    {
+      "frame_id": "video_07",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 1143,
+      "timestamp_s": 38.1,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 7
+    },
+    {
+      "frame_id": "video_08",
+      "source": "video_frame",
+      "image_path": null,
+      "frame_idx": 1307,
+      "timestamp_s": 43.56666666666667,
+      "width": 1280,
+      "height": 720,
+      "raw_detection_count": 6
+    }
+  ],
+  "summary": {
+    "detection_count": 12,
+    "raw_detection_count": 84,
+    "frame_count": 9,
+    "class_counts": {
+      "chair": 11,
+      "dining table": 1,
+      "couch": 0,
+      "potted plant": 0,
+      "person": 0
+    },
+    "zone_counts": {
+      "seating": 5,
+      "counter": 4,
+      "staff_path": 2
+    }
+  },
+  "detections": [
+    {
+      "detection_id": "chair_001",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.6610714793205261,
+      "confidence_mean": 0.5459364056587219,
+      "support_count": 6,
+      "source_frame_ids": [
+        "video_01",
+        "video_04",
+        "video_05",
+        "video_06",
+        "video_07",
+        "video_08"
+      ],
+      "bbox_xyxy": [
+        415.91198742456874,
+        38.084793974126185,
+        464.6101671275344,
+        94.14517531575024
+      ],
+      "center_xy": [
+        440.26107727605154,
+        66.1149846449382
+      ],
+      "area_px": 2730.0385247911913,
+      "zone_id": "seating"
+    },
+    {
+      "detection_id": "chair_002",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.400319367647171,
+      "confidence_mean": 0.400319367647171,
+      "support_count": 1,
+      "source_frame_ids": [
+        "video_05"
+      ],
+      "bbox_xyxy": [
+        446.6706848144531,
+        46.655372619628906,
+        465.0387268066406,
+        80.05962371826172
+      ],
+      "center_xy": [
+        455.8547058105469,
+        63.35749816894531
+      ],
+      "area_px": 613.5706868972629,
+      "zone_id": "seating"
+    },
+    {
+      "detection_id": "chair_003",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.7549676895141602,
+      "confidence_mean": 0.3866809519628684,
+      "support_count": 8,
+      "source_frame_ids": [
+        "session_frame",
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_06",
+        "video_08"
+      ],
+      "bbox_xyxy": [
+        381.41033616561225,
+        84.49954515909648,
+        446.2400176536246,
+        186.28236666174138
+      ],
+      "center_xy": [
+        413.82517690961845,
+        135.39095591041894
+      ],
+      "area_px": 6598.547898967682,
+      "zone_id": "seating"
+    },
+    {
+      "detection_id": "chair_004",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.6804097890853882,
+      "confidence_mean": 0.5165213700383902,
+      "support_count": 8,
+      "source_frame_ids": [
+        "session_frame",
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_07",
+        "video_08"
+      ],
+      "bbox_xyxy": [
+        329.8162938432948,
+        148.81720016994166,
+        381.36094748188697,
+        223.53184840682005
+      ],
+      "center_xy": [
+        355.58862066259087,
+        186.17452428838084
+      ],
+      "area_px": 3851.1406650991494,
+      "zone_id": "seating"
+    },
+    {
+      "detection_id": "chair_005",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.6337948441505432,
+      "confidence_mean": 0.4806578494608402,
+      "support_count": 7,
+      "source_frame_ids": [
+        "session_frame",
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_06"
+      ],
+      "bbox_xyxy": [
+        498.12798069994756,
+        216.88329702990794,
+        580.7113926185712,
+        307.40524735593016
+      ],
+      "center_xy": [
+        539.4196866592594,
+        262.14427219291906
+      ],
+      "area_px": 7475.611511451077,
+      "zone_id": "counter"
+    },
+    {
+      "detection_id": "chair_006",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.24091924726963043,
+      "confidence_mean": 0.18640019372105598,
+      "support_count": 3,
+      "source_frame_ids": [
+        "session_frame",
+        "video_02",
+        "video_03"
+      ],
+      "bbox_xyxy": [
+        549.1373910225738,
+        274.34228048271336,
+        639.327034266497,
+        387.60020152830236
+      ],
+      "center_xy": [
+        594.2322126445354,
+        330.97124100550786
+      ],
+      "area_px": 10214.691493650096,
+      "zone_id": "counter"
+    },
+    {
+      "detection_id": "chair_007",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.32743921875953674,
+      "confidence_mean": 0.23721623337931103,
+      "support_count": 7,
+      "source_frame_ids": [
+        "session_frame",
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_06"
+      ],
+      "bbox_xyxy": [
+        559.6087109740878,
+        282.00206094024514,
+        639.4572583455459,
+        328.43811600715014
+      ],
+      "center_xy": [
+        599.5329846598169,
+        305.2200884736976
+      ],
+      "area_px": 3707.851542753403,
+      "zone_id": "counter"
+    },
+    {
+      "detection_id": "chair_008",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.7662939429283142,
+      "confidence_mean": 0.5284339955874852,
+      "support_count": 7,
+      "source_frame_ids": [
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_06",
+        "video_07"
+      ],
+      "bbox_xyxy": [
+        612.5594840493635,
+        293.3071082646719,
+        706.4546446000376,
+        367.1334525855296
+      ],
+      "center_xy": [
+        659.5070643247005,
+        330.2202804251008
+      ],
+      "area_px": 6931.936452876277,
+      "zone_id": "counter"
+    },
+    {
+      "detection_id": "chair_009",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.25721386075019836,
+      "confidence_mean": 0.192073006182909,
+      "support_count": 4,
+      "source_frame_ids": [
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04"
+      ],
+      "bbox_xyxy": [
+        688.6219726560511,
+        336.22573541508353,
+        778.4208527424967,
+        428.2416647213171
+      ],
+      "center_xy": [
+        733.5214126992739,
+        382.2337000682003
+      ],
+      "area_px": 8262.92740181332,
+      "zone_id": "staff_path"
+    },
+    {
+      "detection_id": "chair_010",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.6308476328849792,
+      "confidence_mean": 0.3039784938097,
+      "support_count": 5,
+      "source_frame_ids": [
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_06",
+        "video_07"
+      ],
+      "bbox_xyxy": [
+        691.9841985472112,
+        344.04018947824363,
+        812.0728773364783,
+        550.0625917348212
+      ],
+      "center_xy": [
+        752.0285379418448,
+        447.05139060653244
+      ],
+      "area_px": 24740.95808798332,
+      "zone_id": "staff_path"
+    },
+    {
+      "detection_id": "chair_011",
+      "class_id": 56,
+      "class_name": "chair",
+      "confidence": 0.47900572419166565,
+      "confidence_mean": 0.2617516943386623,
+      "support_count": 7,
+      "source_frame_ids": [
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_06",
+        "video_07",
+        "video_08"
+      ],
+      "bbox_xyxy": [
+        114.60927598946628,
+        522.2985127784166,
+        228.3198857853004,
+        675.1525667620763
+      ],
+      "center_xy": [
+        171.46458088738333,
+        598.7255397702464
+      ],
+      "area_px": 17381.12768824729,
+      "zone_id": null
+    },
+    {
+      "detection_id": "dining_table_012",
+      "class_id": 60,
+      "class_name": "dining table",
+      "confidence": 0.6963551640510559,
+      "confidence_mean": 0.5325089558959007,
+      "support_count": 9,
+      "source_frame_ids": [
+        "session_frame",
+        "video_01",
+        "video_02",
+        "video_03",
+        "video_04",
+        "video_05",
+        "video_06",
+        "video_07",
+        "video_08"
+      ],
+      "bbox_xyxy": [
+        299.74430893386216,
+        81.92095040457616,
+        409.32341754344856,
+        217.79464896132785
+      ],
+      "center_xy": [
+        354.5338632386554,
+        149.85779968295202
+      ],
+      "area_px": 14888.918771336495,
+      "zone_id": "seating"
+    }
+  ]
+}

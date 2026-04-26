@@ -37,6 +37,8 @@ demo_data/mubit_fallback.jsonl
 **/annotated_before.web.mp4
 **/object_detections.annotated.jpg
 **/object_detections.moondream.jpg
+**/object_detections.moondream.local.cached.json
+**/moondream_local_benchmark.json
 **/object_detector_benchmark/
 
 # Playwright MCP local screenshots from manual verification runs.
