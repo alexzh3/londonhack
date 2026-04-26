@@ -147,13 +147,16 @@ function useBackend(sessionId) {
   return { state, run, loading, error, refresh, submitFeedback };
 }
 
-// Stage timing helpers for the AgentFlow panel. Backend returns 3 stages
-// (evidence_pack, optimization_agent, memory_write); the existing JSX shows
-// 5 visual nodes — see overview_plan.md "Visual node ← StageTiming.name".
+// Stage timing helpers for the AgentFlow panel. Backend returns 4 stages
+// (evidence_pack, pattern_agent, optimization_agent, memory_write); the
+// existing JSX shows 5 visual nodes — see overview_plan.md
+// "Visual node ← StageTiming.name". The `pattern` node now reads
+// pattern_agent's actual latency (Tier 1A added the live agent stage)
+// instead of folding it into evidence_pack's timestamp.
 const AGENT_FLOW_NODE_TO_STAGE = {
   vision: "evidence_pack",
   kpi: "evidence_pack",
-  pattern: "evidence_pack",
+  pattern: "pattern_agent",
   optimize: "optimization_agent",
   simulate: "memory_write",
 };
