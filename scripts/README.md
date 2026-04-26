@@ -15,6 +15,7 @@ run from the repo root or from anywhere — they `cd` to the repo root themselve
 Typical first-time flow:
 
 ```bash
+uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
 ./scripts/setup.sh         # bootstrap venv + deps
 ./scripts/test.sh          # confirm backend is green
 ./scripts/dev.sh           # start backend + frontend, open the URL it prints
@@ -61,10 +62,14 @@ RENDER_DEPLOY_HOOK=... ./scripts/deploy_render.sh   # explicit deploy hook
 Both deploy scripts read `CAFETWIN_RENDER_URL`, `RENDER_DEPLOY_HOOK`, etc.
 from `.env` if not set in the calling shell.
 
-## Tier 1 / Tier 2 (not implemented yet)
+## Tier 1 / Tier 2
 
-MVP scripts only generate or validate fixture artifacts. Tier 1 will add YOLO /
-ByteTrack and KPI-engine scripts behind the same `demo_data/` contracts.
+MVP scripts generate or validate fixture artifacts. Tier 1 adds YOLO / ByteTrack
+and KPI-engine scripts behind the same `demo_data/` contracts.
 
 - `build_fixtures.py` — one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding.
-- `run_yolo_offline.py` — Tier 1 hook: produce real `tracks.cached.json` per session.
+- `run_yolo_offline.py` — Tier 1B: run YOLOv8n + ByteTrack offline and produce `tracks.cached.json` plus `annotated_before.mp4` per session.
+
+```bash
+uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
+```

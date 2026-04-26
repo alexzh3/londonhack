@@ -27,6 +27,13 @@ build/
 # Runtime demo output (memory writes accumulate here at demo time)
 demo_data/mubit_fallback.jsonl
 
+# Downloaded model weights for local/offline vision scripts
+*.pt
+
+# Vision pipeline overlay videos (pitch artifacts; multi-MB; not runtime data).
+# Source CCTV under cafe_videos/ stays tracked.
+**/annotated_before.mp4
+
 # Playwright MCP session artifacts (snapshots, console logs, network logs)
 .playwright-mcp/
 

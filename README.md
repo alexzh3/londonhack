@@ -29,6 +29,19 @@ Open <http://127.0.0.1:5500/cafetwin.html>. The page calls `/api/state` then
 recommendation card renders the live `LayoutChange`, and the Logfire button
 opens the trace for that run.
 
+To open the Tier 1A real-video fixture session, use
+<http://127.0.0.1:5500/cafetwin.html?session=real_cafe>.
+
+Tier 1B real-video tracking artifacts are generated offline:
+
+```bash
+uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
+uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
+```
+
+This writes `tracks.cached.json` and `annotated_before.mp4` under each session.
+The fake `ai_cafe_a` video currently gives the cleanest detection overlay.
+
 ## Prerequisites
 
 - Python 3.10+ (3.12 recommended; 3.13 pinned in `.python-version`).
