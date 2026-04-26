@@ -64,8 +64,77 @@ function CanvasOverlay({ label, sub, side, kpi }) {
   );
 }
 
+// Compact labels matching the agent's emitted KPIField literal — same map
+// as in app-panels.jsx (recommended chip). Falls back to the raw key with
+// underscores → spaces if the schema grows.
+const KPI_DELTA_LABEL = {
+  staff_customer_crossings: "crossings",
+  queue_obstruction_seconds: "queue obstr",
+  congestion_score: "congestion",
+  table_detour_score: "detour",
+  staff_walk_distance_px: "walk dist",
+};
+
+// "Agent impact" panel revealed inside the right CanvasPane the moment the
+// user clicks Accept. Each row's number tweens 0 → delta over 700ms with
+// the same cubic ease-out as the iso scene's table tween, so the numeric
+// strip and the visual table shift land in sync. For the 5 KPI fields the
+// agent emits today, negative = improvement → green; positive = regression
+// → red. Sign is preserved on the rendered value (e.g. `-75` vs `+12`).
+function KPIDeltaStrip({ deltas, fingerprint }) {
+  // Local mount-triggered count-up: t goes 0 → 1 over 700ms with cubic
+  // ease-out. We can't reuse useScalarTween here because it initialises v
+  // at target (so it would render full deltas instantly). Resets when
+  // fingerprint changes so a fresh recommendation re-animates.
+  const [t, setT] = React.useState(0);
+  React.useEffect(() => {
+    setT(0);
+    const start = performance.now();
+    let raf;
+    const ease = (x) => 1 - Math.pow(1 - x, 3);
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / 700);
+      setT(ease(p));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [fingerprint]);
+  const fmt = (v) => {
+    if (v === 0) return "0";
+    const formatted = Math.abs(v) >= 10 ? Math.round(v).toString() : v.toFixed(1);
+    return v > 0 ? `+${formatted}` : formatted; // toFixed already includes "-" sign
+  };
+  const shortKey = (k) => KPI_DELTA_LABEL[k] || k.replace(/_/g, " ");
+  return (
+    <div className="cv-rec-impact">
+      <div className="cv-rec-impact-hd">
+        <span className="cv-rec-impact-badge">AI</span>
+        <span className="cv-rec-impact-title">expected impact</span>
+      </div>
+      <div className="cv-rec-impact-body">
+        {deltas.map(([k, v]) => {
+          const cls = v < 0 ? "good" : v > 0 ? "bad" : "";
+          return (
+            <div key={k} className="cv-rec-impact-row">
+              <span className="cv-rec-impact-k">{shortKey(k)}</span>
+              <span className={`cv-rec-impact-v ${cls}`}>{fmt(v * t)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CanvasPane({ scn, side, zoom, layers, simTime, running, speed, recommendation }) {
   const k = scn.kpis;
+  const showImpact = recommendation && recommendation.status === "accept" && side === "right";
+  const impactDeltas = showImpact
+    ? Object.entries(recommendation.expectedKpiDelta || {})
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .slice(0, 4)
+    : [];
   return (
     <div className="cv-pane">
       <div className="cv-axes">
@@ -85,6 +154,9 @@ function CanvasPane({ scn, side, zoom, layers, simTime, running, speed, recommen
           { l: "wait", v: k.wait },
           { l: "rev",  v: fmtMoney(k.revenue) },
         ]} />
+      {showImpact && impactDeltas.length > 0 && (
+        <KPIDeltaStrip deltas={impactDeltas} fingerprint={recommendation.fingerprint} />
+      )}
     </div>
   );
 }

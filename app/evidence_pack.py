@@ -11,9 +11,9 @@ from app import config
 from app.schemas import (
     CafeEvidencePack,
     KPIReport,
-    LayoutChange,
     ObjectInventory,
     OperationalPattern,
+    PriorRecommendationMemory,
     StateResponse,
     Zone,
 )
@@ -76,7 +76,7 @@ def state(session_id: str = config.DEFAULT_SESSION_ID) -> StateResponse:
 
 def build(
     session_id: str = config.DEFAULT_SESSION_ID,
-    prior_recommendations: list[LayoutChange] | None = None,
+    prior_recommendation_memories: list[PriorRecommendationMemory] | None = None,
 ) -> CafeEvidencePack:
     """Load and validate the session fixture bundle for the OptimizationAgent."""
     missing = missing_required(session_id)
@@ -110,7 +110,7 @@ def build(
             "Do not move fixed counters, walls, or entrance paths.",
             "Cite only evidence IDs present in the operational pattern.",
         ],
-        prior_recommendations=prior_recommendations or [],
+        prior_recommendation_memories=prior_recommendation_memories or [],
     )
 
 

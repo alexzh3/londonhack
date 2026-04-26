@@ -135,13 +135,16 @@ def test_recall_recommendations_merges_mubit_and_jsonl(monkeypatch, tmp_path):
     )
 
     async def fake_query(*, lane, filters, limit, semantic_fallback=True):
-        assert lane == "location:demo:recommendations"
         assert filters == {
             "session_id": "ai_cafe_a",
             "pattern_id": "pattern_queue_counter_crossing",
         }
-        assert limit == 3
-        return [record]
+        assert limit == 12
+        if lane == "location:demo:recommendations":
+            return [record]
+        if lane == "location:demo:feedback":
+            return []
+        raise AssertionError(f"unexpected lane {lane}")
 
     monkeypatch.setattr(memory, "_mubit_query", fake_query)
 
@@ -152,6 +155,113 @@ def test_recall_recommendations_merges_mubit_and_jsonl(monkeypatch, tmp_path):
     )
 
     assert [hit["fingerprint"] for hit in hits] == ["ai_cafe_a_open_pickup_lane_v1"]
+
+
+def test_recall_prior_memory_derives_decisions_from_jsonl(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+    accepted = load_cached_recommendation("ai_cafe_a")
+    unknown = accepted.model_copy(
+        update={
+            "title": "Try a smaller pickup tweak",
+            "fingerprint": "ai_cafe_a_unknown_pickup_tweak",
+        }
+    )
+    rejected = accepted.model_copy(
+        update={
+            "title": "Move the queue marker instead",
+            "fingerprint": "ai_cafe_a_rejected_queue_marker",
+        }
+    )
+
+    for change in (accepted, unknown, rejected):
+        anyio.run(
+            memory.write_memory,
+            memory.new_memory_record(
+                lane="location:demo:recommendations",
+                intent="lesson",
+                payload={
+                    "session_id": "ai_cafe_a",
+                    "pattern_id": "pattern_queue_counter_crossing",
+                    "layout_change": change.model_dump(mode="json"),
+                },
+            ),
+        )
+    anyio.run(
+        memory.write_memory,
+        memory.new_memory_record(
+            lane="location:demo:feedback",
+            intent="feedback",
+            payload={
+                "session_id": "ai_cafe_a",
+                "pattern_id": "pattern_queue_counter_crossing",
+                "proposal_fingerprint": accepted.fingerprint,
+                "decision": "accept",
+                "reason": "operator approved the pickup lane change",
+            },
+        ),
+    )
+    anyio.run(
+        memory.write_memory,
+        memory.new_memory_record(
+            lane="location:demo:feedback",
+            intent="feedback",
+            payload={
+                "session_id": "ai_cafe_a",
+                "pattern_id": "pattern_queue_counter_crossing",
+                "proposal_fingerprint": rejected.fingerprint,
+                "decision": "reject",
+                "reason": "queue marker confused guests",
+            },
+        ),
+    )
+
+    hits = anyio.run(
+        memory.recall_prior_memory,
+        "ai_cafe_a",
+        "pattern_queue_counter_crossing",
+    )
+    by_fingerprint = {hit.fingerprint: hit for hit in hits}
+
+    assert by_fingerprint[accepted.fingerprint].decision == "accept"
+    assert by_fingerprint[accepted.fingerprint].reason == "operator approved the pickup lane change"
+    assert by_fingerprint[accepted.fingerprint].source == "jsonl"
+    assert by_fingerprint[rejected.fingerprint].decision == "reject"
+    assert by_fingerprint[rejected.fingerprint].reason == "queue marker confused guests"
+    assert by_fingerprint[unknown.fingerprint].decision == "unknown"
+    assert by_fingerprint[unknown.fingerprint].reason is None
+
+
+def test_run_endpoint_passes_prior_memories_to_evidence_pack(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAFETWIN_FORCE_FALLBACK", "1")
+    monkeypatch.setattr(config, "MEMORY_JSONL_PATH", tmp_path / "mubit_fallback.jsonl")
+    change = load_cached_recommendation("ai_cafe_a")
+
+    anyio.run(
+        memory.write_memory,
+        memory.new_memory_record(
+            lane="location:demo:recommendations",
+            intent="lesson",
+            payload={
+                "session_id": "ai_cafe_a",
+                "pattern_id": "pattern_queue_counter_crossing",
+                "layout_change": change.model_dump(mode="json"),
+            },
+        ),
+    )
+    anyio.run(
+        routes.feedback,
+        FeedbackRequest(
+            session_id="ai_cafe_a",
+            pattern_id="pattern_queue_counter_crossing",
+            proposal_fingerprint=change.fingerprint,
+            decision="reject",
+            reason="created too much visual clutter",
+        ),
+    )
+
+    response = anyio.run(routes.run, RunRequest(session_id="ai_cafe_a"))
+
+    assert response.prior_recommendation_count == 1
 
 
 def test_memories_endpoint_returns_merged_mubit_and_jsonl(monkeypatch, tmp_path):

@@ -11,12 +11,11 @@ from app.agents.optimization_agent import run_optimization
 from app.evidence_pack import FixtureLoadError, build, state
 from app.fallback import validate_layout_change
 from app.logfire_setup import get_last_trace_url, set_last_trace_url, span, trace_url_from_span
-from app.memory import list_memories, new_memory_record, recall_recommendations, write_memory
+from app.memory import list_memories, new_memory_record, recall_prior_memory, write_memory
 from app.schemas import (
     FeedbackMemoryPayload,
     FeedbackRequest,
     FeedbackResponse,
-    LayoutChange,
     LogfireURLResponse,
     MemoriesResponse,
     RecommendationMemoryPayload,
@@ -57,9 +56,8 @@ async def run(
                 state_response = state(active_session_id)
                 if state_response.missing_required:
                     raise FixtureLoadError(active_session_id, state_response.missing_required)
-                prior_dicts = await recall_recommendations(active_session_id, state_response.pattern.id)
-                prior_recommendations = _parse_prior_recommendations(prior_dicts)
-                pack = build(active_session_id, prior_recommendations=prior_recommendations)
+                prior_memories = await recall_prior_memory(active_session_id, state_response.pattern.id)
+                pack = build(active_session_id, prior_recommendation_memories=prior_memories)
             stages.append(_stage("evidence_pack", start))
 
             start = _now()
@@ -101,7 +99,7 @@ async def run(
         stages=stages,
         layout_change=layout_change,
         memory_record=record,
-        prior_recommendation_count=len(prior_recommendations),
+        prior_recommendation_count=len(prior_memories),
         used_fallback=used_fallback,
         logfire_trace_url=trace_url,
     )
@@ -145,13 +143,3 @@ def _now() -> datetime:
 
 def _stage(name, started_at: datetime, status: str = "done") -> StageTiming:
     return StageTiming(name=name, started_at=started_at, ended_at=_now(), status=status)
-
-
-def _parse_prior_recommendations(items: list) -> list[LayoutChange]:
-    recommendations: list[LayoutChange] = []
-    for item in items:
-        try:
-            recommendations.append(LayoutChange.model_validate(item))
-        except ValueError:
-            continue
-    return recommendations

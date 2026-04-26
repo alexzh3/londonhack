@@ -30,10 +30,15 @@ const Icon = {
     <path d="M8 1.5v1.8M8 12.7v1.8M2.6 8h1.8M11.6 8h1.8M3.7 3.7l1.3 1.3M11 11l1.3 1.3M3.7 12.3l1.3-1.3M11 5l1.3-1.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>),
   moon: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
     <path d="M13.4 9.6A5.6 5.6 0 0 1 6.4 2.6a5.6 5.6 0 1 0 7 7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>),
+  // Stacked-disks "memory" glyph for the TopBar memories button.
+  memory: () => (<svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <ellipse cx="8" cy="3.5" rx="5" ry="1.5" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M3 3.5v4c0 .8 2.2 1.5 5 1.5s5-.7 5-1.5v-4" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M3 8v4c0 .8 2.2 1.5 5 1.5s5-.7 5-1.5V8" stroke="currentColor" strokeWidth="1.2"/></svg>),
 };
 
 // ── Top bar ────────────────────────────────────────────────────────────────
-function TopBar({ scenarioName, onOpenSession, onOpenTrace, logfireUrl, backendStatus, sessionId, darkTheme, onToggleTheme }) {
+function TopBar({ scenarioName, onOpenSession, onOpenTrace, onOpenMemories, logfireUrl, backendStatus, sessionId, darkTheme, onToggleTheme }) {
   const traceLabel = logfireUrl
     ? `logfire ↗ trace#${logfireUrl.split("/").pop().slice(-8)}`
     : "logfire ↗ no trace yet";
@@ -66,9 +71,10 @@ function TopBar({ scenarioName, onOpenSession, onOpenTrace, logfireUrl, backendS
           <span className="rec-dot"><Icon.rec /></span>
           <span>recording · 04:12</span>
         </button>
-        <button className="tb-btn" onClick={onOpenSession}>
-          <span className="ico"><Icon.play /></span>
-          <span>session.replay</span>
+        <button className="tb-btn" onClick={onOpenMemories}
+          title="agent memories — recommendations + feedback persisted to MuBit / jsonl">
+          <span className="ico"><Icon.memory /></span>
+          <span>memories</span>
         </button>
         <button className={`tb-btn ${logfireUrl ? "" : "tb-btn-disabled"}`}
           onClick={openTrace} title={logfireUrl || "Logfire trace URL not set — see app/logfire_setup.py"}>
@@ -623,4 +629,105 @@ function ScenarioRail({ scenarios, base, activeName, onSelect, onOpen, onNew }) 
   );
 }
 
-Object.assign(window, { TopBar, AgentFlow, ChatPanel, ScenarioRail, LiveRecommendation });
+// ── Memories modal body ────────────────────────────────────────────────────
+// Fetches /api/memories?session_id=<id> and renders one row per MemoryRecord.
+// Each row shows: timestamp, lane chip (recommendations | feedback), payload
+// summary (LayoutChange.title for recommendations; "decision: accept|reject"
+// for feedback), and a `mubit_id` chip when present (or `[local]` when the
+// record exists only in jsonl). Refreshes whenever `refreshKey` changes —
+// the App bumps it after every Accept / Reject so the modal stays current.
+function MemoriesModal({ sessionId, refreshKey }) {
+  const [state, setState] = React.useState({ status: "loading", records: [], source: null, error: null });
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setState((s) => ({ ...s, status: "loading", error: null }));
+    window.cafetwinApi.getMemories(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        const records = Array.isArray(res?.records) ? res.records : [];
+        setState({ status: "ok", records, source: res?.source || null, error: null });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setState({ status: "error", records: [], source: null, error: String(err?.message || err) });
+      });
+    return () => { cancelled = true; };
+  }, [sessionId, refreshKey]);
+
+  if (state.status === "loading") {
+    return <div className="memories-empty">loading memories…</div>;
+  }
+  if (state.status === "error") {
+    return <div className="memories-empty memories-err">failed to load memories: {state.error}</div>;
+  }
+  if (!state.records.length) {
+    return (
+      <div className="memories-empty">
+        no memories yet — accept or reject a recommendation to populate the store.
+      </div>
+    );
+  }
+  // Sort newest first.
+  const sorted = [...state.records].sort((a, b) => {
+    const ta = a.written_at || ""; const tb = b.written_at || "";
+    return tb.localeCompare(ta);
+  });
+  return (
+    <div className="memories-list">
+      <div className="memories-source">
+        <span>source · </span><code>{state.source || "n/a"}</code>
+        <span className="memories-source-spacer" />
+        <span>{sorted.length} record{sorted.length === 1 ? "" : "s"}</span>
+      </div>
+      {sorted.map((rec, i) => (
+        <MemoryRow key={(rec.mubit_id || `local-${i}-${rec.written_at}`)} rec={rec} />
+      ))}
+    </div>
+  );
+}
+
+function MemoryRow({ rec }) {
+  // lane is "location:demo:recommendations" or "location:demo:feedback".
+  const isRec = rec.lane === "location:demo:recommendations";
+  const isFb = rec.lane === "location:demo:feedback";
+  const laneLbl = isRec ? "recommendation" : isFb ? "feedback" : (rec.lane || "memory");
+  const lanePill = isRec ? "rec" : isFb ? "fb" : "info";
+  const writtenShort = (() => {
+    if (!rec.written_at) return "—";
+    // "2026-04-26T05:30:11.234Z" → "05:30:11"
+    const m = String(rec.written_at).match(/T(\d{2}:\d{2}:\d{2})/);
+    return m ? m[1] : rec.written_at.slice(0, 16);
+  })();
+  const payload = rec.payload || {};
+  let summary = "";
+  let detail = "";
+  if (isRec) {
+    const lc = payload.layout_change || {};
+    summary = lc.title || "(untitled recommendation)";
+    detail = lc.target_id ? `target: ${lc.target_id}` : "";
+  } else if (isFb) {
+    summary = payload.decision === "accept" ? "ACCEPTED" : payload.decision === "reject" ? "REJECTED" : "feedback";
+    detail = payload.proposal_fingerprint ? `fp: ${payload.proposal_fingerprint}` : "";
+  } else {
+    summary = JSON.stringify(payload).slice(0, 60);
+  }
+  const mubitChip = rec.mubit_id
+    ? <code className="memory-mubit memory-mubit-real" title={rec.mubit_id}>{rec.mubit_id.slice(0, 12)}…</code>
+    : <code className="memory-mubit memory-mubit-local" title="written to local jsonl only">[local]</code>;
+  return (
+    <div className="memory-row">
+      <span className="memory-time">{writtenShort}</span>
+      <span className={`memory-lane memory-lane-${lanePill}`}>{laneLbl}</span>
+      <span className="memory-summary">
+        {isFb ? (
+          <span className={`memory-decision memory-decision-${payload.decision || "unknown"}`}>{summary}</span>
+        ) : summary}
+      </span>
+      <span className="memory-detail">{detail}</span>
+      {mubitChip}
+    </div>
+  );
+}
+
+Object.assign(window, { TopBar, AgentFlow, ChatPanel, ScenarioRail, LiveRecommendation, MemoriesModal });

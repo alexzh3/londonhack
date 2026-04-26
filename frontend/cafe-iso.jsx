@@ -734,4 +734,4 @@ function CafeScene({ seats = 18, baristas = 2, style = "default", scenarioName =
   );
 }
 
-Object.assign(window, { CafeScene, generateLayout });
+Object.assign(window, { CafeScene, generateLayout, useScalarTween });

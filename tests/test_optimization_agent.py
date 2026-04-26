@@ -1,10 +1,12 @@
 import anyio
+from datetime import datetime, timezone
 from pydantic_ai import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 
 from app.agents import optimization_agent as opt
 from app.evidence_pack import build
 from app.fallback import load_cached_recommendation
+from app.schemas import PriorRecommendationMemory
 
 
 def function_model_for_outputs(outputs):
@@ -79,3 +81,30 @@ def test_pydantic_ai_gateway_route_builds_provider_model(monkeypatch):
 
     assert model.system == "anthropic"
     assert model.model_name == "claude-sonnet-4-6"
+
+
+def test_optimization_prompt_includes_decision_aware_memory():
+    cached = load_cached_recommendation("ai_cafe_a")
+    pack = build(
+        "ai_cafe_a",
+        prior_recommendation_memories=[
+            PriorRecommendationMemory(
+                session_id="ai_cafe_a",
+                pattern_id="pattern_queue_counter_crossing",
+                fingerprint=cached.fingerprint,
+                title=cached.title,
+                target_id=cached.target_id,
+                layout_change=cached,
+                decision="reject",
+                reason="blocked the service lane",
+                last_seen_at=datetime.now(timezone.utc),
+                source="jsonl",
+            )
+        ],
+    )
+
+    prompt = opt._optimization_prompt(pack)
+
+    assert "decision=reject" in prompt
+    assert cached.fingerprint in prompt
+    assert "blocked the service lane" in prompt

@@ -170,10 +170,10 @@ class CafeEvidencePack(StrictModel):
     kpi_windows: list[KPIReport] = Field(min_length=1)
     pattern: OperationalPattern
     org_rules: list[str] = Field(default_factory=list)
-    prior_recommendations: list["LayoutChange"] = Field(default_factory=list)
-    # Populated by mubit.recall(session_id, pattern.id). Empty list if MuBit
-    # unavailable or no prior runs. Recall is scoped to (session_id, pattern_id)
-    # so cafes never see each other's recommendations.
+    prior_recommendation_memories: list["PriorRecommendationMemory"] = Field(default_factory=list)
+    # Populated by mubit/jsonl recall(session_id, pattern.id). Empty list if
+    # memory is unavailable or no prior runs exist. Recall is scoped to
+    # (session_id, pattern_id) so cafes never see each other's recommendations.
 
 
 # ---------- Agent output ----------
@@ -209,6 +209,19 @@ class LayoutChange(StrictModel):
     confidence: float = Field(ge=0.0, le=1.0)
     risk: RiskLevel
     fingerprint: str
+
+
+class PriorRecommendationMemory(StrictModel):
+    session_id: str
+    pattern_id: str
+    fingerprint: str
+    title: str
+    target_id: str
+    layout_change: LayoutChange
+    decision: Literal["accept", "reject", "unknown"] = "unknown"
+    reason: str | None = None
+    last_seen_at: datetime
+    source: Literal["mubit", "jsonl", "merged"]
 
 
 # ---------- Memory ----------

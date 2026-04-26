@@ -400,6 +400,63 @@ button { font: inherit; color: inherit; cursor: default; }
   pointer-events: none;
   border-radius: 2px;
 }
+
+/* Agent impact strip — fades in inside the right CanvasPane the moment
+   the user clicks Accept. Mirrors the violet AI accent used elsewhere
+   (recommended scenario chip, "seen Nx before" pill) so the user reads
+   it as agent-derived. Numeric values count up over 700ms with cubic
+   ease-out, matching the iso scene's table tween cadence. */
+.cv-rec-impact {
+  position: absolute; right: 12px; bottom: 14px;
+  font-family: var(--mono); font-size: 10.5px;
+  background: rgba(251,249,244,0.94);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--violet);
+  border-radius: 2px;
+  padding: 6px 9px 7px;
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 168px;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  animation: cv-rec-impact-in 280ms cubic-bezier(0.3, 0.8, 0.4, 1);
+  box-shadow: 0 4px 10px rgba(106,74,150,0.10);
+}
+[data-theme="dark"] .cv-rec-impact {
+  background: rgba(20,20,28,0.88);
+}
+.cv-rec-impact-hd {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.cv-rec-impact-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--violet); color: #fbf9f4;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 1px 4px; border-radius: 2px; line-height: 1.1;
+}
+.cv-rec-impact-title {
+  color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 9.5px;
+}
+.cv-rec-impact-body { display: flex; flex-direction: column; gap: 1px; }
+.cv-rec-impact-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 14px;
+}
+.cv-rec-impact-k { color: var(--fg-3); }
+.cv-rec-impact-v {
+  color: var(--fg); font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.cv-rec-impact-v.good { color: var(--accent); }
+.cv-rec-impact-v.bad { color: var(--danger); }
+@keyframes cv-rec-impact-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
 .cv-sel-tag {
   position: absolute; top: -22px; left: 0;
   background: var(--accent); color: #fbf9f4;
@@ -885,6 +942,51 @@ button { font: inherit; color: inherit; cursor: default; }
 .session-pill.info { background: rgba(44,95,160,0.14); color: var(--info); }
 .session-e { color: var(--fg); }
 .session-d { color: var(--fg-3); }
+
+/* Memories modal — agent's persisted recommendations + feedback. Same
+   visual rhythm as session-list (timestamp / pill / summary / mubit_id),
+   but a wider grid that also fits a target_id detail column and the
+   mubit_id chip rendered as monospace code. */
+.memories-list { display: flex; flex-direction: column; font-family: var(--mono); font-size: 11px; max-height: 56vh; overflow-y: auto; }
+.memories-source {
+  display: flex; align-items: center;
+  padding: 4px 6px 8px;
+  color: var(--fg-3); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+  border-bottom: 1px dashed var(--line);
+}
+.memories-source code { color: var(--fg); background: var(--bg-2); padding: 1px 6px; border-radius: 3px; margin-left: 4px; font-family: var(--mono); font-size: 10.5px; }
+.memories-source-spacer { flex: 1; }
+.memories-empty {
+  padding: 36px 16px;
+  color: var(--fg-3); font-family: var(--mono); font-size: 11px;
+  text-align: center; line-height: 1.6;
+}
+.memories-err { color: var(--danger); }
+.memory-row {
+  display: grid; grid-template-columns: 70px 110px 1fr 130px 130px;
+  align-items: center; gap: 12px;
+  padding: 7px 4px; border-bottom: 1px solid var(--line);
+}
+.memory-time { color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.memory-lane {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 6px; border-radius: 3px; text-align: center;
+}
+.memory-lane-rec { background: rgba(106,74,150,0.16); color: var(--violet); }
+.memory-lane-fb  { background: rgba(44,95,160,0.14); color: var(--info); }
+.memory-summary { color: var(--fg); }
+.memory-decision { font-weight: 600; letter-spacing: 0.04em; }
+.memory-decision-accept { color: var(--accent); }
+.memory-decision-reject { color: var(--danger); }
+.memory-decision-unknown { color: var(--fg-3); }
+.memory-detail { color: var(--fg-3); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-mubit {
+  display: inline-block; padding: 2px 6px; border-radius: 3px;
+  font-family: var(--mono); font-size: 10px;
+  text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.memory-mubit-real { background: rgba(106,74,150,0.16); color: var(--violet); }
+.memory-mubit-local { background: var(--bg-2); color: var(--fg-3); }
 
 /* Logfire trace */
 .trace-tree {

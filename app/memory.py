@@ -7,18 +7,20 @@ import json
 import os
 from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 import httpx
 
 from app import config
 from app.logfire_setup import span
-from app.schemas import MemoryIntent, MemoryLane, MemoryRecord
+from app.schemas import LayoutChange, MemoryIntent, MemoryLane, MemoryRecord, PriorRecommendationMemory
 
 MUBIT_DEFAULT_ENDPOINT = "https://api.mubit.ai"
 MUBIT_AGENT_ID = "cafetwin-optimization-agent"
 RECOMMENDATION_LANE = "location:demo:recommendations"
+FEEDBACK_LANE = "location:demo:feedback"
+MemorySource = Literal["mubit", "jsonl"]
 
 
 def new_memory_record(
@@ -57,43 +59,40 @@ async def write_memory(record: MemoryRecord) -> MemoryRecord:
     return record
 
 
-async def recall_recommendations(session_id: str, pattern_id: str) -> list:
-    """Return prior recommendation payloads for this session and pattern."""
-    hits = []
+async def recall_prior_memory(
+    session_id: str,
+    pattern_id: str,
+    limit: int = 3,
+) -> list[PriorRecommendationMemory]:
+    records: list[tuple[MemoryRecord, MemorySource]] = []
+    query_limit = max(limit * 4, 12)
     if _mubit_available():
         with span("memory.recall.mubit", session_id=session_id, pattern_id=pattern_id):
-            try:
-                records = await _mubit_query(
-                    lane=RECOMMENDATION_LANE,
-                    filters={"session_id": session_id, "pattern_id": pattern_id},
-                    limit=3,
-                )
-            except Exception:
-                records = []
-            hits.extend(_layout_changes_from_records(records))
+            for lane in (RECOMMENDATION_LANE, FEEDBACK_LANE):
+                try:
+                    mubit_records = await _mubit_query(
+                        lane=lane,
+                        filters={"session_id": session_id, "pattern_id": pattern_id},
+                        limit=query_limit,
+                    )
+                except Exception:
+                    mubit_records = []
+                records.extend((record, "mubit") for record in mubit_records)
 
     with span("memory.recall.jsonl", session_id=session_id, pattern_id=pattern_id):
-        if not config.MEMORY_JSONL_PATH.exists():
-            return _dedupe_layout_changes(hits)
+        records.extend(
+            (record, "jsonl")
+            for record in _list_jsonl_memories(session_id=session_id)
+            if record.lane in {RECOMMENDATION_LANE, FEEDBACK_LANE}
+            and record.payload.get("pattern_id") == pattern_id
+        )
 
-        with config.MEMORY_JSONL_PATH.open(encoding="utf-8") as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                try:
-                    record = MemoryRecord.model_validate_json(line)
-                except ValueError:
-                    continue
-                payload = record.payload
-                if (
-                    record.lane == "location:demo:recommendations"
-                    and payload.get("session_id") == session_id
-                    and payload.get("pattern_id") == pattern_id
-                ):
-                    layout_change = payload.get("layout_change")
-                    if isinstance(layout_change, dict):
-                        hits.append(layout_change)
-        return _dedupe_layout_changes(hits)
+    return _build_prior_memory_view(records, session_id=session_id, pattern_id=pattern_id)[:limit]
+
+
+async def recall_recommendations(session_id: str, pattern_id: str) -> list:
+    memories = await recall_prior_memory(session_id, pattern_id)
+    return [memory.layout_change.model_dump(mode="json") for memory in memories]
 
 
 async def list_memories(session_id: str | None = None) -> tuple[list[MemoryRecord], str]:
@@ -390,6 +389,103 @@ def _record_matches(record: MemoryRecord, *, lane: str | None, filters: dict[str
         if record.payload.get(key) != value:
             return False
     return True
+
+
+def _build_prior_memory_view(
+    records: Iterable[tuple[MemoryRecord, MemorySource]],
+    *,
+    session_id: str,
+    pattern_id: str,
+) -> list[PriorRecommendationMemory]:
+    recommendations: dict[str, dict[str, Any]] = {}
+    feedback: dict[str, dict[str, Any]] = {}
+
+    for record, source in records:
+        payload = record.payload if isinstance(record.payload, dict) else {}
+        if payload.get("session_id") != session_id or payload.get("pattern_id") != pattern_id:
+            continue
+
+        if record.lane == RECOMMENDATION_LANE:
+            layout_change = _layout_change_from_payload(payload)
+            if layout_change is None:
+                continue
+            current = recommendations.get(layout_change.fingerprint)
+            if current is None:
+                recommendations[layout_change.fingerprint] = {
+                    "layout_change": layout_change,
+                    "last_seen_at": record.written_at,
+                    "sources": {source},
+                }
+                continue
+            current["sources"].add(source)
+            if record.written_at > current["last_seen_at"]:
+                current["layout_change"] = layout_change
+                current["last_seen_at"] = record.written_at
+
+        if record.lane == FEEDBACK_LANE:
+            fingerprint = payload.get("proposal_fingerprint")
+            decision = payload.get("decision")
+            if not isinstance(fingerprint, str) or decision not in {"accept", "reject"}:
+                continue
+            current = feedback.get(fingerprint)
+            if current is None:
+                feedback[fingerprint] = {
+                    "decision": decision,
+                    "reason": payload.get("reason") if isinstance(payload.get("reason"), str) else None,
+                    "last_seen_at": record.written_at,
+                    "sources": {source},
+                }
+                continue
+            current["sources"].add(source)
+            if record.written_at > current["last_seen_at"]:
+                current["decision"] = decision
+                current["reason"] = payload.get("reason") if isinstance(payload.get("reason"), str) else None
+                current["last_seen_at"] = record.written_at
+
+    memories: list[PriorRecommendationMemory] = []
+    for fingerprint, recommendation in recommendations.items():
+        layout_change = recommendation["layout_change"]
+        matched_feedback = feedback.get(fingerprint)
+        decision = "unknown"
+        reason = None
+        sources = set(recommendation["sources"])
+        last_seen_at = recommendation["last_seen_at"]
+        if matched_feedback is not None:
+            decision = matched_feedback["decision"]
+            reason = matched_feedback["reason"]
+            sources.update(matched_feedback["sources"])
+            last_seen_at = max(last_seen_at, matched_feedback["last_seen_at"])
+        memories.append(
+            PriorRecommendationMemory(
+                session_id=session_id,
+                pattern_id=pattern_id,
+                fingerprint=fingerprint,
+                title=layout_change.title,
+                target_id=layout_change.target_id,
+                layout_change=layout_change,
+                decision=decision,
+                reason=reason,
+                last_seen_at=last_seen_at,
+                source=_prior_memory_source(sources),
+            )
+        )
+    return sorted(memories, key=lambda memory: memory.last_seen_at, reverse=True)
+
+
+def _layout_change_from_payload(payload: dict[str, Any]) -> LayoutChange | None:
+    layout_change = payload.get("layout_change")
+    if not isinstance(layout_change, dict):
+        return None
+    try:
+        return LayoutChange.model_validate(layout_change)
+    except ValueError:
+        return None
+
+
+def _prior_memory_source(sources: set[MemorySource]) -> Literal["mubit", "jsonl", "merged"]:
+    if len(sources) > 1:
+        return "merged"
+    return next(iter(sources), "jsonl")
 
 
 def _layout_changes_from_records(records: Iterable[MemoryRecord]) -> list[dict]:

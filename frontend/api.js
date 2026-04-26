@@ -62,7 +62,8 @@ const cafetwinApi = {
         reason: reason ?? null,
       },
     }),
-  getMemories: () => _request("/api/memories"),
+  getMemories: (sessionId) =>
+    _request("/api/memories", sessionId ? { query: { session_id: sessionId } } : {}),
   getLogfireUrl: () => _request("/api/logfire_url"),
 };
 

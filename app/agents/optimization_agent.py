@@ -16,6 +16,7 @@ Return exactly one LayoutChange. Constraints:
 - The target_id must exist in object_inventory.objects.
 - evidence_ids must be a non-empty subset of pattern.evidence[*].memory_id.
 - Prefer a single move that reduces the pattern's worst KPI without reducing seating.
+- Use prior_recommendation_memories: favor compatible accepted proposals, avoid rejected repeats unless the current evidence materially changed, and treat unknown decisions as weak signals only.
 - Be concrete: title, rationale, expected_kpi_delta, confidence, and risk must be demo-ready.
 """
 
@@ -90,8 +91,24 @@ def _optimization_prompt(pack: CafeEvidencePack) -> str:
     return (
         "Optimize this cafe layout from the evidence pack. "
         "Use only cited evidence IDs.\n\n"
+        "Prior recommendation memory:\n"
+        f"{_prior_memory_summary(pack)}\n\n"
+        "Evidence pack JSON:\n"
         f"{pack.model_dump_json()}"
     )
+
+
+def _prior_memory_summary(pack: CafeEvidencePack) -> str:
+    if not pack.prior_recommendation_memories:
+        return "No prior recommendation memory for this session and pattern."
+    lines = []
+    for memory in pack.prior_recommendation_memories:
+        reason = f" reason={memory.reason}" if memory.reason else ""
+        lines.append(
+            f"- decision={memory.decision} fingerprint={memory.fingerprint} "
+            f"target={memory.target_id} title={memory.title!r}{reason}"
+        )
+    return "\n".join(lines)
 
 
 def _live_agent_enabled() -> bool:
