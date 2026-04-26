@@ -85,7 +85,18 @@ button { font: inherit; color: inherit; cursor: default; }
   background: var(--bg-1);
   overflow: hidden;
 }
-.panel-flow { border-right: 1px solid var(--line); overflow-y: auto; }
+.panel-flow {
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  /* Themed scrollbar so the left panel matches the chat-stream + scenarios
+     rail under both light and dark themes (`--line-2` swaps via :root[data-theme]). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.panel-flow::-webkit-scrollbar { width: 8px; }
+.panel-flow::-webkit-scrollbar-track { background: transparent; }
+.panel-flow::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+.panel-flow::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
 .panel-chat { border-left: 1px solid var(--line); }
 
 .panel-hd {
