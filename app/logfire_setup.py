@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import nullcontext
 from typing import Any
@@ -10,6 +11,7 @@ from urllib.parse import quote
 
 _last_trace_url: str | None = None
 _configured = False
+logger = logging.getLogger(__name__)
 
 
 def span(name: str, **attributes: Any):
@@ -45,9 +47,14 @@ def configure_logfire() -> None:
         _configured = True
         try:
             logfire.instrument_pydantic_ai()
-        except Exception:
-            pass
-    except Exception:
+        except Exception as exc:
+            logger.warning("Logfire Pydantic AI instrumentation failed: %s", exc)
+        try:
+            logfire.instrument_httpx()
+        except Exception as exc:
+            logger.warning("Logfire httpx instrumentation failed: %s", exc)
+    except Exception as exc:
+        logger.warning("Logfire configuration failed: %s", exc)
         _configured = False
 
 
@@ -60,8 +67,8 @@ def instrument_fastapi(app: Any) -> None:
         import logfire
 
         logfire.instrument_fastapi(app)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Logfire FastAPI instrumentation failed: %s", exc)
 
 
 def trace_url_from_span(active_span: Any) -> str | None:

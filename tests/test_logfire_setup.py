@@ -1,3 +1,7 @@
+import sys
+from types import SimpleNamespace
+
+import app.logfire_setup as logfire_setup
 from app.logfire_setup import _scrub_callback, trace_url_from_span
 
 
@@ -54,3 +58,27 @@ def test_scrub_callback_keeps_other_session_values_redacted():
     )
 
     assert _scrub_callback(match) is None
+
+
+def test_configure_logfire_instruments_libraries_after_configure(monkeypatch):
+    calls = []
+    fake_logfire = SimpleNamespace(
+        ScrubbingOptions=lambda callback: ("scrubbing", callback),
+        configure=lambda **kwargs: calls.append(("configure", kwargs)),
+        instrument_pydantic_ai=lambda: calls.append(("instrument_pydantic_ai", None)),
+        instrument_httpx=lambda: calls.append(("instrument_httpx", None)),
+        instrument_fastapi=lambda app: calls.append(("instrument_fastapi", app)),
+    )
+    monkeypatch.setitem(sys.modules, "logfire", fake_logfire)
+    monkeypatch.setenv("LOGFIRE_TOKEN", "token")
+    monkeypatch.setattr(logfire_setup, "_configured", False)
+
+    logfire_setup.configure_logfire()
+    logfire_setup.instrument_fastapi("app")
+
+    assert [call[0] for call in calls] == [
+        "configure",
+        "instrument_pydantic_ai",
+        "instrument_httpx",
+        "instrument_fastapi",
+    ]

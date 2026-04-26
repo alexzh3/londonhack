@@ -1098,6 +1098,7 @@ logfire.configure(
     send_to_logfire="if-token-present",
 )
 logfire.instrument_pydantic_ai()
+logfire.instrument_httpx()
 # app/api/main.py calls logfire.instrument_fastapi(app) after FastAPI creation.
 ```
 
@@ -1106,16 +1107,24 @@ Span hierarchy for one `/api/run` call:
 ```
 api.run (root)
 ├── evidence_pack.build
-│   ├── memory.recall.mubit           (when MUBIT_API_KEY is set)
-│   └── memory.recall.jsonl           (always; fallback + local audit)
+│   ├── kpi_engine.compute_window          (real sessions with tracks)
+│   └── object_inventory.augment_live      (when object caches exist)
+├── pattern_agent.run                      (plus Pydantic AI auto-spans when live)
+├── memory.recall.mubit                    (when MUBIT_API_KEY is set; httpx auto-span)
+├── memory.recall.jsonl                    (always; fallback + local audit)
 ├── optimization_agent.run            (plus Pydantic AI auto-spans when live)
 ├── layout_change.validate
 └── memory.write
-    ├── memory.write.mubit            (when MUBIT_API_KEY is set)
+    ├── memory.write.mubit            (when MUBIT_API_KEY is set; httpx auto-span)
     └── memory.write.jsonl            (always; fallback + local audit)
 ```
 
 The Logfire URL is returned inline as `RunResponse.logfire_trace_url` (and also exposed at `/api/logfire_url` for the top-bar link to refresh independently). Cache it in process state when the run finishes.
+
+Important deployment caveat: Render's safe default `CAFETWIN_FORCE_FALLBACK=1`
+still emits manual backend spans, but it skips live Pydantic AI calls, so
+Pydantic AI / LLM child spans only appear after that env var is cleared and a
+provider key or Gateway route is configured.
 
 Current verification: with `LOGFIRE_TOKEN`, `LOGFIRE_PROJECT_URL`, and Pydantic
 AI Gateway env in local `.env`, a live `/api/run` smoke returns
