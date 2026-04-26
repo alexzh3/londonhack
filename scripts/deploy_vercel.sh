@@ -13,7 +13,7 @@
 #
 # Required env (or in .env):
 #   CAFETWIN_RENDER_URL — full https URL of the Render backend, e.g.
-#                         https://cafetwin-backend.onrender.com
+#                         https://cafetwin-backend-tier1.onrender.com
 #
 # Usage:
 #   ./scripts/deploy_vercel.sh
@@ -36,7 +36,7 @@ ERROR: CAFETWIN_RENDER_URL is not set.
 
 Set it to the full https URL of your deployed Render backend, e.g.
 
-    CAFETWIN_RENDER_URL=https://cafetwin-backend.onrender.com
+    CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com
 
 Either add that line to .env, or pass it on the command line:
 

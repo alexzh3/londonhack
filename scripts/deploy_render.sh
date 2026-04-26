@@ -62,7 +62,7 @@ else
 
   2. Open https://dashboard.render.com → New → Blueprint.
      Connect your GitHub repo. Render reads render.yaml and provisions the
-     `cafetwin-backend` web service.
+     `cafetwin-backend-tier1` web service from the `tier_1` branch.
 
   3. In the service Environment tab, set these secrets (do NOT commit them):
 
@@ -73,15 +73,15 @@ else
         MUBIT_API_KEY                  (optional; Tier 1)
 
   4. Once the service is live, copy its public URL (e.g.
-        https://cafetwin-backend.onrender.com)
+        https://cafetwin-backend-tier1.onrender.com)
      into your local .env as:
 
-        CAFETWIN_RENDER_URL=https://cafetwin-backend.onrender.com
+        CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com
 
      Then run ./scripts/deploy_vercel.sh to ship the frontend.
 
   5. (Optional) Copy the deploy hook URL from
-        Render → cafetwin-backend → Settings → Deploy Hook
+        Render → cafetwin-backend-tier1 → Settings → Deploy Hook
      into .env as:
 
         RENDER_DEPLOY_HOOK=https://api.render.com/deploy/srv-...?key=...

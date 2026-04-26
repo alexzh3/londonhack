@@ -6,11 +6,11 @@
 # To deploy:
 #   1. Push this repo (with render.yaml) to GitHub.
 #   2. https://dashboard.render.com → New → Blueprint → connect repo.
-#   3. Render provisions the `cafetwin-backend` web service from this file.
+#   3. Render provisions the `cafetwin-backend-tier1` web service from this file.
 #   4. In the service Environment tab, set the secrets listed below
 #      (sync: false means "value lives in the dashboard, not in git").
 #
-# After deploy, the public URL (e.g. https://cafetwin-backend.onrender.com)
+# After deploy, the public URL (e.g. https://cafetwin-backend-tier1.onrender.com)
 # becomes CAFETWIN_RENDER_URL — set it in .env, then run
 # ./scripts/deploy_vercel.sh to ship the frontend.
 #
@@ -18,7 +18,8 @@
 
 services:
   - type: web
-    name: cafetwin-backend
+    name: cafetwin-backend-tier1
+    branch: tier_1
     runtime: python
     plan: free
     region: oregon
@@ -45,7 +46,7 @@ services:
         value: gateway/anthropic:claude-sonnet-4-6
 
       - key: LOGFIRE_SERVICE_NAME
-        value: cafetwin-mvp
+        value: cafetwin-backend-tier1
       - key: LOGFIRE_ENVIRONMENT
         value: production
 

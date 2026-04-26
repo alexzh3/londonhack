@@ -42,6 +42,7 @@ uv run scripts/detect_layout_objects.py --session real_cafe
 uv run scripts/review_layout_objects_agent.py --session ai_cafe_a
 uv run scripts/review_layout_objects_agent.py --session real_cafe
 uv run scripts/benchmark_moondream_local.py --session ai_cafe_a
+uv run scripts/benchmark_moondream_05b_mf.py --session ai_cafe_a --preflight-only
 ```
 
 The tracking script writes `tracks.cached.json` and `annotated_before.mp4`;
@@ -52,8 +53,14 @@ script writes `object_review.cached.json` plus the stricter
 `scripts/review_layout_objects_moondream.py` when `MOONDREAM_API_KEY` is set;
 the same script supports local Photon/Kestrel mode via `--local`, and
 `benchmark_moondream_local.py` records whether the current edge GPU can run it.
-On the local MX330 laptop the benchmark skips safely because only ~2GB VRAM is
-free. The fake `ai_cafe_a` video currently gives the cleanest detection overlay.
+`benchmark_moondream_05b_mf.py` is the separate legacy Moondream 0.5B ONNX path:
+it downloads/unpacks the `.mf.gz` artifacts from the `vikhyatk/moondream2`
+`onnx` branch, including the exact user-supplied `moondream-0_5b-int8.mf.gz`
+and the sibling `int4` artifact. On the local MX330 laptop the Photon/Kestrel
+benchmark skips safely because only ~2GB VRAM is free; the legacy 0.5B int8
+ONNX path runs on CPU but has weak/noisy cafe furniture boxes, so YOLOv8x plus
+ObjectReviewAgent remains the demo cache. The fake `ai_cafe_a` video currently
+gives the cleanest detection overlay.
 
 For the Tier 1D real-CCTV pane in the frontend, transcode the annotated
 videos to H.264 (Chromium HTML5 `<video>` rejects the `cv2.VideoWriter`
@@ -123,7 +130,8 @@ URL in `cafetwin.html`).
 
 ### 1. Backend on Render
 
-`render.yaml` at the repo root declares the web service.
+`render.yaml` at the repo root declares the `cafetwin-backend-tier1` web
+service pinned to the `tier_1` branch.
 
 ```bash
 git push                          # Render auto-deploys when connected.
@@ -140,7 +148,7 @@ First-time:
 4. After Render assigns a public URL, set it in your local `.env`:
 
    ```bash
-   CAFETWIN_RENDER_URL=https://cafetwin-backend.onrender.com
+   CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com
    ```
 5. Smoke-test:
 
@@ -148,8 +156,8 @@ First-time:
    ./scripts/deploy_render.sh --smoke
    ```
 
-Optional: copy the deploy hook from **Render → cafetwin-backend → Settings →
-Deploy Hook** into `.env` as `RENDER_DEPLOY_HOOK=...` so subsequent runs of
+Optional: copy the deploy hook from **Render → cafetwin-backend-tier1 →
+Settings → Deploy Hook** into `.env` as `RENDER_DEPLOY_HOOK=...` so subsequent runs of
 `./scripts/deploy_render.sh` trigger a redeploy without the dashboard.
 
 ### 2. Frontend on Vercel

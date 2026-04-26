@@ -18,6 +18,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.cache/
 .coverage
 htmlcov/
 dist/
@@ -38,7 +39,10 @@ demo_data/mubit_fallback.jsonl
 **/object_detections.annotated.jpg
 **/object_detections.moondream.jpg
 **/object_detections.moondream.local.cached.json
+**/object_detections.moondream.05b_mf*.cached.json
+**/object_detections.moondream.05b_mf*.jpg
 **/moondream_local_benchmark.json
+**/moondream_05b_mf*_benchmark.json
 **/object_detector_benchmark/
 
 # Playwright MCP local screenshots from manual verification runs.

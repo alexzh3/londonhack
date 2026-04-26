@@ -35,7 +35,7 @@ def configure_logfire() -> None:
         import logfire
 
         logfire.configure(
-            service_name=os.getenv("LOGFIRE_SERVICE_NAME", "cafetwin-mvp"),
+            service_name=os.getenv("LOGFIRE_SERVICE_NAME", "cafetwin-backend-tier1"),
             environment=os.getenv("LOGFIRE_ENVIRONMENT", "demo"),
             send_to_logfire="if-token-present",
             console=False,
