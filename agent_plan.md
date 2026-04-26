@@ -452,6 +452,7 @@ demo_data/
       frame.jpg
       tracks.cached.json        # Tier 1B — YOLOv8n + ByteTrack person tracks
       annotated_before.mp4      # Tier 1B — overlay video for pitch/debugging
+      object_detections.cached.json  # Tier 1B — YOLOv8x static furniture/layout detections
       zones.json
       object_inventory.json
       kpi_windows.json
@@ -470,6 +471,7 @@ frontend/                       # existing Babel-in-browser demo — bind backen
 scripts/
   build_fixtures.py             # one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding
   run_yolo_offline.py           # Tier 1B: produce tracks.cached.json + annotated_before.mp4
+  detect_layout_objects.py      # Tier 1B: produce object_detections.cached.json static layout cache
 ```
 
 Current status (2026-04-26): `pyproject.toml`, `app/`, `app/api/`,
@@ -480,9 +482,13 @@ records, API responses, and Tier 2 twin layouts. `demo_data/sessions/ai_cafe_a/`
 now contains the extracted 5s frame and all six required JSON fixtures.
 `demo_data/sessions/real_cafe/` now contains a Tier 1A real-video fixture pack
 derived from the 20s frame of `cafe_videos/real_cctv.mp4`; full YOLO/ByteTrack
-perception now lands as Tier 1B via `app/vision/tracks.py` and
+person perception lands as Tier 1B via `app/vision/tracks.py` and
 `scripts/run_yolo_offline.py`, producing `tracks.cached.json` and
-`annotated_before.mp4` for `real_cafe`.
+`annotated_before.mp4` for `real_cafe`. Static layout perception is a separate
+Tier 1B lane via `app/vision/objects.py` and `scripts/detect_layout_objects.py`:
+the script runs high-accuracy YOLOv8x over the representative frame plus sampled
+video frames, aggregates duplicate furniture detections, and writes
+`object_detections.cached.json` for both `ai_cafe_a` and `real_cafe`.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -1267,6 +1273,9 @@ Tier 1A real-video checks:
 - [x] `annotated_before.mp4` is readable by ffmpeg and shows YOLO/ByteTrack boxes with track IDs and zone labels.
 - [x] `uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2` produces the preferred fake-session `tracks.cached.json` and `annotated_before.mp4`.
 - [x] `load_tracks_cache("demo_data/sessions/ai_cafe_a/tracks.cached.json")` validates a `TracksCache` with 11 tracks, 1275 detections, 180 processed frames, and role counts `staff=1`, `customer=10`, `unknown=0`.
+- [x] `uv run scripts/detect_layout_objects.py --session ai_cafe_a` runs high-accuracy YOLOv8x static layout detection and writes `object_detections.cached.json` with 31 aggregated furniture detections (`chair=15`, `dining table=7`, `couch=1`, `potted plant=8`) from 345 raw detections across 9 frames.
+- [x] `uv run scripts/detect_layout_objects.py --session real_cafe` writes `object_detections.cached.json` with 12 aggregated detections (`chair=11`, `dining table=1`) from 84 raw detections across 9 frames; real CCTV static furniture recall remains harder/noisier than the fake session.
+- [x] `load_object_detections_cache(...)` validates both static object caches and asserts geometry/source-frame/zone integrity.
 
 Tier 1C live-KPI engine checks:
 
@@ -1278,6 +1287,17 @@ Tier 1C live-KPI engine checks:
 - [x] Logfire trace contains a `kpi_engine.compute_window` span inside `evidence_pack.build` when live KPIs engage (only on `source_kind=real` sessions with tracks).
 - [x] Live `/api/run` on `real_cafe` produces an `OptimizationAgent.rationale` that cites the live numbers (e.g. `staff_walk_distance_px 487 → 617 → 1622 px`, `table_detour_score 0.6 → 1.0 → 2.4`) instead of fixture values.
 - [x] `tests/test_kpi_engine.py` covers: empty windows (schema-valid frames_sampled), distinct-customer queue peak, sampling-cadence-aware obstruction seconds, distinct-pair crossings within threshold, walk-distance summation, schedule preservation, in-window-only filtering, congestion clamp `[0, 1]`, both env escape hatches, both default gating paths, memory_id preservation through live, and missing-tracks-cache → fixture fallback.
+
+Tier 1D visible-perception checks (real CCTV in the canvas):
+
+- [x] FastAPI mounts `/cafe_videos` and `/demo_data` as `StaticFiles` so the browser can fetch real-CCTV assets (`HTTP 206 Partial Content` works for video range requests, CORS headers present).
+- [x] `evidence_pack._assets()` surfaces `assets.annotated_video` when an `annotated_before.web.mp4` (H.264) or `annotated_before.mp4` exists per session, preferring the web-safe variant.
+- [x] `scripts/transcode_annotated_for_web.sh` regenerates `annotated_before.web.mp4` from `annotated_before.mp4` per session via `ffmpeg -c:v libx264 -movflags +faststart`. Both files are gitignored as multi-MB pitch artifacts.
+- [x] `frontend/api.js::cafetwinApi.assetUrl(rel)` resolves backend-relative asset paths against `API_BASE` and mirrors the page's hostname (avoids the Chromium `localhost`/`127.0.0.1` mismatch that broke media element loading).
+- [x] `<RealCCTVPane>` in `frontend/app-canvas.jsx` plays `assets.annotated_video` via `<video autoplay loop muted playsInline>` with a "YOLOv8n · ByteTrack · zone polygons" badge and overlay HUD (fps/trk/src). When no overlay video exists, falls back to the raw `assets.video` and badges as "raw CCTV".
+- [x] New `cctv` toolbar toggle (next to `compare`). When ON in split mode, the left pane is the real CCTV and the right pane is the iso twin (active scenario + recommendation). When ON without split, the canvas shows real CCTV alone. Disabled state when no asset is available.
+- [x] On `?session=real_cafe`, both `realCctv` and `compareMode` auto-engage on first state load via a `useRef`-guarded effect (so the demo opens directly to the killer split: real CCTV ‖ iso twin).
+- [x] Verified end-to-end via Playwright MCP: `paneWidth=435, paneHeight=610, paused=false, currentTime>0` on real_cafe split-pane, and `paneWidth=877, currentTime>0` on ai_cafe_a single-pane after manual toggle.
 
 ## Pitch copy (best-case demo recommendation)
 

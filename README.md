@@ -37,10 +37,30 @@ Tier 1B real-video tracking artifacts are generated offline:
 ```bash
 uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
 uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
+uv run scripts/detect_layout_objects.py --session ai_cafe_a
+uv run scripts/detect_layout_objects.py --session real_cafe
 ```
 
-This writes `tracks.cached.json` and `annotated_before.mp4` under each session.
-The fake `ai_cafe_a` video currently gives the cleanest detection overlay.
+The tracking script writes `tracks.cached.json` and `annotated_before.mp4`;
+the static layout script writes high-accuracy YOLOv8x
+`object_detections.cached.json` artifacts under each session. The fake
+`ai_cafe_a` video currently gives the cleanest detection overlay.
+
+For the Tier 1D real-CCTV pane in the frontend, transcode the annotated
+videos to H.264 (Chromium HTML5 `<video>` rejects the `cv2.VideoWriter`
+default `mp4v` codec):
+
+```bash
+./scripts/transcode_annotated_for_web.sh        # all sessions
+./scripts/transcode_annotated_for_web.sh real_cafe   # one session
+```
+
+Both `annotated_before.mp4` and `annotated_before.web.mp4` are gitignored
+(multi-MB pitch artifacts). Open
+<http://127.0.0.1:5500/cafetwin.html?session=real_cafe> after running the
+backend to see the killer split: real CCTV with YOLO+ByteTrack overlays
+on the left, iso twin responding to the agent's recommendation on the
+right.
 
 ## Prerequisites
 

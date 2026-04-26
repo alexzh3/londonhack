@@ -223,6 +223,19 @@ def _assets(session_id: str) -> dict[str, str]:
     if frame_path.exists():
         assets["frame"] = str(frame_path.relative_to(config.ROOT_DIR))
 
+    # Tier 1D: surface the YOLO+ByteTrack annotated overlay video when the
+    # offline vision script has produced one, so the frontend can play the
+    # real-CCTV-with-detections asset side-by-side with the iso twin.
+    # Prefer the H.264-encoded `.web.mp4` variant for browser playback
+    # (cv2.VideoWriter's default `mp4v` fourcc is MPEG-4 part 2, which
+    # Chromium's HTML5 video element rejects with MEDIA_ERR_SRC_NOT_SUPPORTED).
+    annotated_web = base / "annotated_before.web.mp4"
+    annotated_raw = base / "annotated_before.mp4"
+    if annotated_web.exists():
+        assets["annotated_video"] = str(annotated_web.relative_to(config.ROOT_DIR))
+    elif annotated_raw.exists():
+        assets["annotated_video"] = str(annotated_raw.relative_to(config.ROOT_DIR))
+
     try:
         manifest = _load_json(session_id, "session.json")
     except (OSError, ValueError):

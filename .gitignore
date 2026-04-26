@@ -31,8 +31,16 @@ demo_data/mubit_fallback.jsonl
 *.pt
 
 # Vision pipeline overlay videos (pitch artifacts; multi-MB; not runtime data).
-# Source CCTV under cafe_videos/ stays tracked.
+# Source CCTV under cafe_videos/ stays tracked. The H.264 web-safe transcode
+# (annotated_before.web.mp4) is regenerated via scripts/transcode_annotated_for_web.sh.
 **/annotated_before.mp4
+**/annotated_before.web.mp4
+**/object_detections.annotated.jpg
+**/object_detections.moondream.jpg
+**/object_detector_benchmark/
+
+# Playwright MCP local screenshots from manual verification runs.
+tier_1*.png
 
 # Playwright MCP session artifacts (snapshots, console logs, network logs)
 .playwright-mcp/

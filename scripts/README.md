@@ -69,7 +69,12 @@ and KPI-engine scripts behind the same `demo_data/` contracts.
 
 - `build_fixtures.py` — one-shot per session: ffmpeg representative-frame extract + hand-author scaffolding.
 - `run_yolo_offline.py` — Tier 1B: run YOLOv8n + ByteTrack offline and produce `tracks.cached.json` plus `annotated_before.mp4` per session.
+- `detect_layout_objects.py` — Tier 1B static layout pass: run high-accuracy YOLOv8x over the representative frame plus sampled video frames, aggregate duplicate furniture detections, and produce `object_detections.cached.json` per session.
+- `transcode_annotated_for_web.sh` — Tier 1D: transcode `annotated_before.mp4` (cv2 default `mp4v` codec, browser-incompatible) to `annotated_before.web.mp4` (H.264) so the frontend's real CCTV pane can play it.
 
 ```bash
 uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
+uv run scripts/detect_layout_objects.py --session ai_cafe_a
+uv run scripts/detect_layout_objects.py --session real_cafe
+./scripts/transcode_annotated_for_web.sh
 ```

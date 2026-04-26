@@ -5,7 +5,8 @@
 // are kept as design intent for Tier 2 and visually marked as stubs.
 const ACTIVE_LAYERS = new Set(["heat", "grid"]);
 
-function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom }) {
+function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
+                         realCctv, setRealCctv, realCctvAvailable }) {
   const toggle = (k) => setLayers({ ...layers, [k]: !layers[k] });
   return (
     <div className="cv-toolbar">
@@ -32,6 +33,19 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom }) {
       </div>
       <span className="cv-spacer" />
       <div className="cv-tg">
+        <span className="cv-lbl">cctv</span>
+        <button
+          className={`cv-toggle ${realCctv ? "on" : ""} ${realCctvAvailable ? "" : "cv-toggle-disabled"}`}
+          onClick={() => realCctvAvailable && setRealCctv(!realCctv)}
+          title={realCctvAvailable
+            ? "Toggle real CCTV with YOLO/ByteTrack overlays"
+            : "No tracks.cached video for this session"}
+          disabled={!realCctvAvailable}>
+          <span className="cv-toggle-dot" />
+          <span>{realCctv ? "real.on" : "real.off"}</span>
+        </button>
+      </div>
+      <div className="cv-tg">
         <span className="cv-lbl">compare</span>
         <button className={`cv-toggle ${split ? "on" : ""}`} onClick={() => setSplit(!split)}>
           <span className="cv-toggle-dot" />
@@ -42,6 +56,54 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom }) {
         <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}>−</button>
         <span>{zoom.toFixed(2)}×</span>
         <button onClick={() => setZoom(Math.min(2, zoom + 0.1))}>+</button>
+      </div>
+    </div>
+  );
+}
+
+// Real-CCTV pane — plays the offline YOLO+ByteTrack annotated video (or
+// raw CCTV when overlays aren't available). Same outer chrome as
+// `CanvasPane` so it slots into the split-compare layout. Tier 1D: makes
+// the "perception is real" claim visible to anyone watching the demo.
+function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const v = ref.current;
+    if (!v || !src) return;
+    // Loop is set via attribute, but Safari/iOS sometimes pauses on tab
+    // switches; nudge play() on src change to recover.
+    v.play().catch(() => {});
+  }, [src]);
+  return (
+    <div className="cv-pane cv-real-pane">
+      <div className="cv-axes"><span>x →</span><span>↓ y</span><span>real CCTV</span></div>
+      {src ? (
+        <video
+          ref={ref}
+          className="cv-real-video"
+          src={src}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+        />
+      ) : (
+        <div className="cv-real-empty">
+          <div>no real CCTV asset</div>
+          <small>run <code>scripts/run_yolo_offline.py</code> to generate one</small>
+        </div>
+      )}
+      <CanvasOverlay label={label} sub={sub} side={side}
+        kpi={[
+          { l: "fps", v: hasOverlays ? "30" : "—" },
+          { l: "trk", v: hasOverlays ? "byte" : "off" },
+          { l: "src", v: hasOverlays ? "yolo" : "raw" },
+        ]} />
+      <div className={`cv-real-badge ${hasOverlays ? "" : "cv-real-badge-raw"}`}>
+        {hasOverlays
+          ? "YOLOv8n · ByteTrack · zone polygons"
+          : "raw CCTV (no overlays cached)"}
       </div>
     </div>
   );
@@ -240,24 +302,46 @@ function TimeBar({ simTime, setSimTime, running, setRunning, speed, setSpeed, da
 
 function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, setZoom,
                      simTime, setSimTime, running, setRunning, speed, setSpeed, dayLength,
-                     recommendation }) {
+                     recommendation,
+                     realCctv, setRealCctv, realCctvUrl, realCctvHasOverlays, sessionLabel }) {
   // The agent's LayoutChange is always rendered against the *active*
   // scenario (right pane in split mode, the only pane otherwise). The
   // baseline pane stays untouched so the user can see "before vs proposed"
   // without the proposal contaminating the baseline frame.
+  // When the user has the real CCTV toggle on we replace whichever pane
+  // would have shown the *baseline* iso scene with the actual annotated
+  // video. In split mode that means: left = real CCTV, right = iso twin
+  // (active scenario, with the agent's recommended shift). With split off
+  // and realCctv on, we drop the iso entirely and show the video alone —
+  // useful when the pitch lens is "look, real perception" rather than
+  // "look, before vs after."
+  const showRealLeft = !!(realCctv && realCctvUrl);
+  const realLabel = sessionLabel || "real CCTV";
+  const realSub = realCctvHasOverlays
+    ? "tracks.cached.json · zone polygons"
+    : "raw CCTV (no overlays cached)";
   return (
     <div className="canvas">
-      <CanvasToolbar split={split} setSplit={setSplit} layers={layers} setLayers={setLayers} zoom={zoom} setZoom={setZoom} />
+      <CanvasToolbar split={split} setSplit={setSplit} layers={layers} setLayers={setLayers} zoom={zoom} setZoom={setZoom}
+        realCctv={realCctv} setRealCctv={setRealCctv} realCctvAvailable={!!realCctvUrl} />
       <div className={`cv-stage-wrap ${split ? "cv-split" : ""}`}>
         {split ? (
           <>
-            <CanvasPane scn={base} side="left" zoom={zoom} layers={layers}
-              running={running} speed={speed} />
+            {showRealLeft ? (
+              <RealCCTVPane src={realCctvUrl} side="left" label={realLabel} sub={realSub}
+                hasOverlays={realCctvHasOverlays} />
+            ) : (
+              <CanvasPane scn={base} side="left" zoom={zoom} layers={layers}
+                running={running} speed={speed} />
+            )}
             <div className="cv-divider"><div className="cv-divider-handle"><span>‖</span></div></div>
             <CanvasPane scn={active} side="right" zoom={zoom} layers={layers}
               running={running} speed={speed}
               recommendation={recommendation} />
           </>
+        ) : showRealLeft ? (
+          <RealCCTVPane src={realCctvUrl} side="right" label={realLabel} sub={realSub}
+            hasOverlays={realCctvHasOverlays} />
         ) : (
           <CanvasPane scn={active} side="right" zoom={zoom} layers={layers}
             running={running} speed={speed}

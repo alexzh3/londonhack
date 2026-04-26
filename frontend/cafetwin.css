@@ -360,6 +360,72 @@ button { font: inherit; color: inherit; cursor: default; }
   border-radius: 3px;
 }
 
+/* Tier 1D — real CCTV pane styling. Drops the iso-pane chrome look in
+ * favour of a flat dark "video monitor" feel so the YOLO/ByteTrack
+ * overlays read as a CV feed, not a synthetic scene.
+ *
+ * `flex: 1; min-width: 0` is required because the pane only contains
+ * absolutely-positioned content; without explicit sizing it collapses
+ * to 0×0 in the parent's single-pane flex layout. The iso pane gets
+ * around this naturally via its SVG's intrinsic dimensions. */
+.cv-real-pane {
+  background: #050608;
+  flex: 1;
+  min-width: 0;
+}
+.cv-real-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.cv-real-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px;
+  color: var(--fg-3);
+  font-family: var(--mono); font-size: 11px;
+  background: repeating-linear-gradient(
+    45deg, #0a0c10, #0a0c10 8px, #0d1015 8px, #0d1015 16px);
+}
+.cv-real-empty small { color: var(--fg-3); opacity: 0.7; }
+.cv-real-empty code {
+  background: rgba(255,255,255,0.06); padding: 1px 4px; border-radius: 2px;
+}
+.cv-real-badge {
+  position: absolute; left: 12px; bottom: 38px;
+  font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--accent-2);
+  background: rgba(8, 11, 16, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 8px; border-radius: 3px;
+  pointer-events: none;
+}
+.cv-real-badge::before {
+  content: "● "; color: #f04646; font-size: 10px;
+  margin-right: 2px;
+  animation: cv-real-rec 1.6s ease-in-out infinite;
+}
+.cv-real-badge-raw {
+  color: var(--fg-2);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.cv-real-badge-raw::before {
+  color: var(--fg-3); animation: none;
+}
+@keyframes cv-real-rec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.cv-real-pane .cv-axes { color: rgba(255, 255, 255, 0.45); }
+
+.cv-toggle-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .cv-overlay {
   position: absolute; top: 12px;
   font-family: var(--mono); font-size: 10.5px;
