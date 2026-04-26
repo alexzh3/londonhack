@@ -22,12 +22,35 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Pick up CAFETWIN_RENDER_URL etc. from .env if set there.
-if [ -f .env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
+# Pick up only the deploy target from .env, and only when it was not already
+# supplied by the calling shell. This avoids exporting local API keys/secrets
+# into the Vercel CLI process during frontend deploys.
+load_render_url_from_dotenv() {
+  if [ ! -f .env ]; then
+    return 0
+  fi
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in
+      CAFETWIN_RENDER_URL=*|export\ CAFETWIN_RENDER_URL=*)
+        line="${line#export }"
+        CAFETWIN_RENDER_URL="${line#CAFETWIN_RENDER_URL=}"
+        CAFETWIN_RENDER_URL="${CAFETWIN_RENDER_URL%%#*}"
+        CAFETWIN_RENDER_URL="${CAFETWIN_RENDER_URL%"${CAFETWIN_RENDER_URL##*[![:space:]]}"}"
+        CAFETWIN_RENDER_URL="${CAFETWIN_RENDER_URL%\"}"
+        CAFETWIN_RENDER_URL="${CAFETWIN_RENDER_URL#\"}"
+        CAFETWIN_RENDER_URL="${CAFETWIN_RENDER_URL%\'}"
+        CAFETWIN_RENDER_URL="${CAFETWIN_RENDER_URL#\'}"
+        export CAFETWIN_RENDER_URL
+        return 0
+        ;;
+    esac
+  done < .env
+}
+
+if [ -z "${CAFETWIN_RENDER_URL:-}" ]; then
+  load_render_url_from_dotenv
 fi
 
 if [ -z "${CAFETWIN_RENDER_URL:-}" ]; then

@@ -51,6 +51,13 @@ git push
 # 5) Copy the printed Vercel URL — that is the demo URL.
 ```
 
+Current hosted split:
+
+| Demo | Vercel project / URL | Backend |
+|---|---|---|
+| MVP | `frontend` — <https://frontend-hazel-xi-17.vercel.app/cafetwin.html> | <https://cafetwin-backend.onrender.com> |
+| Tier 1 | `frontend-tier1` — <https://frontend-tier1.vercel.app/cafetwin.html> | <https://cafetwin-backend-tier1.onrender.com> |
+
 Subsequent redeploys:
 
 ```bash
@@ -60,7 +67,13 @@ RENDER_DEPLOY_HOOK=... ./scripts/deploy_render.sh   # explicit deploy hook
 ```
 
 Both deploy scripts read `CAFETWIN_RENDER_URL`, `RENDER_DEPLOY_HOOK`, etc.
-from `.env` if not set in the calling shell.
+from `.env` if not set in the calling shell. `deploy_vercel.sh` only needs
+`CAFETWIN_RENDER_URL`; passing it inline keeps local backend/API secrets out of
+the Vercel CLI environment:
+
+```bash
+CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com ./scripts/deploy_vercel.sh
+```
 
 ## Tier 1 / Tier 2
 

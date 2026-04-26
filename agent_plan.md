@@ -183,11 +183,13 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 - **MuBit** — durable raw event store for recommendations + feedback; recall builds a derived, decision-aware memory view so the agent sees accepted/rejected prior proposals. Degrades silently to jsonl when `MUBIT_API_KEY` unset.
 - **Logfire** — auto-instruments Pydantic AI; manual spans for evidence pack build, KPI compute (Tier 1), validation, memory write, MuBit recall.
 - **Render** — backend hosting via `render.yaml`; the Tier 1 blueprint pins `branch: tier_1` and provisions service `cafetwin-backend-tier1`. Build uses `uv sync --frozen --no-dev --no-install-project` so dependency install does not trip setuptools flat-layout package discovery on `frontend/`, `demo_data/`, or `cafe_videos/`.
+- **Vercel** — static frontend hosting from `frontend/`; MVP and Tier 1 are separate projects/URLs. MVP stays on project `frontend` at `https://frontend-hazel-xi-17.vercel.app/cafetwin.html` with `/api/*` rewritten to `https://cafetwin-backend.onrender.com/api/*`; Tier 1 is project `frontend-tier1` at `https://frontend-tier1.vercel.app/cafetwin.html` with `/api/*` rewritten to `https://cafetwin-backend-tier1.onrender.com/api/*`. Passing `CAFETWIN_RENDER_URL` inline avoids reading/exporting local backend secrets into the Vercel CLI process.
 
 ### Judge-facing overview asset
 
 - `docs/cafetwin-tier1-overview.html` is the editable 16:9 source for a judge-facing Tier 1 product overview. It renders the `real_cafe` frame with annotated-perception callouts, the typed PatternAgent -> OptimizationAgent pipeline, and the demo UI recommendation/memory/trace story.
 - `docs/cafetwin-tier1-overview.png` is the generated 1600 x 900 deck/README-ready artifact.
+- `README.md` and `docs/architecture/README.md` use a Mermaid Tier 1 architecture diagram instead of a generated architecture PNG/HTML. The diagram shows existing CCTV video files → offline perception → typed evidence → Pydantic AI agents → UI, memory, and Logfire.
 
 ## Sequence — `/api/run` and `/api/feedback`
 
@@ -481,7 +483,7 @@ images/                         # gitignored generated screenshots / annotated s
 scripts/
   setup.sh / dev.sh             # local bootstrap and backend+frontend dev loop
   test.sh / smoke.sh            # pytest+ruff and running-backend shape smoke test
-  deploy_render.sh / deploy_vercel.sh  # hosted backend/frontend deployment helpers
+  deploy_render.sh / deploy_vercel.sh  # hosted backend/frontend deployment helpers; Vercel helper rewrites to the Tier 1 Render backend
   run_yolo_offline.py           # Tier 1B: produce tracks.cached.json + annotated_before.mp4
   detect_layout_objects.py      # Tier 1B: produce object_detections.cached.json static layout cache
   review_layout_objects_agent.py      # Tier 1B: Pydantic AI reviewer -> reviewed object cache

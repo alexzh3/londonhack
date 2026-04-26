@@ -7,6 +7,50 @@ an existing Babel-in-browser JSX demo binds it all into a clickable UI.
 
 > POS tells operators what sold. CafeTwin shows why throughput stalled.
 
+![CafeTwin Tier 1 overview](docs/cafetwin-tier1-overview.png)
+
+*Judge-facing overview — annotated CCTV input, recommended layout floor plan, the live `LayoutChange` recommendation card, and the four proof points. ([source HTML](docs/cafetwin-tier1-overview.html))*
+
+## Tier 1 architecture
+
+```mermaid
+flowchart LR
+    video["Existing CCTV video files<br/>(real_cafe, ai_cafe_a)"]
+
+    subgraph perception["Offline Tier 1 perception"]
+        tracks["YOLOv8n + ByteTrack<br/>people tracks + annotated video"]
+        objects["YOLOv8x static objects<br/>reviewed by ObjectReviewAgent"]
+        kpi["KPI engine<br/>queue, detours, crossings, walk distance"]
+    end
+
+    evidence["Typed CafeEvidencePack<br/>zones + inventory + KPIs + pattern + prior memories"]
+
+    subgraph agents["Pydantic AI reasoning"]
+        pattern["PatternAgent<br/>OperationalPattern"]
+        optimize["OptimizationAgent<br/>validated LayoutChange"]
+    end
+
+    ui["CafeTwin UI<br/>CCTV overlay + digital twin + recommendation card"]
+    memory["MuBit + local jsonl<br/>recommendations and feedback memory"]
+    trace["Logfire<br/>run trace and audit trail"]
+
+    video --> tracks
+    video --> objects
+    tracks --> kpi
+    objects --> evidence
+    kpi --> evidence
+    evidence --> pattern --> optimize --> ui
+    ui -->|accept / reject| memory
+    memory -->|prior decisions| evidence
+    evidence -. spans .-> trace
+    pattern -. spans .-> trace
+    optimize -. spans .-> trace
+```
+
+*Existing CCTV is processed offline into typed evidence. Pydantic AI agents turn
+that evidence into a validated layout recommendation, while MuBit/jsonl memory
+and Logfire make the result repeatable and auditable.*
+
 For architecture detail see [`overview_plan.md`](overview_plan.md) (high
 level) and [`agent_plan.md`](agent_plan.md) (engineering). Current build
 state is summarised in `overview_plan.md` § Implementation Status.
@@ -124,6 +168,13 @@ FastAPI backend**. Vercel rewrites `/api/*` to the Render origin so the
 deployed frontend stays same-origin (no CORS preflight, no hardcoded API
 URL in `cafetwin.html`).
 
+Current hosted demo split:
+
+| Demo | Vercel project / URL | Backend |
+|---|---|---|
+| MVP | `frontend` — <https://frontend-hazel-xi-17.vercel.app/cafetwin.html> | <https://cafetwin-backend.onrender.com> |
+| Tier 1 | `frontend-tier1` — <https://frontend-tier1.vercel.app/cafetwin.html> | <https://cafetwin-backend-tier1.onrender.com> |
+
 ### 1. Backend on Render
 
 `render.yaml` at the repo root declares the `cafetwin-backend-tier1` web
@@ -165,7 +216,13 @@ Settings → Deploy Hook** into `.env` as `RENDER_DEPLOY_HOOK=...` so subsequent
 This generates `frontend/vercel.json` with a `/api/*` rewrite pointing at
 `CAFETWIN_RENDER_URL`, then runs `vercel deploy --prod` from the `frontend/`
 directory. Prereqs: a Vercel account, `vercel login` once. The script falls
-back to `npx vercel@latest` if the CLI is not installed globally.
+back to `npx vercel@latest` if the CLI is not installed globally. For a
+secret-minimal deploy, pass the backend URL inline so the script does not need
+to read `.env`:
+
+```bash
+CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com ./scripts/deploy_vercel.sh
+```
 
 ### Why this split
 

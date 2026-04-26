@@ -3,892 +3,788 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1600, initial-scale=1" />
-    <title>CafeTwin Tier 1 Overview</title>
+    <title>CafeTwin · Tier 1 Overview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
     <style>
       :root {
-        --ink: #101417;
-        --muted: #52606b;
-        --line: #d5dde2;
-        --paper: #f3f6f8;
-        --panel: #ffffff;
-        --panel-soft: #f7fafb;
-        --teal: #0f766e;
-        --teal-soft: #d7f2ee;
-        --blue: #2563eb;
-        --blue-soft: #dfe9ff;
-        --amber: #d97706;
-        --amber-soft: #fff1d6;
-        --green: #15803d;
-        --green-soft: #dff7e8;
-        --rose: #be123c;
-        --rose-soft: #ffe4ec;
-        --violet: #6d28d9;
-        --violet-soft: #ede9fe;
+        --bg: #fbfaf6;
+        --paper: #ffffff;
+        --ink: #0a0a0a;
+        --ink-2: #1f1f1f;
+        --soft: #3d3d3d;
+        --mute: #777570;
+        --line: #e2dfd6;
+        --line-2: #ecead9;
+        --teal: #0f6f5e;
+        --teal-soft: #e3f1ec;
+        --teal-deep: #084f44;
+        --amber: #b95f0b;
+        --amber-soft: #fbe8d2;
+        --indigo: #3b3489;
+        --indigo-soft: #ebe9f9;
+        --rose: #9b1c44;
+        --rose-soft: #f8dde6;
+        --green: #166534;
+        --green-soft: #d8efdf;
+        --mono: "JetBrains Mono", "SFMono-Regular", "Menlo", "Consolas",
+          "Liberation Mono", monospace;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
-      html,
-      body {
+      html, body {
         margin: 0;
         width: 1600px;
         height: 900px;
         overflow: hidden;
-        background: var(--paper);
+        background: var(--bg);
         color: var(--ink);
         font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
-        letter-spacing: 0;
+          Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          sans-serif;
+        font-feature-settings: "ss01", "cv11";
+        -webkit-font-smoothing: antialiased;
       }
 
-      .slide {
+      .canvas {
         position: relative;
         width: 1600px;
         height: 900px;
-        padding: 34px 44px 30px;
+        padding: 38px 56px 24px;
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(243, 246, 248, 0.96)),
-          radial-gradient(circle at 12% 12%, rgba(15, 118, 110, 0.08), transparent 34%),
-          radial-gradient(circle at 88% 18%, rgba(217, 119, 6, 0.08), transparent 30%);
+          radial-gradient(circle at 4% 0%, rgba(15, 111, 94, 0.07), transparent 38%),
+          radial-gradient(circle at 100% 6%, rgba(185, 95, 11, 0.06), transparent 32%),
+          var(--bg);
       }
 
-      header {
+      /* ===== top bar ===== */
+      .topbar {
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 28px;
-        margin-bottom: 18px;
-      }
-
-      .title-block {
-        max-width: 980px;
-      }
-
-      .eyebrow {
-        display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: var(--teal-soft);
-        color: #074e49;
-        font-size: 18px;
-        font-weight: 800;
-        text-transform: uppercase;
+        justify-content: space-between;
       }
 
-      .eyebrow::before {
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-mark {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        background: var(--ink);
+        color: var(--bg);
+        font-family: var(--mono);
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: -0.4px;
+      }
+      .brand-mark::after {
         content: "";
-        width: 9px;
-        height: 9px;
+        position: absolute;
+        right: -3px;
+        bottom: -3px;
+        width: 10px;
+        height: 10px;
         border-radius: 999px;
         background: var(--teal);
+        box-shadow: 0 0 0 2px var(--bg);
       }
 
-      h1 {
-        margin: 12px 0 8px;
-        font-size: 48px;
-        line-height: 0.98;
-        font-weight: 900;
+      .brand-name {
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: -0.4px;
       }
 
-      .subtitle {
-        margin: 0;
-        color: var(--muted);
-        font-size: 21px;
-        line-height: 1.24;
-        font-weight: 600;
+      .brand-sep { color: var(--line); font-weight: 400; }
+
+      .brand-sub {
+        color: var(--mute);
+        font-family: var(--mono);
+        font-size: 12px;
       }
 
-      .proof-strip {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        width: 470px;
-      }
-
-      .proof {
-        min-height: 52px;
-        padding: 9px 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.88);
-        box-shadow: 0 10px 24px rgba(16, 20, 23, 0.05);
-      }
-
-      .proof strong {
-        display: block;
-        font-size: 17px;
-        line-height: 1.1;
-      }
-
-      .proof span {
-        display: block;
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.18;
-        font-weight: 650;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: 500px 430px 536px;
-        gap: 22px;
-        height: 650px;
-      }
-
-      .panel {
-        overflow: hidden;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-        box-shadow: 0 18px 48px rgba(16, 20, 23, 0.08);
-      }
-
-      .panel-head {
+      .topbar-right {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        min-height: 62px;
-        padding: 16px 18px 13px;
-        border-bottom: 1px solid var(--line);
-        background: var(--panel-soft);
-      }
-
-      .panel-head h2 {
-        margin: 0;
-        font-size: 22px;
-        line-height: 1.1;
+        gap: 6px;
       }
 
       .pill {
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        padding: 6px 9px;
+        padding: 6px 11px;
+        border: 1px solid var(--line);
         border-radius: 999px;
-        font-size: 13px;
-        line-height: 1;
-        font-weight: 850;
-        white-space: nowrap;
+        background: var(--paper);
+        color: var(--soft);
+        font-size: 12px;
+        font-weight: 600;
       }
 
-      .pill.teal {
-        background: var(--teal-soft);
-        color: #07514a;
+      .pill .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--mute);
       }
 
-      .pill.blue {
-        background: var(--blue-soft);
-        color: #173f96;
+      .pill.live .dot { background: var(--teal); box-shadow: 0 0 0 3px rgba(15,111,94,0.18); }
+      .pill.live { color: var(--teal-deep); border-color: rgba(15,111,94,0.25); }
+
+      .pill strong { color: var(--ink); font-weight: 800; }
+
+      /* ===== hero ===== */
+      .hero {
+        display: grid;
+        grid-template-columns: 470px 1fr;
+        gap: 44px;
+        margin-top: 26px;
+        height: 540px;
       }
 
-      .pill.amber {
-        background: var(--amber-soft);
-        color: #8a4d05;
-      }
-
-      .pill.green {
-        background: var(--green-soft);
-        color: #0d5428;
-      }
-
-      .pill.rose {
-        background: var(--rose-soft);
-        color: #831331;
-      }
-
-      .pill.violet {
-        background: var(--violet-soft);
-        color: #4c1d95;
-      }
-
-      .footage {
-        padding: 16px;
-      }
-
-      .video-frame {
+      .copy {
         position: relative;
-        overflow: hidden;
-        height: 260px;
-        border: 1px solid #162025;
-        border-radius: 8px;
-        background: #050708;
+        padding-top: 6px;
       }
 
-      .video-frame img {
+      .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: var(--teal-soft);
+        color: var(--teal-deep);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+      }
+      .kicker .k-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--teal);
+      }
+
+      .title {
+        margin: 18px 0 0;
+        font-size: 88px;
+        line-height: 0.9;
+        font-weight: 900;
+        letter-spacing: -3.4px;
+      }
+      .title .accent { color: var(--teal); }
+
+      .tagline {
+        margin: 14px 0 0;
+        font-size: 22px;
+        line-height: 1.3;
+        font-weight: 600;
+        color: var(--ink-2);
+        max-width: 460px;
+      }
+
+      .lede {
+        margin: 22px 0 0;
+        padding-top: 22px;
+        border-top: 1px solid var(--line);
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--soft);
+        max-width: 460px;
+      }
+      .lede b { color: var(--ink); font-weight: 700; }
+      .lede .mono { font-family: var(--mono); color: var(--teal-deep); font-weight: 600; }
+
+      .quote {
+        margin: 18px 0 0;
+        padding: 14px 16px;
+        border-left: 3px solid var(--teal);
+        background: rgba(15, 111, 94, 0.04);
+        font-size: 15px;
+        line-height: 1.45;
+        color: var(--ink-2);
+        font-weight: 600;
+        max-width: 460px;
+        border-radius: 0 6px 6px 0;
+      }
+      .quote em { font-style: normal; color: var(--teal-deep); font-weight: 800; }
+
+      /* ===== product shot ===== */
+      .product {
+        position: relative;
+      }
+
+      .shots {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        height: 100%;
+      }
+
+      .shot {
+        position: relative;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #0a0a0a;
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.04),
+          0 36px 80px -28px rgba(10, 10, 10, 0.32),
+          0 0 0 1px var(--line-2);
+      }
+
+      .shot .frame {
+        position: absolute;
+        inset: 0;
+      }
+
+      .shot img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        filter: saturate(1.04) contrast(1.02);
+        filter: saturate(1.04) contrast(1.04);
       }
 
-      .video-frame::after {
+      /* film-grain overlay on cctv shot — kept subtle so YOLO labels stay readable */
+      .shot.cctv::after {
         content: "";
         position: absolute;
         inset: 0;
         background:
-          linear-gradient(180deg, rgba(2, 6, 8, 0.02), rgba(2, 6, 8, 0.28)),
-          repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 5px);
+          linear-gradient(180deg, rgba(2, 6, 8, 0) 60%, rgba(2, 6, 8, 0.18) 100%);
         pointer-events: none;
       }
 
-      .hud {
+      .shot-hud {
         position: absolute;
-        left: 12px;
-        top: 12px;
-        z-index: 2;
-        display: flex;
-        gap: 8px;
-      }
-
-      .hud-chip {
+        z-index: 5;
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        padding: 7px 9px;
+        gap: 8px;
+        padding: 6px 10px;
         border-radius: 7px;
-        background: rgba(3, 7, 10, 0.78);
+        background: rgba(8, 10, 12, 0.78);
         color: #ffffff;
-        font-size: 13px;
-        font-weight: 850;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        backdrop-filter: blur(4px);
       }
 
-      .rec-dot {
-        width: 8px;
-        height: 8px;
+      .shot-hud.tl { left: 14px; top: 14px; }
+      .shot-hud.tr { right: 14px; top: 14px; }
+      .shot-hud.bl { left: 14px; bottom: 14px; }
+
+      .shot-hud .rec-dot {
+        width: 7px;
+        height: 7px;
         border-radius: 999px;
         background: #f43f5e;
         box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.18);
       }
 
+      /* zones + boxes overlay (real cctv) */
+      .overlay { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+
       .zone {
         position: absolute;
-        z-index: 1;
-        border: 2px solid rgba(34, 211, 238, 0.88);
-        background: rgba(34, 211, 238, 0.13);
+        border: 1.5px solid;
+        border-radius: 5px;
         transform: skewX(-9deg);
       }
 
-      .zone.queue {
-        left: 68%;
-        top: 42%;
-        width: 24%;
-        height: 39%;
-        border-color: rgba(244, 63, 94, 0.9);
-        background: rgba(244, 63, 94, 0.15);
+      .zone .z-tag {
+        position: absolute;
+        left: 0;
+        top: -22px;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: rgba(8, 10, 12, 0.82);
+        color: #fff;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        transform: skewX(9deg);
       }
+
+      .zone.queue {
+        left: 56%; top: 38%; width: 32%; height: 46%;
+        border-color: rgba(244, 63, 94, 0.85);
+        background: rgba(244, 63, 94, 0.12);
+      }
+      .zone.queue .z-tag { color: #fecdd3; background: rgba(159, 18, 57, 0.85); }
 
       .zone.staff {
-        left: 51%;
-        top: 29%;
-        width: 21%;
-        height: 38%;
+        left: 30%; top: 22%; width: 24%; height: 42%;
+        border-color: rgba(34, 211, 238, 0.85);
+        background: rgba(34, 211, 238, 0.10);
       }
+      .zone.staff .z-tag { color: #cffafe; background: rgba(8, 87, 110, 0.85); }
 
-      .track {
+      .box {
         position: absolute;
-        z-index: 3;
-        width: 42px;
-        height: 54px;
+        width: 36px;
+        height: 50px;
         border: 2px solid #22c55e;
-        border-radius: 7px;
-        background: rgba(34, 197, 94, 0.08);
+        border-radius: 5px;
+        background: rgba(34, 197, 94, 0.06);
       }
-
-      .track::after {
-        content: "person";
+      .box::after {
+        content: attr(data-label);
         position: absolute;
         left: -2px;
-        bottom: -20px;
-        padding: 2px 5px;
-        border-radius: 5px;
-        background: rgba(3, 7, 10, 0.8);
+        bottom: -18px;
+        padding: 1px 5px;
+        border-radius: 3px;
+        background: rgba(8, 10, 12, 0.82);
         color: #d1fae5;
-        font-size: 10px;
+        font-family: var(--mono);
+        font-size: 9px;
         font-weight: 800;
       }
+      .box.staff { border-color: #fbbf24; }
+      .box.staff::after { color: #fef3c7; }
+      .box.cust { border-color: #60a5fa; }
+      .box.cust::after { color: #dbeafe; }
 
-      .track.one {
-        left: 76%;
-        top: 56%;
+      /* iso/floor plan panel */
+      .shot.plan {
+        background: linear-gradient(180deg, #fdfcf9 0%, #f3efe6 100%);
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.04),
+          0 36px 80px -28px rgba(10, 10, 10, 0.18),
+          0 0 0 1px var(--line);
       }
 
-      .track.two {
-        left: 61%;
-        top: 38%;
-        border-color: #fbbf24;
+      .shot.plan .shot-hud {
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink-2);
+        box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 0 0 1px var(--line);
       }
 
-      .track.two::after {
-        content: "staff";
-        color: #fef3c7;
-      }
-
-      .recommend-arrow {
+      .plan-svg {
         position: absolute;
-        z-index: 4;
-        left: 78%;
-        top: 49%;
-        width: 64px;
-        height: 16px;
-        border-top: 4px solid #ffffff;
-        transform: rotate(9deg);
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+        inset: 14px 14px 14px 14px;
       }
 
-      .recommend-arrow::after {
-        content: "";
-        position: absolute;
-        right: -3px;
-        top: -9px;
-        width: 14px;
-        height: 14px;
-        border-right: 4px solid #ffffff;
-        border-top: 4px solid #ffffff;
-        transform: rotate(45deg);
-      }
-
-      .metric-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-top: 14px;
-      }
-
-      .metric {
-        min-height: 64px;
-        padding: 11px 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel-soft);
-      }
-
-      .metric strong {
-        display: block;
-        font-size: 23px;
-        line-height: 1;
-      }
-
-      .metric span {
-        display: block;
-        margin-top: 6px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.12;
-        font-weight: 700;
-      }
-
-      .signal-box {
-        margin-top: 12px;
-        padding: 11px 12px;
-        border: 1px solid #f6c8d5;
-        border-radius: 8px;
-        background: var(--rose-soft);
-      }
-
-      .signal-box strong {
-        display: block;
-        color: #831331;
-        font-size: 17px;
-        line-height: 1.12;
-      }
-
-      .signal-box span {
-        display: block;
-        margin-top: 6px;
-        color: #8c2340;
-        font-size: 13px;
-        line-height: 1.28;
-        font-weight: 650;
-      }
-
-      .pipeline {
-        padding: 14px 16px 16px;
-      }
-
-      .step {
-        position: relative;
-        display: grid;
-        grid-template-columns: 46px 1fr;
-        gap: 12px;
-        min-height: 88px;
-        padding: 11px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-      }
-
-      .step + .step {
-        margin-top: 8px;
-      }
-
-      .step + .step::before {
-        content: "";
-        position: absolute;
-        left: 31px;
-        top: -9px;
-        width: 2px;
-        height: 9px;
-        background: var(--line);
-      }
-
-      .step-icon {
-        display: grid;
-        place-items: center;
-        width: 46px;
-        height: 46px;
-        border-radius: 8px;
-        color: #ffffff;
-        font-size: 19px;
-        font-weight: 900;
-      }
-
-      .step:nth-child(1) .step-icon {
-        background: var(--teal);
-      }
-
-      .step:nth-child(2) .step-icon {
-        background: var(--amber);
-      }
-
-      .step:nth-child(3) .step-icon {
-        background: var(--violet);
-      }
-
-      .step:nth-child(4) .step-icon {
-        background: var(--blue);
-      }
-
-      .step:nth-child(5) .step-icon {
-        background: var(--green);
-      }
-
-      .step h3 {
-        margin: 0;
-        font-size: 18px;
-        line-height: 1.12;
-      }
-
-      .step p {
-        margin: 5px 0 0;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.25;
-        font-weight: 650;
-      }
-
-      .schema-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 7px;
-      }
-
-      .schema {
-        padding: 4px 7px;
-        border-radius: 6px;
-        background: #eef2f3;
-        color: #263238;
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .demo {
-        padding: 16px;
-      }
-
-      .mock-browser {
-        overflow: hidden;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        background: #0b1116;
-        color: #e5eef4;
-      }
-
-      .browser-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        height: 38px;
-        padding: 0 12px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        color: #b6c4cf;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .browser-lights {
-        display: flex;
-        gap: 6px;
-      }
-
-      .light {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        background: #ef4444;
-      }
-
-      .light:nth-child(2) {
-        background: #f59e0b;
-      }
-
-      .light:nth-child(3) {
-        background: #22c55e;
-      }
-
-      .demo-screen {
-        display: grid;
-        grid-template-columns: 1.05fr 0.95fr;
-        gap: 10px;
-        padding: 12px;
-      }
-
-      .mini-pane {
-        position: relative;
-        min-height: 178px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 8px;
-        background: #121a21;
-      }
-
-      .mini-pane.cctv {
-        overflow: hidden;
-      }
-
-      .mini-pane.cctv img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        opacity: 0.72;
-      }
-
-      .mini-label {
-        position: absolute;
-        left: 10px;
-        top: 9px;
-        z-index: 2;
-        padding: 5px 7px;
-        border-radius: 6px;
-        background: rgba(0, 0, 0, 0.7);
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: 850;
-      }
-
-      .iso-grid {
-        position: absolute;
-        inset: 18px 16px 16px;
-        background:
-          linear-gradient(30deg, rgba(255, 255, 255, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, 0.06) 87.5%, rgba(255, 255, 255, 0.06)),
-          linear-gradient(150deg, rgba(255, 255, 255, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, 0.06) 87.5%, rgba(255, 255, 255, 0.06));
-        background-size: 34px 20px;
-        transform: skewY(-8deg);
-      }
-
-      .iso-table,
-      .iso-counter,
-      .iso-path {
-        position: absolute;
-        border-radius: 6px;
-      }
-
-      .iso-counter {
-        left: 24px;
-        top: 54px;
-        width: 160px;
-        height: 34px;
-        background: #94a3b8;
-      }
-
-      .iso-path {
-        left: 134px;
-        top: 95px;
-        width: 88px;
-        height: 22px;
-        background: #22c55e;
-        box-shadow: 34px 8px 0 #22c55e;
-      }
-
-      .iso-table {
-        right: 46px;
-        bottom: 40px;
-        width: 72px;
-        height: 44px;
-        background: #f59e0b;
-      }
-
+      /* recommendation card overlay (sits across the seam) */
       .rec-card {
-        margin-top: 10px;
-        padding: 12px;
-        border: 1px solid rgba(34, 197, 94, 0.38);
-        border-radius: 8px;
-        background: #0f1915;
+        position: absolute;
+        right: -10px;
+        top: 38%;
+        width: 336px;
+        z-index: 12;
+        padding: 14px 16px 14px;
+        border-radius: 14px;
+        background: var(--paper);
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.04),
+          0 28px 60px -16px rgba(10, 10, 10, 0.28),
+          0 0 0 1px var(--line);
       }
 
-      .rec-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
+      .rec-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: var(--indigo-soft);
+        color: var(--indigo);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .rec-eyebrow .e-dot { width: 5px; height: 5px; border-radius: 999px; background: var(--indigo); }
+
+      .rec-title {
+        margin: 9px 0 0;
+        font-size: 19px;
+        line-height: 1.18;
+        font-weight: 800;
+        letter-spacing: -0.2px;
       }
 
-      .rec-card h3 {
-        margin: 0;
-        color: #ffffff;
-        font-size: 20px;
-        line-height: 1.1;
-      }
-
-      .rec-card p {
+      .rec-rationale {
         margin: 7px 0 0;
-        color: #b9c7c0;
-        font-size: 13px;
-        line-height: 1.28;
-        font-weight: 650;
+        font-size: 12.5px;
+        line-height: 1.4;
+        color: var(--soft);
       }
 
-      .delta-grid {
+      .rec-deltas {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 7px;
-        margin-top: 10px;
+        gap: 6px;
+        margin-top: 12px;
       }
 
       .delta {
-        padding: 8px 10px;
-        border-radius: 7px;
-        background: rgba(34, 197, 94, 0.12);
-        color: #c9f7d8;
-        font-size: 13px;
-        font-weight: 850;
-      }
-
-      .action-row {
         display: flex;
-        gap: 8px;
-        margin-top: 10px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 7px 10px;
+        border-radius: 6px;
+        background: var(--green-soft);
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .delta strong { font-family: var(--mono); font-weight: 800; }
+
+      .rec-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--line);
       }
 
-      .button {
-        flex: 1;
-        padding: 10px 12px;
-        border-radius: 7px;
-        text-align: center;
-        font-size: 14px;
+      .rec-conf {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--soft);
+      }
+      .rec-conf strong { color: var(--ink); font-size: 13px; }
+
+      .rec-actions { display: inline-flex; gap: 6px; }
+
+      .btn {
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        font-weight: 800;
+        font-family: var(--mono);
+        letter-spacing: 0.2px;
+      }
+      .btn.primary { background: var(--ink); color: var(--bg); }
+      .btn.ghost { background: var(--bg-2, #f3f0e6); color: var(--soft); border: 1px solid var(--line); }
+
+      /* ===== proofs ===== */
+      .proofs {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        margin-top: 28px;
+        padding-top: 22px;
+        border-top: 1px solid var(--line);
+      }
+
+      .proof {
+        position: relative;
+        padding: 0 28px;
+      }
+      .proof + .proof::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 4px;
+        bottom: 6px;
+        width: 1px;
+        background: var(--line);
+      }
+      .proof:first-child { padding-left: 0; }
+      .proof:last-child { padding-right: 0; }
+
+      .proof-label {
+        display: block;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: var(--teal-deep);
+      }
+
+      .proof-num {
+        display: block;
+        margin-top: 8px;
+        font-size: 38px;
         font-weight: 900;
+        letter-spacing: -1.4px;
+        line-height: 1;
+        color: var(--ink);
+      }
+      .proof-num small {
+        margin-left: 6px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--mute);
       }
 
-      .button.accept {
-        background: #22c55e;
-        color: #06210f;
-      }
-
-      .button.reject {
-        background: rgba(255, 255, 255, 0.1);
-        color: #dce7ec;
-      }
-
-      .judge-note {
+      .proof-text {
+        display: block;
         margin-top: 10px;
-        padding: 11px 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel-soft);
-      }
-
-      .judge-note h3 {
-        margin: 0;
-        font-size: 18px;
-      }
-
-      .judge-note p {
-        margin: 6px 0 0;
-        color: var(--muted);
         font-size: 13px;
-        line-height: 1.3;
-        font-weight: 650;
+        line-height: 1.42;
+        color: var(--soft);
+      }
+      .proof-text .mono { font-family: var(--mono); color: var(--ink-2); font-weight: 600; }
+
+      /* footer */
+      .footer {
+        position: absolute;
+        left: 56px;
+        right: 56px;
+        bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--mute);
+      }
+
+      .footer .stack {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .footer .stack span {
+        position: relative;
+      }
+      .footer .stack span + span::before {
+        content: "·";
+        margin-right: 14px;
+        color: var(--line);
       }
     </style>
   </head>
   <body>
-    <main class="slide" aria-label="CafeTwin Tier 1 overview image">
-      <header>
-        <section class="title-block">
-          <div class="eyebrow">Current Tier 1 finished product</div>
-          <h1>CafeTwin: CCTV to layout decisions</h1>
-          <p class="subtitle">
-            Judges can see the real footage, the extracted spatial KPIs, the typed
-            agent recommendation, and the memory/trace that proves the decision path.
-          </p>
-        </section>
-        <aside class="proof-strip" aria-label="Real product proof points">
-          <div class="proof">
-            <strong>Visible perception</strong>
-            <span>Annotated CCTV, zones, YOLO tracks</span>
-          </div>
-          <div class="proof">
-            <strong>Live KPIs</strong>
-            <span>Crossings, obstruction, detour, congestion</span>
-          </div>
-          <div class="proof">
-            <strong>Pydantic AI x2</strong>
-            <span>PatternAgent -> OptimizationAgent</span>
-          </div>
-          <div class="proof">
-            <strong>Audit + memory</strong>
-            <span>Logfire traces and MuBit feedback</span>
-          </div>
-        </aside>
+    <main class="canvas">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">CT</div>
+          <span class="brand-name">CafeTwin</span>
+          <span class="brand-sep">/</span>
+          <span class="brand-sub">tier_1 · cctv to layout decisions</span>
+        </div>
+        <div class="topbar-right">
+          <span class="pill live"><span class="dot"></span><strong>Pydantic AI</strong> · 2 typed agents</span>
+          <span class="pill"><span class="dot"></span><strong>MuBit</strong> · memory + recall</span>
+          <span class="pill"><span class="dot"></span><strong>Logfire</strong> · 1 trace / run</span>
+          <span class="pill"><span class="dot"></span><strong>Render</strong> · live</span>
+        </div>
       </header>
 
-      <section class="grid">
-        <article class="panel">
-          <div class="panel-head">
-            <h2>1. Real cafe input</h2>
-            <span class="pill teal">CCTV session: real_cafe</span>
-          </div>
-          <div class="footage">
-            <div class="video-frame">
-              <img src="../demo_data/sessions/real_cafe/frame.jpg" alt="Overhead cafe CCTV frame" />
-              <div class="hud">
-                <span class="hud-chip"><span class="rec-dot"></span>annotated CCTV</span>
-                <span class="hud-chip">YOLOv8n + ByteTrack</span>
-              </div>
-              <div class="zone staff" aria-hidden="true"></div>
-              <div class="zone queue" aria-hidden="true"></div>
-              <div class="track one" aria-hidden="true"></div>
-              <div class="track two" aria-hidden="true"></div>
-              <div class="recommend-arrow" aria-hidden="true"></div>
-            </div>
-            <div class="metric-grid">
-              <div class="metric">
-                <strong>48</strong>
-                <span>person tracks across the real clip</span>
-              </div>
-              <div class="metric">
-                <strong>1,856</strong>
-                <span>person detections feeding the KPI engine</span>
-              </div>
-              <div class="metric">
-                <strong>9</strong>
-                <span>reviewed static layout objects added to inventory</span>
-              </div>
-              <div class="metric">
-                <strong>6</strong>
-                <span>operational zones: counter, pickup, queue, path, seating, entrance</span>
-              </div>
-            </div>
-          </div>
-        </article>
+      <section class="hero">
+        <aside class="copy">
+          <span class="kicker"><span class="k-dot"></span>spatial operations intelligence</span>
+          <h1 class="title">Café<span class="accent">Twin.</span></h1>
+          <p class="tagline">
+            Overhead café CCTV becomes a typed layout recommendation — with predicted KPI impact, memory, and audit trail.
+          </p>
+          <p class="quote">
+            POS tells operators what sold. <em>CafeTwin shows why throughput stalled.</em>
+          </p>
+          <p class="lede">
+            Real footage perceived offline by <span class="mono">YOLOv8n + ByteTrack</span>; two typed Pydantic AI agents reason in sequence; <span class="mono">MuBit</span> stores the decision; <span class="mono">Logfire</span> wraps the trace.
+            Cached fallback ships every claim — even with keys unset, the demo holds together.
+          </p>
+        </aside>
 
-        <article class="panel">
-          <div class="panel-head">
-            <h2>2. Typed intelligence pipeline</h2>
-            <span class="pill amber">validated outputs</span>
-          </div>
-          <div class="pipeline">
-            <div class="step">
-              <div class="step-icon">1</div>
-              <div>
-                <h3>Perception cache</h3>
-                <p>Offline YOLO/ByteTrack tracks plus reviewed YOLOv8x layout objects become schema-checked evidence.</p>
-                <div class="schema-row">
-                  <span class="schema">TracksCache</span>
-                  <span class="schema">ObjectInventory</span>
-                </div>
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-icon">2</div>
-              <div>
-                <h3>Live KPI engine</h3>
-                <p>Computes congestion, queue obstruction, crossings, walk distance, and table detour windows.</p>
-                <div class="schema-row">
-                  <span class="schema">KPIReport[]</span>
-                </div>
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-icon">3</div>
-              <div>
-                <h3>PatternAgent</h3>
-                <p>Pydantic AI summarizes the operational pattern and cites valid KPI memory IDs.</p>
-                <div class="schema-row">
-                  <span class="schema">OperationalPattern</span>
-                </div>
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-icon">4</div>
-              <div>
-                <h3>OptimizationAgent</h3>
-                <p>Emits one layout change, writes feedback memory, and leaves a Logfire trace for the run.</p>
-              </div>
-            </div>
-          </div>
-        </article>
+        <div class="product">
+          <div class="shots">
 
-        <article class="panel">
-          <div class="panel-head">
-            <h2>3. Demo judges can inspect</h2>
-            <span class="pill blue">split view + recommendation</span>
+            <!-- Real CCTV shot — actual YOLO+ByteTrack annotated frame -->
+            <figure class="shot cctv" aria-label="Annotated CCTV input">
+              <div class="frame">
+                <img src="real_cafe_annotated.jpg" alt="Real CCTV frame with YOLOv8n+ByteTrack person tracks and zone polygons" />
+              </div>
+              <span class="shot-hud tl"><span class="rec-dot"></span>annotated · YOLOv8n + ByteTrack</span>
+              <span class="shot-hud bl">real_cafe · 48 tracks · 1856 detections</span>
+            </figure>
+
+            <!-- Floor plan / iso twin shot -->
+            <figure class="shot plan" aria-label="Recommended layout floor plan">
+              <span class="shot-hud tl">recommended layout · simulation Δ</span>
+              <svg class="plan-svg" viewBox="0 0 480 460" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 L 0 20" stroke="rgba(10,10,10,0.06)" stroke-width="1" fill="none" />
+                  </pattern>
+                  <marker id="arrowhead-vio" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <polygon points="0 0, 10 5, 0 10" fill="#3b3489" />
+                  </marker>
+                  <marker id="arrowhead-amb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <polygon points="0 0, 10 5, 0 10" fill="#b95f0b" />
+                  </marker>
+                </defs>
+
+                <!-- floor -->
+                <rect width="480" height="460" fill="url(#grid)" />
+
+                <!-- walls -->
+                <rect x="22" y="22" width="436" height="416" fill="none" stroke="#2a2a2a" stroke-width="2" rx="8" />
+
+                <!-- entrance opening -->
+                <line x1="200" y1="22" x2="280" y2="22" stroke="#fbfaf6" stroke-width="4" />
+                <text x="240" y="14" text-anchor="middle" fill="#777570" font-family="JetBrains Mono, monospace" font-size="9" font-weight="800" letter-spacing="0.7">ENTRANCE</text>
+
+                <!-- counter -->
+                <rect x="50" y="60" width="200" height="36" fill="#0f6f5e" fill-opacity="0.14" stroke="#0f6f5e" stroke-width="1.6" rx="4" />
+                <text x="150" y="83" text-anchor="middle" fill="#084f44" font-family="JetBrains Mono, monospace" font-size="11" font-weight="800" letter-spacing="0.6">COUNTER</text>
+
+                <!-- pickup zone -->
+                <rect x="270" y="60" width="92" height="36" fill="#3b3489" fill-opacity="0.10" stroke="#3b3489" stroke-width="1.4" stroke-dasharray="4 3" rx="4" />
+                <text x="316" y="83" text-anchor="middle" fill="#3b3489" font-family="JetBrains Mono, monospace" font-size="10" font-weight="800" letter-spacing="0.5">PICKUP</text>
+
+                <!-- service lane (current, narrow) -->
+                <rect x="370" y="60" width="62" height="200" fill="#9b1c44" fill-opacity="0.08" stroke="#9b1c44" stroke-width="1.4" stroke-dasharray="3 3" rx="4" />
+                <text x="401" y="170" text-anchor="middle" fill="#9b1c44" font-family="JetBrains Mono, monospace" font-size="9" font-weight="800" letter-spacing="0.5" transform="rotate(-90 401 170)">SERVICE LANE</text>
+
+                <!-- queue path arrow -->
+                <path d="M 300 110 Q 280 160 260 200 Q 240 240 200 270" stroke="#b95f0b" stroke-width="2" stroke-dasharray="5 4" fill="none" marker-end="url(#arrowhead-amb)" stroke-linecap="round" />
+                <text x="262" y="158" fill="#b95f0b" font-family="JetBrains Mono, monospace" font-size="9" font-weight="800">queue flow</text>
+
+                <!-- seating tables -->
+                <g font-family="JetBrains Mono, monospace" font-size="9" font-weight="700">
+                  <!-- table 1 -->
+                  <rect x="60" y="200" width="50" height="50" fill="#ffffff" stroke="#2a2a2a" stroke-width="1.2" rx="3" />
+                  <circle cx="50" cy="225" r="5" fill="#cfcdc4" />
+                  <circle cx="120" cy="225" r="5" fill="#cfcdc4" />
+                  <circle cx="85" cy="190" r="5" fill="#cfcdc4" />
+                  <circle cx="85" cy="260" r="5" fill="#cfcdc4" />
+
+                  <!-- table 2 -->
+                  <rect x="155" y="200" width="50" height="50" fill="#ffffff" stroke="#2a2a2a" stroke-width="1.2" rx="3" />
+                  <circle cx="145" cy="225" r="5" fill="#cfcdc4" />
+                  <circle cx="215" cy="225" r="5" fill="#cfcdc4" />
+
+                  <!-- table 3 -->
+                  <rect x="60" y="300" width="50" height="50" fill="#ffffff" stroke="#2a2a2a" stroke-width="1.2" rx="3" />
+                  <circle cx="85" cy="290" r="5" fill="#cfcdc4" />
+                  <circle cx="85" cy="360" r="5" fill="#cfcdc4" />
+                  <circle cx="50" cy="325" r="5" fill="#cfcdc4" />
+                  <circle cx="120" cy="325" r="5" fill="#cfcdc4" />
+
+                  <!-- table 4 -->
+                  <rect x="170" y="300" width="50" height="50" fill="#ffffff" stroke="#2a2a2a" stroke-width="1.2" rx="3" />
+                  <circle cx="160" cy="325" r="5" fill="#cfcdc4" />
+                  <circle cx="230" cy="325" r="5" fill="#cfcdc4" />
+
+                  <!-- TARGET table — current pos (highlighted source) -->
+                  <rect x="270" y="290" width="50" height="50" fill="#3b3489" fill-opacity="0.18" stroke="#3b3489" stroke-width="2" rx="3" />
+                  <circle cx="295" cy="280" r="5" fill="#3b3489" fill-opacity="0.6" />
+                  <circle cx="295" cy="350" r="5" fill="#3b3489" fill-opacity="0.6" />
+                  <text x="295" y="319" text-anchor="middle" fill="#3b3489" font-size="9" font-weight="800">target</text>
+
+                  <!-- TARGET table — proposed pos (ghost) -->
+                  <rect x="350" y="290" width="50" height="50" fill="none" stroke="#3b3489" stroke-width="1.8" stroke-dasharray="5 3" rx="3" />
+                  <text x="375" y="319" text-anchor="middle" fill="#3b3489" font-size="9" font-weight="800" opacity="0.65">Δ +50px</text>
+
+                  <!-- arrow from current to proposed -->
+                  <path d="M 322 315 L 348 315" stroke="#3b3489" stroke-width="2" fill="none" marker-end="url(#arrowhead-vio)" stroke-linecap="round" />
+
+                  <!-- table 6 -->
+                  <rect x="60" y="380" width="50" height="36" fill="#ffffff" stroke="#2a2a2a" stroke-width="1.2" rx="3" />
+                  <rect x="155" y="380" width="50" height="36" fill="#ffffff" stroke="#2a2a2a" stroke-width="1.2" rx="3" />
+                </g>
+
+                <!-- north indicator -->
+                <g transform="translate(420, 410)">
+                  <circle r="14" fill="none" stroke="#777570" stroke-width="1" />
+                  <text y="-3" text-anchor="middle" fill="#777570" font-family="JetBrains Mono, monospace" font-size="8" font-weight="800">N</text>
+                  <path d="M 0 -10 L 0 -16 L 3 -13 M 0 -16 L -3 -13" stroke="#777570" stroke-width="1" fill="none" />
+                </g>
+
+                <!-- legend -->
+                <g transform="translate(34, 410)" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700">
+                  <rect width="9" height="9" fill="#3b3489" fill-opacity="0.5" rx="2" />
+                  <text x="14" y="8" fill="#3d3d3d">target</text>
+                  <rect x="58" width="9" height="9" fill="none" stroke="#3b3489" stroke-dasharray="3 2" rx="2" />
+                  <text x="72" y="8" fill="#3d3d3d">proposed</text>
+                  <rect x="138" width="9" height="9" fill="#0f6f5e" fill-opacity="0.5" rx="2" />
+                  <text x="152" y="8" fill="#3d3d3d">counter</text>
+                  <rect x="200" width="9" height="9" fill="#9b1c44" fill-opacity="0.5" rx="2" />
+                  <text x="214" y="8" fill="#3d3d3d">lane</text>
+                </g>
+              </svg>
+            </figure>
+
+            <!-- Recommendation card overlay -->
+            <article class="rec-card">
+              <span class="rec-eyebrow"><span class="e-dot"></span>Pydantic AI · LayoutChange</span>
+              <h3 class="rec-title">Open the right-side service lane</h3>
+              <p class="rec-rationale">
+                Shift the lane boundary toward storage so staff bypass the pickup queue without crossing customer flow.
+              </p>
+              <div class="rec-deltas">
+                <div class="delta">queue obstruction <strong>−7s</strong></div>
+                <div class="delta">crossings <strong>−2</strong></div>
+                <div class="delta">walk distance <strong>−95 px</strong></div>
+                <div class="delta">congestion <strong>−0.14</strong></div>
+              </div>
+              <div class="rec-foot">
+                <span class="rec-conf"><strong>72%</strong> confidence · low risk</span>
+                <span class="rec-actions">
+                  <span class="btn primary">Apply</span>
+                  <span class="btn ghost">Reject</span>
+                </span>
+              </div>
+            </article>
           </div>
-          <div class="demo">
-            <div class="mock-browser">
-              <div class="browser-top">
-                <div class="browser-lights">
-                  <span class="light"></span>
-                  <span class="light"></span>
-                  <span class="light"></span>
-                </div>
-                <span>cafetwin.html?session=real_cafe</span>
-                <span>Logfire link</span>
-              </div>
-              <div class="demo-screen">
-                <div class="mini-pane cctv">
-                  <img src="../demo_data/sessions/real_cafe/frame.jpg" alt="" />
-                  <span class="mini-label">left: annotated CCTV</span>
-                </div>
-                <div class="mini-pane">
-                  <span class="mini-label">right: recommended twin</span>
-                  <div class="iso-grid"></div>
-                  <div class="iso-counter"></div>
-                  <div class="iso-path"></div>
-                  <div class="iso-table"></div>
-                </div>
-              </div>
-              <div class="rec-card">
-                <div class="rec-top">
-                  <h3>Open the right-side service lane</h3>
-                  <span class="pill green">72% confidence</span>
-                </div>
-                <p>
-                  Shift the movable lane boundary toward storage so staff can
-                  pass the pickup queue without crossing customer flow.
-                </p>
-                <div class="delta-grid">
-                  <div class="delta">queue obstruction -7s</div>
-                  <div class="delta">crossings -2</div>
-                  <div class="delta">walk distance -95px</div>
-                  <div class="delta">congestion -0.14</div>
-                </div>
-                <div class="action-row">
-                  <div class="button accept">Accept writes memory</div>
-                  <div class="button reject">Reject teaches next run</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </article>
+        </div>
       </section>
 
+      <section class="proofs">
+        <div class="proof">
+          <span class="proof-label">Real perception</span>
+          <span class="proof-num">1,856<small>person dets</small></span>
+          <span class="proof-text">
+            Across the real CCTV clip — <span class="mono">YOLOv8n + ByteTrack</span>, plus <span class="mono">YOLOv8x</span> furniture review by <span class="mono">ObjectReviewAgent</span>.
+          </span>
+        </div>
+        <div class="proof">
+          <span class="proof-label">Typed intelligence</span>
+          <span class="proof-num">2 agents</span>
+          <span class="proof-text">
+            <span class="mono">PatternAgent → OperationalPattern</span>, then <span class="mono">OptimizationAgent → LayoutChange</span>. <span class="mono">output_validator</span> + <span class="mono">ModelRetry</span> + cached fallback.
+          </span>
+        </div>
+        <div class="proof">
+          <span class="proof-label">Decision-aware memory</span>
+          <span class="proof-num">2 lanes</span>
+          <span class="proof-text">
+            MuBit AgentDefinitions <span class="mono">cafetwin-pattern-agent</span> + <span class="mono">cafetwin-optimization-agent</span>; jsonl mirror.
+          </span>
+        </div>
+        <div class="proof">
+          <span class="proof-label">Auditable trace</span>
+          <span class="proof-num">1 trace</span>
+          <span class="proof-text">
+            Per <span class="mono">/api/run</span>: evidence pack → KPI engine → both agents → memory write — every span visible in Logfire.
+          </span>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>repo · londonhack/tier_1 · 2026-04-26</span>
+        <span class="stack">
+          <span>fastapi</span><span>pydantic ai</span><span>mubit</span><span>logfire</span><span>yolov8</span><span>render</span>
+        </span>
+        <span>cctv → typed agents → memory → trace</span>
+      </footer>
     </main>
   </body>
 </html>

@@ -6,18 +6,18 @@
 #   "pydantic>=2.7.0",
 # ]
 # ///
-"""Overlay everything we know about a CafeTwin session on its CCTV.
+"""Overlay person tracks + static layout objects on a CafeTwin session video.
 
 Where `run_yolo_offline.py` only draws *person* boxes (the YOLOv8n + ByteTrack
-output), this script renders a single rich annotated video that overlays
-**all** the perception caches we have for a session:
+output), this script renders an annotated video that also shows the static
+layout objects we detect with YOLOv8x + ObjectReviewAgent (chairs, dining
+tables, couches, potted plants — boxes + class labels with confidence).
 
-  - Zone polygons from `zones.json` (semi-transparent fills).
-  - Static layout objects from `object_detections.reviewed.cached.json`
-    (or the unreviewed sibling) — chairs, tables, couches, plants — drawn
-    at fixed positions on every frame, since these are stationary.
-  - Person tracks from `tracks.cached.json` — coloured by track id, with
-    the ByteTrack id and zone label.
+Zone polygons live in `zones.json` but we deliberately don't draw them on
+the video — the large semi-transparent fills clutter the frame and make
+it hard to read the actual perception output. The agent stack still uses
+zones internally (zone_for_point on every track detection); they just
+aren't part of the visual demo overlay.
 
 The output overwrites `demo_data/sessions/<slug>/annotated_before.mp4`.
 After running this, re-run `scripts/transcode_annotated_for_web.sh` to
@@ -67,7 +67,8 @@ def main() -> int:
 
     tracks_cache = _load_json(session_dir / "tracks.cached.json", required=True)
     objects_cache = _load_objects_cache(session_dir)
-    zones = _load_json(session_dir / "zones.json", required=False) or []
+    # zones.json is loaded by the agent stack but we deliberately don't
+    # render the polygons on the video — they cover too much of the frame.
 
     video_rel = tracks_cache["source_video"]
     video_path = (ROOT_DIR / video_rel).resolve()
@@ -101,7 +102,7 @@ def main() -> int:
     print(
         f"[render] {args.session}: {len(tracks_cache.get('tracks', []))} tracks · "
         f"{sum(len(v) for v in per_frame_persons.values())} person detections · "
-        f"{len(static_objects)} static objects · {len(zones)} zones"
+        f"{len(static_objects)} static objects"
     )
 
     cap = cv2.VideoCapture(str(video_path))
@@ -119,7 +120,7 @@ def main() -> int:
     # Pre-render the static-object overlay once — they're stationary, so
     # we'll just `cv2.add` it onto every frame instead of redrawing per
     # frame (saves ~40% wall time on the 15s ai_cafe video).
-    static_layer = _build_static_layer(cv2, height, width, static_objects, zones)
+    static_layer = _build_static_layer(cv2, height, width, static_objects)
 
     written = 0
     frame_idx = -1
@@ -145,40 +146,17 @@ def main() -> int:
     return 0
 
 
-def _build_static_layer(cv2, height: int, width: int, static_objects: list[dict],
-                         zones: list[dict]):
-    """Build a transparent BGR layer with zones + static objects pre-drawn.
+def _build_static_layer(cv2, height: int, width: int, static_objects: list[dict]):
+    """Build a transparent BGR layer with the static layout objects drawn.
 
     Returns a frame-shaped np.ndarray we can `addWeighted` against each
-    incoming raw frame. Zones get a 12% fill so they tint the floor without
-    obscuring detail; static-object rectangles + labels are fully opaque.
+    incoming raw frame. Boxes + class labels with confidence are fully
+    opaque so they read clearly against the underlying CCTV.
     """
     import numpy as np
 
     layer = np.zeros((height, width, 3), dtype="uint8")
 
-    # Zones — semi-transparent fills with a brighter outline. Each zone
-    # carries a `color_hex` from the manual fixture; we fall back to a
-    # neutral cool grey when missing.
-    for zone in zones:
-        polygon = zone.get("polygon") or []
-        if len(polygon) < 3:
-            continue
-        pts = np.array([[int(p[0]), int(p[1])] for p in polygon], dtype="int32")
-        color = _hex_to_bgr(zone.get("color_hex"), default=(180, 180, 180))
-        # Soft fill via overlay scaled later in the alpha blend.
-        fill = np.zeros_like(layer)
-        cv2.fillPoly(fill, [pts], color)
-        layer = cv2.addWeighted(fill, 0.18, layer, 1.0, 0)
-        cv2.polylines(layer, [pts], isClosed=True, color=color, thickness=2)
-        # Zone label near the polygon centroid.
-        cx = int(sum(p[0] for p in polygon) / len(polygon))
-        cy = int(sum(p[1] for p in polygon) / len(polygon))
-        label = zone.get("id") or zone.get("name") or ""
-        if label:
-            _draw_label(cv2, layer, label, (cx - 30, cy), color)
-
-    # Static objects — boxes + class labels with confidence.
     for det in static_objects:
         bbox = det.get("bbox_xyxy")
         if not bbox or len(bbox) < 4:
@@ -215,21 +193,6 @@ def _draw_label(cv2, img, text: str, origin: tuple[int, int], color: tuple[int, 
     cv2.rectangle(img, (bg_x1, bg_y1), (bg_x2, bg_y2), color, -1)
     cv2.putText(img, text, (x + pad, y - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                 (255, 255, 255), 1, cv2.LINE_AA)
-
-
-def _hex_to_bgr(hex_color: str | None, default: tuple[int, int, int]) -> tuple[int, int, int]:
-    if not hex_color:
-        return default
-    h = hex_color.lstrip("#")
-    if len(h) != 6:
-        return default
-    try:
-        r = int(h[0:2], 16)
-        g = int(h[2:4], 16)
-        b = int(h[4:6], 16)
-        return (b, g, r)
-    except ValueError:
-        return default
 
 
 def _load_objects_cache(session_dir: Path) -> dict | None:
