@@ -182,7 +182,7 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 - **Anthropic Claude** — drives `PatternAgent` and `OptimizationAgent` in MVP, sequenced on every `/api/run` call (`SceneBuilderAgent` in Tier 2). Both MVP agents fall back to their cached JSON fixtures on live failure so the demo never breaks.
 - **MuBit** — durable raw event store for recommendations + feedback; recall builds a derived, decision-aware memory view so the agent sees accepted/rejected prior proposals. Degrades silently to jsonl when `MUBIT_API_KEY` unset.
 - **Logfire** — auto-instruments Pydantic AI; manual spans for evidence pack build, KPI compute (Tier 1), validation, memory write, MuBit recall.
-- **Render** — backend hosting (configured at deploy time, not visible in the runtime diagrams above).
+- **Render** — backend hosting via `render.yaml`; the Tier 1 blueprint pins `branch: tier_1` and provisions service `cafetwin-backend-tier1`.
 
 ## Sequence — `/api/run` and `/api/feedback`
 
@@ -477,6 +477,7 @@ scripts/
   benchmark_static_detectors.py # Tier 1B: compare YOLOv8x / RT-DETR-x / YOLO11x fairly
   review_layout_objects_moondream.py  # Tier 1B: optional Moondream open-vocab detector
   benchmark_moondream_local.py        # Tier 1B: preflight local Moondream edge runtime
+  benchmark_moondream_05b_mf.py       # Tier 1B: exact legacy Moondream 0.5B .mf/ONNX path
   review_layout_objects_agent.py      # Tier 1B: Pydantic AI reviewer -> reviewed object cache
 ```
 
@@ -502,7 +503,11 @@ cache stays YOLOv8x while the Pydantic AI `ObjectReviewAgent` writes stricter
 optional Moondream evidence. `review_layout_objects_moondream.py` supports both
 cloud API mode and local Photon/Kestrel mode (`--local --model moondream2`);
 `benchmark_moondream_local.py` records edge-runtime viability before attempting
-large local model downloads.
+large local model downloads. `benchmark_moondream_05b_mf.py` is the exact
+legacy 0.5B `.mf.gz` path from the `vikhyatk/moondream2` `onnx` branch: it
+downloads/unpacks the user-supplied `moondream-0_5b-int8.mf.gz` archive (the
+branch also exposes a sibling `int4` archive) and runs the extracted ONNX graph
+through ONNX Runtime.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -1080,7 +1085,7 @@ the request completes.
 # app/logfire_setup.py
 import logfire
 logfire.configure(
-    service_name="cafetwin-mvp",
+    service_name="cafetwin-backend-tier1",
     environment="demo",
     send_to_logfire="if-token-present",
 )
@@ -1293,6 +1298,9 @@ Tier 1A real-video checks:
 - [x] `uv run scripts/benchmark_static_detectors.py --session ai_cafe_a --no-annotated` compares YOLOv8x (31 objects), RT-DETR-x (48, higher recall/noisier), and YOLO11x (37, larger false table/counter boxes) on the same 9 frames.
 - [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. Moondream integration is implemented but not run locally because `MOONDREAM_API_KEY` is not in the process environment.
 - [x] `uv run scripts/benchmark_moondream_local.py --session ai_cafe_a` and `--session real_cafe` preflight local Moondream Photon/Kestrel. Both record `status=skipped_insufficient_vram` on the local MX330 (`2048 MB total`, `1993 MB free`) instead of downloading/running a model that needs more VRAM; pass `--force` only on a stronger edge GPU.
+- [x] `uv run scripts/benchmark_moondream_05b_mf.py --session ai_cafe_a --preflight-only` validates the exact legacy 0.5B `.mf.gz` source from `vikhyatk/moondream2/tree/onnx`. The user-supplied URL is `moondream-0_5b-int8.mf.gz` (621,619,051 bytes, commit `9dddae84d54db4ac56fe37817aeaeb502ed083e2`); the branch also has `moondream-0_5b-int4.mf.gz`.
+- [x] Full CPU ONNX runs of `benchmark_moondream_05b_mf.py` completed for both sessions using the supplied int8 archive: `ai_cafe_a` produced 1 kept object from 3 raw legacy regions in ~28.5s, and `real_cafe` produced 1 kept object from 13 raw legacy regions in ~34.9s. The boxes are weak/noisy for cafe furniture, so this remains a benchmark/provenance path rather than the promoted demo detector.
+- [x] The sibling int4 archive downloads/unpacks from the same `onnx` branch, but ONNX Runtime CPU fails the extracted graph with a `MatMulNBits` shape error (`quantized_weight` expected `{1024,64,64}`, got `{8192,8,64}`), so int4 is documented as present but not locally runnable through this CPU runtime yet.
 
 Tier 1C live-KPI engine checks:
 
@@ -1326,6 +1334,18 @@ Tier 1E MuBit Agent Card checks (sponsor-platform depth):
 - [x] `_mubit_remember`, `_mubit_content`, and `_mubit_metadata` accept a per-record `agent_id` so the MuBit `/v2/control/ingest` body, the embedded text, and the metadata all carry the resolved per-agent slug.
 - [x] `tests/test_mubit_agents.py` covers env gating, no-op when disabled, first-run create, idempotent re-run with unchanged prompt, prompt-drift mints new version, per-agent error swallowing, default_specs sanity, lane → agent_id dispatch in `_resolve_agent_id`, and registry-empty fallback (9 tests).
 - [x] Verified live: bootstrap on user's MuBit registered both `cafetwin-pattern-agent` and `cafetwin-optimization-agent` under project `proj-423c5721-c0ec-4aa6-9a2b-90ef12bbceca`; `/v2/control/projects/agents/list` returns the pair with their roles; `/api/run` writes memory records that surface in `/v2/control/activity` with `agent_id=cafetwin-optimization-agent`.
+
+Tier 1F live-object-inventory checks (vision → agent inventory bridge):
+
+- [x] `app/vision/objects.py::LAYOUT_CLASS_TO_OBJECT_KIND` maps the 4 supported YOLO layout classes (`chair`, `dining table`, `couch`, `potted plant`) to the agent-facing `ObjectKind` enum. `person` is intentionally excluded (those land in tracks, not the scene-object inventory).
+- [x] `detection_to_scene_object_dict(detection)` builds a `SceneObject`-shaped dict with `source="vision"`, `id="vision_{detection_id}"`, derived `size_xy`, and a label citing support_count + confidence_mean.
+- [x] `select_live_detections_for_inventory(detections, fixture_bboxes)` skips detections whose bbox has IoU > 0.5 against any fixture object (fixture's narrative metadata wins) and drops unmapped classes.
+- [x] `evidence_pack._maybe_augment_inventory_with_live(session_id, inventory)` is the gating helper. Reads `object_detections.reviewed.cached.json` first, falls back to `object_detections.cached.json`, no-ops when neither exists. `CAFETWIN_FORCE_FIXTURE_INVENTORY=1` always returns the fixture untouched.
+- [x] Both `state()` and `build()` invoke the helper after fixture load; augmentation is additive (fixture's `service_lane_marker_1` etc. survive) so the cached recommendation's `target_id` keeps validating in fallback mode.
+- [x] `counts_by_kind`, `count_confidence`, and `notes` all update to reflect the augmented set; per-object `source="vision"` lets the frontend distinguish provenance.
+- [x] Logfire span `object_inventory.augment_live` joins the trace tree inside `evidence_pack.build/state` (only fires when augmentation engages).
+- [x] Verified live: `state("real_cafe")` returns 19 objects (10 fixture + 9 vision); `build("real_cafe")` likewise. `cached_recommendation.target_id="service_lane_marker_1"` still in `inventory.objects`. `/api/run real_cafe` returns 4 stages all 'done', `used_fallback=False`, fingerprint `real_cafe_open_right_service_lane_v4`. `state("ai_cafe_a")` returns 37 objects (16 fixture + 21 vision).
+- [x] `tests/test_live_inventory.py` covers: class mapping coverage, person exclusion, scene-object dict shape, couch→chair mapping, IoU dedup against fixture, non-overlap keep, unmapped-class drop, real-cafe augmentation count, force-fixture env disable, target_id survival, missing-cache no-op, counts_by_kind aggregation, assets unaffected, reviewed-cache preferred (14 tests).
 
 ## Pitch copy (best-case demo recommendation)
 

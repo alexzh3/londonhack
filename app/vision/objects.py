@@ -200,6 +200,115 @@ def reviewed_object_cache(
     )
 
 
+# ---------- Tier 1F: live → fixture inventory bridge ---------------------
+#
+# Convert YOLO/VLM `LayoutObjectDetection`s (from
+# `object_detections.reviewed.cached.json` or the unreviewed sibling) into
+# agent-facing `SceneObject`s, then *augment* (not replace) the fixture
+# `ObjectInventory` so the cached recommendation's `target_id` stays
+# valid. The agent gets a richer object set to reason over while the
+# fallback path keeps working.
+
+# YOLO COCO classes → agent's narrower ObjectKind enum. `person` is
+# intentionally skipped — those land in the tracks pipeline, not the
+# scene-object inventory. `couch` maps to `chair` because the agent's
+# layout reasoning treats them as seating.
+LAYOUT_CLASS_TO_OBJECT_KIND: dict[LayoutObjectClass, str] = {
+    "chair": "chair",
+    "dining table": "table",
+    "couch": "chair",
+    "potted plant": "plant",
+    # "person": skipped
+}
+
+
+def _bbox_iou(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> float:
+    """Standard axis-aligned IoU. Returns 0.0 on degenerate boxes."""
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+    inter_w = max(0.0, inter_x2 - inter_x1)
+    inter_h = max(0.0, inter_y2 - inter_y1)
+    inter_area = inter_w * inter_h
+    if inter_area <= 0:
+        return 0.0
+    a_area = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    b_area = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = a_area + b_area - inter_area
+    if union <= 0:
+        return 0.0
+    return inter_area / union
+
+
+def detection_to_scene_object_dict(
+    detection: LayoutObjectDetection,
+) -> dict | None:
+    """Map a YOLO/VLM detection to a `SceneObject`-shaped dict.
+
+    Returns None for classes that don't translate to the agent's
+    scene-object inventory (e.g. ``person``).
+
+    The dict shape avoids importing `app.schemas.SceneObject` directly so
+    this module stays free of `app.*` dependencies — callers in
+    `evidence_pack.py` validate via Pydantic when they hand the dict to
+    `ObjectInventory`.
+    """
+    kind = LAYOUT_CLASS_TO_OBJECT_KIND.get(detection.class_name)
+    if kind is None:
+        return None
+    x1, y1, x2, y2 = detection.bbox_xyxy
+    cx, cy = detection.center_xy
+    width = max(0.0, x2 - x1)
+    height = max(0.0, y2 - y1)
+    label_class = detection.class_name.replace("_", " ").title()
+    return {
+        "id": f"vision_{detection.detection_id}",
+        "kind": kind,
+        "label": (
+            f"Detected {label_class.lower()} (YOLO+VLM, "
+            f"{detection.support_count}f, conf={detection.confidence_mean:.2f})"
+        ),
+        "bbox_xyxy": (x1, y1, x2, y2),
+        "center_xy": (cx, cy),
+        "size_xy": (width, height),
+        "rotation_degrees": 0.0,
+        "zone_id": detection.zone_id,
+        "movable": kind in ("chair", "table", "plant"),
+        "confidence": float(detection.confidence_mean),
+        "source": "vision",
+    }
+
+
+def select_live_detections_for_inventory(
+    detections: list[LayoutObjectDetection],
+    fixture_bboxes: list[tuple[float, float, float, float]],
+    *,
+    iou_overlap_threshold: float = 0.5,
+) -> list[dict]:
+    """Pick the subset of detections worth appending to a fixture
+    inventory. Drops detections that are likely re-discoveries of an
+    already-named fixture object (IoU > threshold) and drops classes
+    that don't map to ObjectKind."""
+    selected: list[dict] = []
+    for detection in detections:
+        candidate = detection_to_scene_object_dict(detection)
+        if candidate is None:
+            continue
+        if any(
+            _bbox_iou(candidate["bbox_xyxy"], fixture_bbox) > iou_overlap_threshold
+            for fixture_bbox in fixture_bboxes
+        ):
+            continue
+        selected.append(candidate)
+    return selected
+
+
 def write_object_detector_benchmark(path: Path, report: ObjectDetectorBenchmarkReport) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")

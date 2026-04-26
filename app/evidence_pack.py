@@ -23,6 +23,10 @@ from app.schemas import (
 from app.logfire_setup import span as logfire_span
 from app.sessions import fixture_statuses, load_manifest, missing_required, session_dir
 from app.vision.kpi import compute_kpi_windows
+from app.vision.objects import (
+    load_object_detections_cache,
+    select_live_detections_for_inventory,
+)
 from app.vision.tracks import load_tracks_cache
 
 logger = logging.getLogger(__name__)
@@ -103,6 +107,98 @@ def _maybe_live_kpi_windows(
         )
 
 
+def _maybe_augment_inventory_with_live(
+    session_id: str, inventory: ObjectInventory
+) -> ObjectInventory:
+    """Tier 1F. Append vision-detected scene objects to the fixture
+    `ObjectInventory` when a reviewed (or unreviewed) detector cache is
+    on disk for the session.
+
+    Augmentation, not replacement: the fixture's narrative objects
+    (counter, queue_marker, pickup_shelf...) stay in place so the cached
+    `recommendation.cached.json`'s ``target_id`` remains valid. The
+    detector-derived chairs/tables/plants land alongside with
+    ``source="vision"`` IDs prefixed ``vision_`` so the agent can reason
+    over real perception output without the fallback path breaking.
+
+    Engages by default whenever a cache file exists; opt out per request
+    with ``CAFETWIN_FORCE_FIXTURE_INVENTORY=1`` (mirrors the equivalent
+    KPI escape hatch from Tier 1C).
+    """
+    if os.getenv("CAFETWIN_FORCE_FIXTURE_INVENTORY") == "1":
+        return inventory
+
+    base = session_dir(session_id)
+    reviewed = base / "object_detections.reviewed.cached.json"
+    raw = base / "object_detections.cached.json"
+    cache_path = reviewed if reviewed.exists() else (raw if raw.exists() else None)
+    if cache_path is None:
+        return inventory
+
+    try:
+        cache = load_object_detections_cache(cache_path)
+    except (OSError, ValueError, ValidationError) as exc:
+        logger.warning("Failed to load %s for live inventory: %s", cache_path, exc)
+        return inventory
+
+    if not cache.detections:
+        return inventory
+
+    fixture_bboxes = [obj.bbox_xyxy for obj in inventory.objects]
+    with logfire_span(
+        "object_inventory.augment_live",
+        session_id=session_id,
+        cache_path=cache_path.name,
+        candidate_count=len(cache.detections),
+    ):
+        live_dicts = select_live_detections_for_inventory(
+            cache.detections, fixture_bboxes
+        )
+
+    if not live_dicts:
+        return inventory
+
+    # Validate the new objects through the SceneObject Pydantic model so any
+    # mismatch with the agent-facing schema fails loudly here rather than
+    # downstream. Use the schema TypeAdapter so we get clean error messages.
+    from app.schemas import SceneObject
+
+    new_objects = [SceneObject.model_validate(d) for d in live_dicts]
+
+    # Update counts_by_kind to include the new vision-tagged objects.
+    augmented_counts = dict(inventory.counts_by_kind)
+    for obj in new_objects:
+        augmented_counts[obj.kind] = augmented_counts.get(obj.kind, 0) + 1
+
+    # Confidence drops slightly toward the detector's mean to honestly
+    # reflect that some of the inventory is now derived rather than
+    # hand-authored. Weighted average by object count.
+    fixture_n = len(inventory.objects)
+    live_n = len(new_objects)
+    live_mean_conf = (
+        sum(obj.confidence for obj in new_objects) / live_n if live_n else 0.0
+    )
+    augmented_conf = (
+        (inventory.count_confidence * fixture_n + live_mean_conf * live_n)
+        / max(1, fixture_n + live_n)
+    )
+
+    return inventory.model_copy(
+        update={
+            "objects": [*inventory.objects, *new_objects],
+            "counts_by_kind": augmented_counts,
+            "count_confidence": min(1.0, max(0.0, augmented_conf)),
+            "notes": [
+                *inventory.notes,
+                (
+                    f"Tier 1F: appended {live_n} vision-detected object(s) "
+                    f"from {cache_path.name} ({cache.source})."
+                ),
+            ],
+        }
+    )
+
+
 def state(session_id: str = config.DEFAULT_SESSION_ID) -> StateResponse:
     """Return fixture status and parsed data where available."""
     missing = missing_required(session_id)
@@ -124,6 +220,11 @@ def state(session_id: str = config.DEFAULT_SESSION_ID) -> StateResponse:
     # Normalise the slug across all fixtures regardless of what's stored in
     # them — the input arg is the source of truth.
     inventory = inventory.model_copy(update={"session_id": session_id})
+
+    # Tier 1F: append vision-detected objects to the fixture inventory
+    # when a detector cache is on disk for the session. Augmentation is
+    # safe even when no cache exists (returns inventory unchanged).
+    inventory = _maybe_augment_inventory_with_live(session_id, inventory)
 
     live_windows = _maybe_live_kpi_windows(session_id, inventory.run_id, kpi_windows, zones)
     if live_windows is not None:
@@ -169,6 +270,10 @@ def build(
     # session_id is the source of truth; whatever the fixture stored is
     # informational and overridden here.
     inventory = inventory.model_copy(update={"session_id": session_id, "run_id": run_id})
+
+    # Tier 1F: augment with live vision detections (safe no-op when no
+    # cache file exists or CAFETWIN_FORCE_FIXTURE_INVENTORY=1).
+    inventory = _maybe_augment_inventory_with_live(session_id, inventory)
 
     live_windows = _maybe_live_kpi_windows(session_id, run_id, kpi_windows, zones)
     if live_windows is not None:
