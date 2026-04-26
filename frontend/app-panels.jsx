@@ -457,7 +457,8 @@ function LiveRecommendation({
 
 function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
     layoutChange, priorRecommendationCount, usedFallback,
-    backendLoading, backendError, runEvents, onSubmitFeedback, onRecDecision }) {
+    backendLoading, backendError, runEvents, onSubmitFeedback, onRecDecision,
+    simConversation, simPending, simError }) {
   const isBaseline = scenario.name === "baseline";
   const args = JSON.stringify({
     scenario_id: scenario.name,
@@ -473,9 +474,11 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
   // card, so aligning the rec-card to the top of the chat-stream guarantees
   // the user sees title + accept/reject without further scrolling.
   // For the loading/error flip, just scroll to bottom so the spinner / error
-  // tool-call lands in view.
+  // tool-call lands in view. We also bump this when sim chat messages
+  // arrive so the user's own prompt + agent rationale scroll into view.
   const streamRef = React.useRef(null);
   const fingerprint = layoutChange && layoutChange.fingerprint;
+  const simLen = (simConversation && simConversation.length) || 0;
   React.useEffect(() => {
     const el = streamRef.current;
     if (!el) return;
@@ -492,7 +495,7 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
         el.scrollTop = el.scrollHeight;
       }
     });
-  }, [fingerprint, backendLoading, backendError, scenario.name]);
+  }, [fingerprint, backendLoading, backendError, scenario.name, simLen, simPending]);
 
   return (
     <div className="panel panel-chat">
@@ -517,39 +520,62 @@ function ChatPanel({ scenario, kpis, base, onSend, draft, setDraft,
           onDecision={onRecDecision}
         />
 
-        {!isBaseline && (
-          <>
-            <ChatMessage from="user" time="14:03:04">
-              <p>simulate <b>{scenario.name}</b> — what changes?</p>
-            </ChatMessage>
-            <ChatMessage from="agent" time="14:03:06">
-              <p>spawning scenario · holding constraints.</p>
-            </ChatMessage>
-            <ToolCall name="scenario.spawn" status="ok" args={args}
-              result={<>✓ scenario <code>{scenario.name}</code> · {scenario.seats} seats · {scenario.baristas} baristas · footprint {kpis.footprint} m²</>} />
-            <ChatMessage from="agent" time="14:03:09">
-              <p>kpi delta: throughput <b>{deltaStr(kpis.throughput, base.kpis.throughput, "x")}</b>, wait <b>{deltaStr(base.kpis.waitSec, kpis.waitSec, "pct")}</b>, revenue/d <b>{fmtMoney(kpis.revenue)}</b>.</p>
-            </ChatMessage>
-          </>
-        )}
-        {isBaseline && (
+        {/* Welcome hint shown until the user has chatted with SimAgent. */}
+        {(!simConversation || simConversation.length === 0) && (
           <ChatMessage from="agent" time="14:02:30">
-            <p>baseline locked. type a prompt below to spawn a scenario, or pick one from the rail.</p>
+            <p>describe a scenario below (e.g. <em>"cut staff by half, morning rush"</em>) and <code>sim.agent</code> will spawn it onto the rail. or pick one from the existing chips.</p>
           </ChatMessage>
+        )}
+
+        {/* Live SimAgent conversation — user prompts + agent rationales + a
+            small tool-call card per spawned scenario so the chat reads like
+            an actual agent loop instead of a placeholder. */}
+        {(simConversation || []).map((msg, i) => (
+          <React.Fragment key={`sim-${i}`}>
+            <ChatMessage from={msg.role} time={msg.time || ""}>
+              <p>{msg.text}</p>
+            </ChatMessage>
+            {msg.role === "agent" && msg.meta && !msg.meta.error && (
+              <ToolCall
+                name="scenario.spawn"
+                status={msg.meta.usedFallback ? "warn" : "ok"}
+                args={JSON.stringify(msg.meta.spawnedParams || {}, null, 2)}
+                result={
+                  <>
+                    ✓ scenario <code>{msg.meta.spawnedName}</code>
+                    {msg.meta.changeSummary && <> · {msg.meta.changeSummary}</>}
+                    {msg.meta.usedFallback && <> · <span className="rec-meta-jl">heuristic fallback</span></>}
+                  </>
+                }
+              />
+            )}
+          </React.Fragment>
+        ))}
+
+        {simPending && (
+          <ToolCall
+            name="sim.agent"
+            status="running"
+            args={JSON.stringify({ phase: "prompt → ScenarioCommand" }, null, 2)}
+          />
         )}
       </div>
       <div className="chat-input">
         <div className="ci-row">
           <input className="ci-field" value={draft} onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) { onSend(draft); } }}
-            placeholder="describe a scenario… e.g. 'cut staff by half, weekday mornings only'" />
-          <button className="ci-send" onClick={() => draft.trim() && onSend(draft)}><Icon.send /></button>
+            onKeyDown={(e) => { if (e.key === "Enter" && draft.trim() && !simPending) { onSend(draft); } }}
+            disabled={simPending}
+            placeholder={simPending
+              ? "sim.agent is thinking…"
+              : "describe a scenario… e.g. 'cut staff by half, weekday mornings only'"} />
+          <button className="ci-send" disabled={simPending}
+            onClick={() => draft.trim() && !simPending && onSend(draft)}><Icon.send /></button>
         </div>
         <div className="ci-tools">
           <button className="ci-tool"><Icon.paperclip /><span>image</span></button>
           <button className="ci-tool"><Icon.mic /><span>mic</span></button>
           <span className="ci-spacer" />
-          <span className="ci-meta">⏎ send · ⌘⏎ run sim</span>
+          <span className="ci-meta">⏎ send · sim.agent</span>
         </div>
       </div>
     </div>

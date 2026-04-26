@@ -274,10 +274,12 @@ def reset_registry_for_tests() -> None:
 
 PATTERN_AGENT_LOCAL = "pattern_agent"
 OPTIMIZATION_AGENT_LOCAL = "optimization_agent"
+SIM_AGENT_LOCAL = "sim_agent"
 
 # Default MuBit agent_id slugs (kebab-case, stable across deploys).
 PATTERN_AGENT_ID = "cafetwin-pattern-agent"
 OPTIMIZATION_AGENT_ID = "cafetwin-optimization-agent"
+SIM_AGENT_ID = "cafetwin-sim-agent"
 
 
 def default_specs() -> list[AgentCardSpec]:
@@ -289,6 +291,7 @@ def default_specs() -> list[AgentCardSpec]:
     """
     from app.agents.optimization_agent import INSTRUCTIONS as OPT_PROMPT
     from app.agents.pattern_agent import INSTRUCTIONS as PATTERN_PROMPT
+    from app.agents.sim_agent import INSTRUCTIONS as SIM_PROMPT
 
     return [
         AgentCardSpec(
@@ -312,5 +315,17 @@ def default_specs() -> list[AgentCardSpec]:
                 "decision-aware prior recommendation memory."
             ),
             system_prompt=OPT_PROMPT,
+        ),
+        AgentCardSpec(
+            local_name=SIM_AGENT_LOCAL,
+            agent_id=SIM_AGENT_ID,
+            role="natural-language scenario simulator",
+            description=(
+                "SimAgent — turns free-text prompts from the chat input "
+                "('cut staff by half, morning rush') into validated "
+                "ScenarioCommand objects the frontend materialises onto "
+                "the scenario rail."
+            ),
+            system_prompt=SIM_PROMPT,
         ),
     ]

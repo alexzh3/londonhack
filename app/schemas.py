@@ -392,3 +392,51 @@ class TwinLayout(StrictModel):
     assets: list[TwinAsset]
     zones: list[Zone] = Field(default_factory=list)
     applied_change_fingerprint: str | None = None
+
+
+# ---------- Simulation chat agent ----------
+#
+# The frontend's chat input lets the user describe a "what-if" in plain
+# English (e.g. "cut staff by half", "handle 200/hr morning rush"); SimAgent
+# maps that prompt onto a structured ScenarioCommand that the iso scene can
+# spawn without any regex heuristics. The agent reads the current active
+# scenario as context and emits a short rationale alongside the new
+# parameters.
+
+ScenarioStyle = Literal["default", "brooklyn", "tokyo"]
+
+
+class ScenarioParams(StrictModel):
+    """The subset of scenario fields the sim agent is allowed to set.
+
+    Mirrors the SCENARIO_PRESETS shape in `frontend/app-state.jsx`. The
+    `name` is a short slug (a-z, 0-9, dots) so the chat can spawn it onto
+    the rail with the same formatting as hand-authored presets.
+    """
+
+    name: str = Field(min_length=1, max_length=22)
+    seats: int = Field(ge=4, le=240)
+    baristas: int = Field(ge=1, le=20)
+    footfall: int = Field(ge=0, le=600)
+    style: ScenarioStyle = "default"
+    hours: int = Field(ge=4, le=24, default=12)
+
+
+class ScenarioCommand(StrictModel):
+    """Structured SimAgent output applied to the scenario rail."""
+
+    scenario: ScenarioParams
+    rationale: str = Field(min_length=1, max_length=600)
+    change_summary: str = Field(min_length=1, max_length=200)
+
+
+class SimPromptRequest(StrictModel):
+    session_id: str = "ai_cafe_a"
+    prompt: str = Field(min_length=1, max_length=500)
+    active_scenario: ScenarioParams
+
+
+class SimPromptResponse(StrictModel):
+    command: ScenarioCommand
+    used_fallback: bool = False
+    logfire_trace_url: str | None = None

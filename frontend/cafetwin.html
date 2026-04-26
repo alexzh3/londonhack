@@ -18,12 +18,12 @@
   <div id="root"></div>
 
   <!-- Backend fetch wrappers (plain JS, must load before the JSX bundle uses them) -->
-  <script src="api.js?v=13"></script>
+  <script src="api.js?v=14"></script>
 
   <script type="text/babel" src="tweaks-panel.jsx?v=17"></script>
-  <script type="text/babel" src="app-state.jsx?v=20"></script>
+  <script type="text/babel" src="app-state.jsx?v=21"></script>
   <script type="text/babel" src="cafe-iso.jsx?v=22"></script>
-  <script type="text/babel" src="app-panels.jsx?v=20"></script>
+  <script type="text/babel" src="app-panels.jsx?v=21"></script>
   <script type="text/babel" src="app-canvas.jsx?v=21"></script>
 
   <script type="text/babel">
@@ -189,24 +189,76 @@
       };
       const onOpenScenario = (name) => { setInspectName(name); setOpenModal("inspect"); };
 
-      const onSendChat = (text) => {
-        // Heuristic: spawn a new scenario from the prompt
-        const lower = text.toLowerCase();
-        const pulled = {
-          name: lower.replace(/[^a-z0-9]+/g, ".").slice(0, 22) || "custom",
-          seats: lower.includes("half") ? Math.max(6, Math.floor(activeScn.seats / 2)) : (lower.match(/(\d+)\s*seat/) ? Number(RegExp.$1) : activeScn.seats),
-          baristas: lower.match(/(\d+)\s*barista/) ? Number(RegExp.$1) : (lower.includes("more staff") ? activeScn.baristas + 2 : activeScn.baristas),
-          footfall: lower.includes("rush") || lower.includes("busy") ? activeScn.footfall * 2 : activeScn.footfall,
-          style: lower.includes("brooklyn") ? "brooklyn" : lower.includes("tokyo") ? "tokyo" : activeScn.style,
-          hours: activeScn.hours,
-        };
-        // dedupe name
-        let nm = pulled.name; let i = 1;
-        while (scenarios.find((s) => s.name === nm)) { nm = pulled.name + "." + (++i); }
-        setExtraScenarios((es) => [...es, { ...pulled, name: nm }]);
-        setActiveName(nm);
-        setTweak("activeScenario", nm);
+      // SimAgent chat: posts the prompt + current active scenario to
+      // /api/sim/prompt, materialises the returned ScenarioCommand onto
+      // the rail, and threads the user message + agent rationale into the
+      // chat stream (ChatPanel renders `simConversation`).
+      const [simConversation, setSimConversation] = React.useState([]); // [{role:'user'|'agent', text, meta?}]
+      const [simPending, setSimPending] = React.useState(false);
+      const [simError, setSimError] = React.useState(null);
+
+      const onSendChat = async (text) => {
+        const prompt = text.trim();
+        if (!prompt || simPending) return;
+        const userTime = new Date().toTimeString().slice(0, 5);
+        setSimConversation((msgs) => [...msgs, { role: "user", text: prompt, time: userTime }]);
         setDraft("");
+        setSimPending(true);
+        setSimError(null);
+        try {
+          const res = await cafetwinApi.postSimPrompt({
+            sessionId: SESSION_ID,
+            prompt,
+            activeScenario: {
+              name: activeScn.name,
+              seats: activeScn.seats,
+              baristas: activeScn.baristas,
+              footfall: activeScn.footfall,
+              style: activeScn.style,
+              hours: activeScn.hours,
+            },
+          });
+          const cmd = res.command;
+          // Dedupe the slug against existing scenarios (preset + extras + rec)
+          let finalName = cmd.scenario.name;
+          let i = 1;
+          while (scenarios.find((s) => s.name === finalName)) {
+            finalName = `${cmd.scenario.name}.${++i}`.slice(0, 22);
+          }
+          const spawned = { ...cmd.scenario, name: finalName };
+          setExtraScenarios((es) => [...es, spawned]);
+          setActiveName(finalName);
+          setTweak("activeScenario", finalName);
+          const agentTime = new Date().toTimeString().slice(0, 5);
+          setSimConversation((msgs) => [
+            ...msgs,
+            {
+              role: "agent",
+              text: cmd.rationale,
+              time: agentTime,
+              meta: {
+                changeSummary: cmd.change_summary,
+                usedFallback: !!res.used_fallback,
+                spawnedName: finalName,
+                spawnedParams: spawned,
+              },
+            },
+          ]);
+        } catch (err) {
+          const msg = (err && err.message) || String(err);
+          setSimError(msg);
+          setSimConversation((msgs) => [
+            ...msgs,
+            {
+              role: "agent",
+              text: `sim.agent failed: ${msg}`,
+              time: new Date().toTimeString().slice(0, 5),
+              meta: { error: true },
+            },
+          ]);
+        } finally {
+          setSimPending(false);
+        }
       };
 
       return (
@@ -257,7 +309,10 @@
               backendError={backend.error}
               runEvents={backend.runEvents}
               onSubmitFeedback={backend.submitFeedback}
-              onRecDecision={setRecDecision} />
+              onRecDecision={setRecDecision}
+              simConversation={simConversation}
+              simPending={simPending}
+              simError={simError} />
           </div>
           <ScenarioRail scenarios={scenarios} base={baseScn} activeName={activeName}
             onSelect={onSelectScenario} onOpen={onOpenScenario}
