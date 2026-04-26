@@ -1,0 +1,263 @@
+{
+  "session_id": "real_cafe",
+  "run_id": "8fcbf1df-4a16-4fa2-bcb0-07d3cf4db7e0",
+  "source_frame_idx": 600,
+  "source_timestamp_s": 20.0,
+  "objects": [
+    {
+      "id": "counter_main_1",
+      "kind": "counter",
+      "label": "Long service counter with POS and espresso station",
+      "bbox_xyxy": [
+        500,
+        95,
+        985,
+        335
+      ],
+      "center_xy": [
+        742,
+        215
+      ],
+      "size_xy": [
+        485,
+        240
+      ],
+      "rotation_degrees": -6,
+      "zone_id": "counter",
+      "movable": false,
+      "confidence": 0.88,
+      "source": "manual"
+    },
+    {
+      "id": "pickup_shelf_right_1",
+      "kind": "pickup_shelf",
+      "label": "Right-side pickup and display shelf",
+      "bbox_xyxy": [
+        910,
+        115,
+        1165,
+        365
+      ],
+      "center_xy": [
+        1038,
+        240
+      ],
+      "size_xy": [
+        255,
+        250
+      ],
+      "rotation_degrees": -3,
+      "zone_id": "pickup",
+      "movable": false,
+      "confidence": 0.76,
+      "source": "manual"
+    },
+    {
+      "id": "prep_island_1",
+      "kind": "counter",
+      "label": "Central prep/display island narrowing the staff lane",
+      "bbox_xyxy": [
+        300,
+        285,
+        640,
+        610
+      ],
+      "center_xy": [
+        470,
+        448
+      ],
+      "size_xy": [
+        340,
+        325
+      ],
+      "rotation_degrees": -4,
+      "zone_id": "staff_path",
+      "movable": false,
+      "confidence": 0.84,
+      "source": "manual"
+    },
+    {
+      "id": "service_lane_marker_1",
+      "kind": "queue_marker",
+      "label": "Movable right-side service-lane boundary marker",
+      "bbox_xyxy": [
+        1040,
+        355,
+        1165,
+        545
+      ],
+      "center_xy": [
+        1102,
+        450
+      ],
+      "size_xy": [
+        125,
+        190
+      ],
+      "rotation_degrees": 0,
+      "zone_id": "queue",
+      "movable": true,
+      "confidence": 0.62,
+      "source": "manual"
+    },
+    {
+      "id": "display_fridge_left_1",
+      "kind": "counter",
+      "label": "Left display fridge in customer path",
+      "bbox_xyxy": [
+        65,
+        300,
+        300,
+        510
+      ],
+      "center_xy": [
+        182,
+        405
+      ],
+      "size_xy": [
+        235,
+        210
+      ],
+      "rotation_degrees": 4,
+      "zone_id": "staff_path",
+      "movable": false,
+      "confidence": 0.8,
+      "source": "manual"
+    },
+    {
+      "id": "table_seating_1",
+      "kind": "table",
+      "label": "Back-left customer table",
+      "bbox_xyxy": [
+        280,
+        55,
+        505,
+        155
+      ],
+      "center_xy": [
+        392,
+        105
+      ],
+      "size_xy": [
+        225,
+        100
+      ],
+      "rotation_degrees": -2,
+      "zone_id": "seating",
+      "movable": true,
+      "confidence": 0.74,
+      "source": "manual"
+    },
+    {
+      "id": "chair_seating_1",
+      "kind": "chair",
+      "label": "Back-left seating chair near aisle",
+      "bbox_xyxy": [
+        415,
+        120,
+        475,
+        205
+      ],
+      "center_xy": [
+        445,
+        162
+      ],
+      "size_xy": [
+        60,
+        85
+      ],
+      "rotation_degrees": 12,
+      "zone_id": "seating",
+      "movable": true,
+      "confidence": 0.66,
+      "source": "manual"
+    },
+    {
+      "id": "bar_stool_row_1",
+      "kind": "chair",
+      "label": "Counter stool row along service counter",
+      "bbox_xyxy": [
+        500,
+        260,
+        835,
+        390
+      ],
+      "center_xy": [
+        668,
+        325
+      ],
+      "size_xy": [
+        335,
+        130
+      ],
+      "rotation_degrees": -5,
+      "zone_id": "counter",
+      "movable": true,
+      "confidence": 0.68,
+      "source": "manual"
+    },
+    {
+      "id": "menu_board_1",
+      "kind": "menu_board",
+      "label": "Overhead menu board above counter",
+      "bbox_xyxy": [
+        760,
+        0,
+        1195,
+        120
+      ],
+      "center_xy": [
+        978,
+        60
+      ],
+      "size_xy": [
+        435,
+        120
+      ],
+      "rotation_degrees": 0,
+      "zone_id": "counter",
+      "movable": false,
+      "confidence": 0.79,
+      "source": "manual"
+    },
+    {
+      "id": "plant_left_1",
+      "kind": "plant",
+      "label": "Hanging yellow plant by left aisle",
+      "bbox_xyxy": [
+        260,
+        80,
+        345,
+        230
+      ],
+      "center_xy": [
+        302,
+        155
+      ],
+      "size_xy": [
+        85,
+        150
+      ],
+      "rotation_degrees": 0,
+      "zone_id": "seating",
+      "movable": true,
+      "confidence": 0.64,
+      "source": "manual"
+    }
+  ],
+  "counts_by_kind": {
+    "table": 1,
+    "chair": 2,
+    "counter": 3,
+    "pickup_shelf": 1,
+    "queue_marker": 1,
+    "menu_board": 1,
+    "plant": 1,
+    "barrier": 0
+  },
+  "count_confidence": 0.69,
+  "notes": [
+    "Tier 1A manual inventory from real CCTV frame at 20s; people are intentionally excluded because ObjectKind tracks layout assets only.",
+    "Right-side staff/customer lane is visually narrow where pickup, storage, and prep traffic overlap."
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "slug": "real_cafe",
+  "label": "Real cafe CCTV",
+  "video_path": "cafe_videos/real_cctv.mp4",
+  "source_kind": "real",
+  "notes": "Real overhead cafe CCTV. Tier 1A fixture pack manually authored from representative frame at 20s; YOLO/ByteTrack live perception remains the next Tier 1 step.",
+  "representative_frame_idx": 600
+}

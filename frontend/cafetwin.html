@@ -20,16 +20,16 @@
   <!-- Backend fetch wrappers (plain JS, must load before the JSX bundle uses them) -->
   <script src="api.js?v=10"></script>
 
-  <script type="text/babel" src="tweaks-panel.jsx?v=14"></script>
-  <script type="text/babel" src="app-state.jsx?v=14"></script>
-  <script type="text/babel" src="cafe-iso.jsx?v=14"></script>
-  <script type="text/babel" src="app-panels.jsx?v=14"></script>
-  <script type="text/babel" src="app-canvas.jsx?v=14"></script>
+  <script type="text/babel" src="tweaks-panel.jsx?v=15"></script>
+  <script type="text/babel" src="app-state.jsx?v=15"></script>
+  <script type="text/babel" src="cafe-iso.jsx?v=15"></script>
+  <script type="text/babel" src="app-panels.jsx?v=15"></script>
+  <script type="text/babel" src="app-canvas.jsx?v=15"></script>
 
   <script type="text/babel">
     const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
       "activeScenario": "baseline",
-      "compareMode": true,
+      "compareMode": false,
       "darkTheme": false
     }/*EDITMODE-END*/;
 
@@ -37,9 +37,9 @@
       const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
       // Live backend wiring: fetches /api/state + /api/run on mount for the
-      // active session. MVP defaults to ai_cafe_a per overview_plan §What
-      // MVP Must Ship. Session selector lands in Tier 1.
-      const SESSION_ID = "ai_cafe_a";
+      // active session. Defaults to ai_cafe_a; Tier 1A can be opened with
+      // ?session=real_cafe while preserving the MVP URL.
+      const SESSION_ID = new URLSearchParams(window.location.search).get("session") || "ai_cafe_a";
       const backend = useBackend(SESSION_ID);
 
       // Recommendation-application state. Lives at the App level so the

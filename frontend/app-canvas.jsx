@@ -127,7 +127,7 @@ function KPIDeltaStrip({ deltas, fingerprint }) {
   );
 }
 
-function CanvasPane({ scn, side, zoom, layers, simTime, running, speed, recommendation }) {
+function CanvasPane({ scn, side, zoom, layers, running, speed, recommendation }) {
   const k = scn.kpis;
   const showImpact = recommendation && recommendation.status === "accept" && side === "right";
   const impactDeltas = showImpact
@@ -135,6 +135,14 @@ function CanvasPane({ scn, side, zoom, layers, simTime, running, speed, recommen
         .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
         .slice(0, 4)
     : [];
+  // NOTE: `simTime` is intentionally not threaded into CafeScene. The iso
+  // scene's procedural simulation drives its own RAF inside `useCafeSim`
+  // (effect 3), gated by `running`+`speed`. Previously we ALSO passed App's
+  // ticker as `externalTime`, which caused two RAF-driven update sources to
+  // dispatch back-to-back setStates against the same fiber every frame —
+  // React 18's batcher then occasionally tripped its "Maximum update depth"
+  // warning at 60+ fps. App's `simTime` still drives the TimeBar UI; the iso
+  // scene just isn't slaved to it.
   return (
     <div className="cv-pane">
       <div className="cv-axes">
@@ -143,7 +151,7 @@ function CanvasPane({ scn, side, zoom, layers, simTime, running, speed, recommen
       <div className="cv-stage" style={{ transform: `scale(${zoom})` }}>
         <CafeScene seats={scn.seats} baristas={scn.baristas} style={scn.style}
           scenarioName={scn.name} footfall={scn.footfall}
-          simTime={simTime} running={running} speed={speed}
+          running={running} speed={speed}
           recommendation={recommendation} />
       </div>
       {layers.heat && <div className="cv-heat" />}
@@ -244,15 +252,15 @@ function MainCanvas({ split, setSplit, active, base, layers, setLayers, zoom, se
         {split ? (
           <>
             <CanvasPane scn={base} side="left" zoom={zoom} layers={layers}
-              simTime={simTime} running={running} speed={speed} />
+              running={running} speed={speed} />
             <div className="cv-divider"><div className="cv-divider-handle"><span>‖</span></div></div>
             <CanvasPane scn={active} side="right" zoom={zoom} layers={layers}
-              simTime={simTime} running={running} speed={speed}
+              running={running} speed={speed}
               recommendation={recommendation} />
           </>
         ) : (
           <CanvasPane scn={active} side="right" zoom={zoom} layers={layers}
-            simTime={simTime} running={running} speed={speed}
+            running={running} speed={speed}
             recommendation={recommendation} />
         )}
       </div>

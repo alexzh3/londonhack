@@ -431,7 +431,14 @@ demo_data/
       kpi_windows.json
       pattern_fixture.json
       recommendation.cached.json
-    real_cafe/                  # Tier 1 only — pairs with live YOLO on real_cctv.mp4
+    real_cafe/                  # Tier 1A real-video fixture pack on real_cctv.mp4
+      session.json
+      frame.jpg
+      zones.json
+      object_inventory.json
+      kpi_windows.json
+      pattern_fixture.json
+      recommendation.cached.json
   mubit_fallback.jsonl          # shared across sessions, payloads include session_id
 frontend/                       # existing Babel-in-browser demo — bind backend, do not rewrite
   cafetwin.html                 # shell (already built; add memories modal + optional session selector)
@@ -453,6 +460,9 @@ Current status (2026-04-26): `pyproject.toml`, `app/`, `app/api/`,
 Pydantic models for fixtures, `CafeEvidencePack`, `LayoutChange`, memory
 records, API responses, and Tier 2 twin layouts. `demo_data/sessions/ai_cafe_a/`
 now contains the extracted 5s frame and all six required JSON fixtures.
+`demo_data/sessions/real_cafe/` now contains a Tier 1A real-video fixture pack
+derived from the 20s frame of `cafe_videos/real_cctv.mp4`; full YOLO/ByteTrack
+perception remains the next Tier 1 step.
 `app/evidence_pack.py`, `app/sessions.py`, `app/fallback.py`, `app/memory.py`,
 and `app/api/routes.py` provide the first test-backed backend spine for the six
 MVP routes. `OptimizationAgent` now uses Pydantic AI `@output_validator` +
@@ -477,7 +487,7 @@ CCTV videos in `cafe_videos/` seed sessions. Each session is a self-contained fi
 | Session slug | Source video | Status |
 |---|---|---|
 | `ai_cafe_a` | `cafe_videos/ai_generated_cctv.mp4` (1924×1076 / 24fps / 15s) | **MVP — must ship.** Controlled AI-generated CCTV mock; fastest path to a clean fixture pack. |
-| `real_cafe` | `cafe_videos/real_cctv.mp4` (1280×720 / 30fps / 49s) | **Tier 1 only.** Authored once `scripts/run_yolo_offline.py` produces real `tracks.cached.json` for it. Carries the "real video" pitch beat when Tier 1 ships. |
+| `real_cafe` | `cafe_videos/real_cctv.mp4` (1280×720 / 30fps / 49s) | **Tier 1A landed.** Manual real-video fixture pack is authored now (20s frame, zones, inventory, KPIs, pattern, cached recommendation). Full YOLO/ByteTrack `tracks.cached.json` is still the next Tier 1 upgrade. |
 
 `cafe_videos/ai_generated_cctv_round.mp4` is held in repo as raw material; no session is authored against it for MVP or Tier 1.
 
@@ -1209,6 +1219,14 @@ Runtime checks:
 - [x] MuBit trace children replace/augment jsonl-only spans (`memory.recall.mubit`, `memory.write.mubit`).
 - [x] If `ANTHROPIC_API_KEY` / `PYDANTIC_AI_GATEWAY_API_KEY` is unset/invalid OR `CAFETWIN_FORCE_FALLBACK=1`, the fallback path returns a semantically valid `LayoutChange` (validated by `validate_layout_change` against the live evidence pack) and the UI renders it identically to a live response. Verified via second uvicorn on :8001 with empty key envs: `RunResponse.layout_change` carried full title/rationale/target/sim/evidence/deltas/confidence/risk; jsonl wrote successfully (`fallback_only=False` because jsonl is treated as the durable store regardless of LLM availability).
 - [x] If `MUBIT_API_KEY` is unset, jsonl-only mode works end-to-end with no `mubit_id` chips and no "Seen before" chip.
+
+Tier 1A real-video checks:
+
+- [x] `real_cafe` under `demo_data/sessions/<slug>/`: all six required JSON files plus `frame.jpg` exist and load.
+- [x] `GET /api/sessions` discovery includes both `ai_cafe_a` and `real_cafe`.
+- [x] `GET /api/state?session_id=real_cafe` returns no missing fixtures and exposes `assets.frame=demo_data/sessions/real_cafe/frame.jpg` plus `assets.video=cafe_videos/real_cctv.mp4`.
+- [x] `validate_layout_change(load_cached_recommendation("real_cafe"), build("real_cafe"))` returns no errors for `real_cafe_open_right_service_lane_v1`.
+- [x] Forced-fallback `POST /api/run {session_id: "real_cafe"}` returns the standard 3 stages (`evidence_pack`, `optimization_agent`, `memory_write`) and the cached real-video `LayoutChange`.
 
 ## Pitch copy (best-case demo recommendation)
 
