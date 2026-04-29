@@ -1,14 +1,18 @@
 # CafeTwin
 
+![CafeTwin Tier 1 overview](docs/cafetwin-tier1-overview.png)
+
 CafeTwin watches overhead cafe CCTV, spots what's slowing throughput — queues blocking the barista path, staff weaving around tables, crowded pickup lanes — and recommends a single layout change to fix it, backed by the camera evidence and a "seen before" chip if the issue has recurred. The interface shows the live annotated CCTV next to a digital twin of the cafe, so operators see the same thing the AI does.
 
 Under the hood: real perception (YOLOv8 + ByteTrack, deterministic KPI engine) feeds four Pydantic AI agents whose outputs are typed, validated, geometry-checked, and persisted to MuBit memory; one Logfire trace covers every run.
 
+Built at the **Unicorn Mafia London-to-SF "To the Americas" hackathon** — **4th place out of 47 submissions** and winner of the **Render bounty**. Full project list: <https://london-to-sf.unicornmafia.ai/projects/>.
+
 **Live demo:** <https://frontend-tier1.vercel.app/cafetwin.html>
 
-Built at the **Unicorn Mafia London-to-SF "To the Americas" hackathon** — **4th place out of 47 submissions** and winner of the **Render bounty**. Project index: <https://london-to-sf.unicornmafia.ai/projects/>.
+![CafeTwin live split view — annotated CCTV next to the iso digital twin, with the AI recommendation card on the right](docs/cafetwin-split-view.png)
 
-![CafeTwin Tier 1 overview](docs/cafetwin-tier1-overview.png)
+*Live UI — annotated CCTV with YOLOv8 + ByteTrack overlays on the left, iso digital twin on the right*
 
 **Built by** [Alex](https://github.com/alexzh3) · [Samuel](https://github.com/Samy-a-dev) · [David](https://github.com/davidscode404)
 

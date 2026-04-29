@@ -580,7 +580,7 @@
           <span class="brand-sub">tier_1 · cctv to layout decisions</span>
         </div>
         <div class="topbar-right">
-          <span class="pill live"><span class="dot"></span><strong>Pydantic AI</strong> · 2 typed agents</span>
+          <span class="pill live"><span class="dot"></span><strong>Pydantic AI</strong> · 4 typed agents</span>
           <span class="pill"><span class="dot"></span><strong>MuBit</strong> · memory + recall</span>
           <span class="pill"><span class="dot"></span><strong>Logfire</strong> · 1 trace / run</span>
           <span class="pill"><span class="dot"></span><strong>Render</strong> · live</span>
@@ -598,7 +598,7 @@
             POS tells operators what sold. <em>CafeTwin shows why throughput stalled.</em>
           </p>
           <p class="lede">
-            Real footage perceived offline by <span class="mono">YOLOv8n + ByteTrack</span>; two typed Pydantic AI agents reason in sequence; <span class="mono">MuBit</span> stores the decision; <span class="mono">Logfire</span> wraps the trace.
+            Real footage perceived offline by <span class="mono">YOLOv8n + ByteTrack</span>; four typed Pydantic AI agents reason in sequence; <span class="mono">MuBit</span> stores the decision; <span class="mono">Logfire</span> wraps the trace.
             Cached fallback ships every claim — even with keys unset, the demo holds together.
           </p>
         </aside>
@@ -757,9 +757,9 @@
         </div>
         <div class="proof">
           <span class="proof-label">Typed intelligence</span>
-          <span class="proof-num">2 agents</span>
+          <span class="proof-num">4 agents</span>
           <span class="proof-text">
-            <span class="mono">PatternAgent → OperationalPattern</span>, then <span class="mono">OptimizationAgent → LayoutChange</span>. <span class="mono">output_validator</span> + <span class="mono">ModelRetry</span> + cached fallback.
+            <span class="mono">PatternAgent → OptimizationAgent → LayoutChange</span>, plus <span class="mono">ObjectReviewAgent</span> (filters YOLO) and <span class="mono">SimAgent</span> (chat → scenario). Each typed with <span class="mono">output_validator</span> + <span class="mono">ModelRetry</span> + cached fallback.
           </span>
         </div>
         <div class="proof">
@@ -773,13 +773,13 @@
           <span class="proof-label">Auditable trace</span>
           <span class="proof-num">1 trace</span>
           <span class="proof-text">
-            Per <span class="mono">/api/run</span>: evidence pack → KPI engine → both agents → memory write — every span visible in Logfire.
+            Per <span class="mono">/api/run</span>: evidence pack → KPI engine → pattern + optimization agents → memory write — every span visible in Logfire.
           </span>
         </div>
       </section>
 
       <footer class="footer">
-        <span>repo · londonhack/tier_1 · 2026-04-26</span>
+        <span>repo · londonhack · 2026-04-29</span>
         <span class="stack">
           <span>fastapi</span><span>pydantic ai</span><span>mubit</span><span>logfire</span><span>yolov8</span><span>render</span>
         </span>
