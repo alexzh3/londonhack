@@ -1,7 +1,8 @@
 # Scripts
 
-One-shot utilities for the CafeTwin / SimCafe MVP. All scripts assume they are
-run from the repo root or from anywhere — they `cd` to the repo root themselves.
+One-shot utilities for the CafeTwin / SimCafe Tier 1 build. All scripts assume
+they are run from the repo root or from anywhere — they `cd` to the repo root
+themselves.
 
 ## Local dev / testing
 
@@ -15,13 +16,63 @@ run from the repo root or from anywhere — they `cd` to the repo root themselve
 Typical first-time flow:
 
 ```bash
-uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
 ./scripts/setup.sh         # bootstrap venv + deps
 ./scripts/test.sh          # confirm backend is green
 ./scripts/dev.sh           # start backend + frontend, open the URL it prints
 # ...in another terminal:
 ./scripts/smoke.sh         # verify response shapes
 ```
+
+The cached perception artifacts under `demo_data/sessions/` are enough
+for the dev server — you don't need to run any vision scripts to see
+the live agent path. See **Rebuilding perception artifacts** below if
+you want to regenerate them from the source video.
+
+## Rebuilding perception artifacts
+
+The five vision-pipeline scripts live under `scripts/vision/`. The cached
+`tracks.cached.json`, `object_detections.cached.json`,
+`object_review.cached.json`, `object_detections.reviewed.cached.json`,
+`annotated_before.mp4`, and `annotated_before.web.mp4` files in
+`demo_data/sessions/<slug>/` are committed so the demo runs out of the
+box. To regenerate them from the source CCTV videos:
+
+| Script | Stage | Outputs (per session) |
+|---|---|---|
+| `run_yolo_offline.py` | Tier 1B people-tracking pass — YOLOv8n + ByteTrack | `tracks.cached.json` (+ a basic `annotated_before.mp4` with person boxes only). |
+| `detect_layout_objects.py` | Tier 1B static-furniture pass — YOLOv8x over the representative frame plus sampled video frames, with duplicate-detection clustering | `object_detections.cached.json`. |
+| `review_layout_objects_agent.py` | Pydantic AI review/merge over the detector cache | `object_review.cached.json` plus the stricter `object_detections.reviewed.cached.json`. |
+| `render_rich_annotated_video.py` | Tier 1D enrichment pass: re-render `annotated_before.mp4` with **both** person tracks and reviewed static-object boxes overlaid | `annotated_before.mp4` (overwritten). |
+| `transcode_annotated_for_web.sh` | Tier 1D web transcode: Chromium's HTML5 `<video>` rejects the `cv2.VideoWriter` default `mp4v` codec, so this re-encodes to H.264 | `annotated_before.web.mp4`. |
+
+Full rebuild from scratch (both shipped sessions):
+
+```bash
+uv run scripts/vision/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
+uv run scripts/vision/run_yolo_offline.py --session real_cafe --vid-stride 3
+uv run scripts/vision/detect_layout_objects.py --session ai_cafe_a
+uv run scripts/vision/detect_layout_objects.py --session real_cafe
+uv run scripts/vision/review_layout_objects_agent.py --session ai_cafe_a
+uv run scripts/vision/review_layout_objects_agent.py --session real_cafe
+uv run scripts/vision/render_rich_annotated_video.py --session ai_cafe_a
+uv run scripts/vision/render_rich_annotated_video.py --session real_cafe
+./scripts/vision/transcode_annotated_for_web.sh        # all sessions
+```
+
+`./scripts/vision/transcode_annotated_for_web.sh <session>` re-encodes a
+single session if you only changed one. Running the script with no args
+walks every session.
+
+### Local heavy artifacts (gitignored)
+
+- `models/ultralytics/` — active YOLO `.pt` weights used by the tracking and static-detection scripts.
+- `images/` — generated screenshots and annotated still-image outputs.
+- `demo_data/sessions/<slug>/annotated_before.mp4` and `annotated_before.web.mp4` are gitignored alongside the smaller cached JSON.
+
+Ad-hoc benchmark scripts, the optional Moondream generator, and
+benchmark-only model weights were removed after archiving the results;
+see [`docs/vision_benchmarks.md`](../docs/vision_benchmarks.md) for the
+YOLO / RT-DETR / YOLO11x / Moondream comparisons.
 
 ## Deploy
 
@@ -53,10 +104,10 @@ git push
 
 Current hosted split:
 
-| Demo | Vercel project / URL | Backend |
-|---|---|---|
-| MVP | `frontend` — <https://frontend-hazel-xi-17.vercel.app/cafetwin.html> | <https://cafetwin-backend.onrender.com> |
-| Tier 1 | `frontend-tier1` — <https://frontend-tier1.vercel.app/cafetwin.html> | <https://cafetwin-backend-tier1.onrender.com> |
+| Surface | URL |
+|---|---|
+| Frontend (Vercel project `frontend-tier1`) | <https://frontend-tier1.vercel.app/cafetwin.html> |
+| Backend (Render service `cafetwin-backend-tier1`) | <https://cafetwin-backend-tier1.onrender.com> |
 
 Subsequent redeploys:
 
@@ -73,32 +124,4 @@ the Vercel CLI environment:
 
 ```bash
 CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com ./scripts/deploy_vercel.sh
-```
-
-## Tier 1 / Tier 2
-
-MVP scripts generate or validate fixture artifacts. Tier 1 adds YOLO / ByteTrack
-and KPI-engine scripts behind the same `demo_data/` contracts.
-
-- `run_yolo_offline.py` — Tier 1B: run YOLOv8n + ByteTrack offline and produce `tracks.cached.json` plus `annotated_before.mp4` per session.
-- `detect_layout_objects.py` — Tier 1B static layout pass: run high-accuracy YOLOv8x over the representative frame plus sampled video frames, aggregate duplicate furniture detections, and produce `object_detections.cached.json` per session.
-- `review_layout_objects_agent.py` — Pydantic AI review/merge pass: consumes detector cache, emits `object_review.cached.json`, and writes a stricter `object_detections.reviewed.cached.json`.
-- `transcode_annotated_for_web.sh` — Tier 1D: transcode `annotated_before.mp4` (cv2 default `mp4v` codec, browser-incompatible) to `annotated_before.web.mp4` (H.264) so the frontend's real CCTV pane can play it.
-
-Local heavy artifacts stay out of the repo root:
-
-- `models/ultralytics/` — active YOLO `.pt` weights used by the tracking and static-detection scripts.
-- `images/` — generated screenshots and annotated still-image outputs. Overlay videos remain next to their session caches under `demo_data/sessions/<session>/`.
-
-Ad-hoc benchmark scripts, the optional Moondream generator, and benchmark-only
-model weights were removed after capturing the results. See
-`docs/vision_benchmarks.md` for the archived YOLO / RT-DETR / YOLO11x and
-Moondream benchmark numbers.
-
-```bash
-uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
-uv run scripts/detect_layout_objects.py --session ai_cafe_a
-uv run scripts/review_layout_objects_agent.py --session ai_cafe_a
-uv run scripts/detect_layout_objects.py --session real_cafe
-./scripts/transcode_annotated_for_web.sh
 ```

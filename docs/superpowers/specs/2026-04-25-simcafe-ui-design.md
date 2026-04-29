@@ -546,7 +546,7 @@ chatClient routes events
 
 ## 13. Tier 2 Build Sequence (product vision reference)
 
-Do not use this table as the current MVP schedule. The current MVP schedule lives in [`overview_plan.md`](../../../overview_plan.md) and is backend-spine-first: fixture evidence, `/api/run`, typed `LayoutChange`, memory write, Logfire trace — all bound into the existing Babel-in-browser JSX demo (no Vite port for MVP). The table below is retained as the richer Tier 2 direction once MVP is green.
+Do not use this table as the current MVP schedule. The current MVP schedule lives in [`overview_plan.md`](../../overview_plan.md) and is backend-spine-first: fixture evidence, `/api/run`, typed `LayoutChange`, memory write, Logfire trace — all bound into the existing Babel-in-browser JSX demo (no Vite port for MVP). The table below is retained as the richer Tier 2 direction once MVP is green.
 
 | Time | Gate | Frontend deliverable | Backend deliverable |
 |---|---|---|---|

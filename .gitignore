@@ -37,7 +37,7 @@ images/
 
 # Vision pipeline overlay videos (pitch artifacts; multi-MB; not runtime data).
 # Source CCTV under cafe_videos/ stays tracked. The H.264 web-safe transcode
-# (annotated_before.web.mp4) is regenerated via scripts/transcode_annotated_for_web.sh.
+# (annotated_before.web.mp4) is regenerated via scripts/vision/transcode_annotated_for_web.sh.
 **/object_detections.annotated.jpg
 **/object_detections.moondream.jpg
 **/object_detections.moondream.local.cached.json

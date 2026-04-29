@@ -20,7 +20,7 @@ zones internally (zone_for_point on every track detection); they just
 aren't part of the visual demo overlay.
 
 The output overwrites `demo_data/sessions/<slug>/annotated_before.mp4`.
-After running this, re-run `scripts/transcode_annotated_for_web.sh` to
+After running this, re-run `scripts/vision/transcode_annotated_for_web.sh` to
 produce the H.264 `.web.mp4` the frontend prefers.
 """
 
@@ -58,7 +58,7 @@ def main() -> int:
         import cv2
     except ImportError as exc:
         raise SystemExit(
-            "Missing opencv. Run with: uv run scripts/render_rich_annotated_video.py --session ai_cafe_a"
+            "Missing opencv. Run with: uv run scripts/vision/render_rich_annotated_video.py --session ai_cafe_a"
         ) from exc
 
     session_dir = ROOT_DIR / "demo_data" / "sessions" / args.session

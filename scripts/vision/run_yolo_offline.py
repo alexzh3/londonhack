@@ -46,7 +46,7 @@ def main() -> int:
     except ImportError as exc:
         raise SystemExit(
             "Missing tracking dependencies. Run with: "
-            "uv run scripts/run_yolo_offline.py --session real_cafe"
+            "uv run scripts/vision/run_yolo_offline.py --session real_cafe"
         ) from exc
 
     session_dir = ROOT_DIR / "demo_data" / "sessions" / args.session

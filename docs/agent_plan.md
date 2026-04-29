@@ -69,7 +69,7 @@ Perception layer becomes live. Intelligence and presentation layers untouched. *
   ── PERCEPTION (now REAL) ─────────  ── INTELLIGENCE (REAL, unchanged) ──   ── PRESENTATION (still mocked shell)
 
   ┌─────────────────────────────┐
-  │ scripts/run_yolo_offline.py │     (same app/ as MVP)                    (same frontend/ as MVP)
+  │ scripts/vision/run_yolo_offline.py │     (same app/ as MVP)                    (same frontend/ as MVP)
   │   YOLO + ByteTrack    (NEW) │
   │   → tracks.cached.json[REAL]│ ─┐
   └─────────────────────────────┘  │
@@ -189,7 +189,7 @@ Presentation layer upgrades. Backend gains a second agent. **Adds SceneBuilderAg
 
 - `docs/cafetwin-tier1-overview.html` is the editable 16:9 source for a judge-facing Tier 1 product overview. It renders the `real_cafe` frame with annotated-perception callouts, the typed PatternAgent -> OptimizationAgent pipeline, and the demo UI recommendation/memory/trace story.
 - `docs/cafetwin-tier1-overview.png` is the generated 1600 x 900 deck/README-ready artifact.
-- `README.md` and `docs/architecture/README.md` use a Mermaid Tier 1 architecture diagram instead of a generated architecture PNG/HTML. The diagram shows existing CCTV video files → offline perception → typed evidence → Pydantic AI agents → UI, memory, and Logfire.
+- `README.md` uses a Mermaid Tier 1 architecture diagram instead of a generated architecture PNG/HTML. The diagram shows existing CCTV video files → offline perception → typed evidence → Pydantic AI agents → UI, memory, and Logfire.
 
 ## Sequence — `/api/run` and `/api/feedback`
 
@@ -342,7 +342,7 @@ Tier 1 / Tier 2 add-ons:
   for `source_kind=real` sessions while preserving the fixture window
   schedule + memory_ids so `PatternAgent` evidence citations stay valid.
 - Live `tracks.cached.json` from YOLO/ByteTrack offline (Tier 1B ✅ landed
-  via `app/vision/tracks.py` + `scripts/run_yolo_offline.py`).
+  via `app/vision/tracks.py` + `scripts/vision/run_yolo_offline.py`).
 - `scene_builder_agent.run` × 2 (Tier 2, on `/api/apply`) producing observed
   + recommended `TwinLayout`s.
 
@@ -506,16 +506,16 @@ build backend and pins package discovery to `app*` so Render's `pip install .`
 ignores flat repo assets,
 `app/`, `app/api/`,
 `app/agents/`, `demo_data/`, `frontend/`, `scripts/`, and
-`docs/architecture/` exist. `app/schemas.py` is implemented with strict
+`docs/` exist. `app/schemas.py` is implemented with strict
 Pydantic models for fixtures, `CafeEvidencePack`, `LayoutChange`, memory
 records, API responses, and Tier 2 twin layouts. `demo_data/sessions/ai_cafe_a/`
 now contains the extracted 5s frame and all six required JSON fixtures.
 `demo_data/sessions/real_cafe/` now contains a Tier 1A real-video fixture pack
 derived from the 20s frame of `cafe_videos/real_cctv.mp4`; full YOLO/ByteTrack
 person perception lands as Tier 1B via `app/vision/tracks.py` and
-`scripts/run_yolo_offline.py`, producing `tracks.cached.json` and
+`scripts/vision/run_yolo_offline.py`, producing `tracks.cached.json` and
 `annotated_before.mp4` for `real_cafe`. Static layout perception is a separate
-Tier 1B lane via `app/vision/objects.py` and `scripts/detect_layout_objects.py`:
+Tier 1B lane via `app/vision/objects.py` and `scripts/vision/detect_layout_objects.py`:
 the script runs high-accuracy YOLOv8x over the representative frame plus sampled
 video frames, aggregates duplicate furniture detections, and writes
 `object_detections.cached.json` for both `ai_cafe_a` and `real_cafe`.
@@ -579,7 +579,7 @@ For each `<slug>` under `demo_data/sessions/<slug>/`:
 | File | Schema | Notes |
 |---|---|---|
 | `cafe_videos/real_cctv.mp4`, `ai_generated_cctv.mp4`, `ai_generated_cctv_round.mp4` | binary | Already in repo. Not parsed by backend at runtime. Optionally streamed by the frontend if the canvas's `view` segment grows a `video` mode. |
-| `demo_data/sessions/<slug>/tracks.cached.json` | `TracksCache` (`app/vision/tracks.py`) | Tier 1 only — produced offline by `scripts/run_yolo_offline.py --session <slug>`. Contains anonymized person `track_id`s, bboxes, centers, zone IDs, and heuristic roles (`staff` / `customer` / `unknown`). Not used in MVP. |
+| `demo_data/sessions/<slug>/tracks.cached.json` | `TracksCache` (`app/vision/tracks.py`) | Tier 1 only — produced offline by `scripts/vision/run_yolo_offline.py --session <slug>`. Contains anonymized person `track_id`s, bboxes, centers, zone IDs, and heuristic roles (`staff` / `customer` / `unknown`). Not used in MVP. |
 | `demo_data/sessions/<slug>/twin_observed.json` / `twin_recommended.json` | `TwinLayout` (Tier 2 schema) | Tier 2 R3F input. Not used in MVP — the iso renderer synthesises its scene from demo presets. |
 | `demo_data/mubit_fallback.jsonl` | append-only | Created at runtime. Shared across sessions. Each record's payload includes `session_id` so the Memories modal can filter. |
 
@@ -1221,12 +1221,12 @@ Window size: 20s. Run on cached `tracks.cached.json` + `zones.json`. Output over
 
 ## Vision (Tier 1, NOT MVP)
 
-Run offline once, not at demo time. Script: `scripts/run_yolo_offline.py`:
+Run offline once, not at demo time. Script: `scripts/vision/run_yolo_offline.py`:
 
 ```bash
-uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
+uv run scripts/vision/run_yolo_offline.py --session ai_cafe_a --vid-stride 2
 # optional real CCTV path:
-uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3
+uv run scripts/vision/run_yolo_offline.py --session real_cafe --vid-stride 3
 ```
 
 The script uses PEP 723 inline dependencies (`ultralytics`,
@@ -1341,16 +1341,16 @@ Tier 1A real-video checks:
 - [x] `validate_layout_change(load_cached_recommendation("real_cafe"), build("real_cafe"))` returns no errors for `real_cafe_open_right_service_lane_v1`.
 - [x] Forced-fallback `POST /api/run {session_id: "real_cafe"}` returns the standard 3 stages (`evidence_pack`, `optimization_agent`, `memory_write`) and the cached real-video `LayoutChange`.
 - [x] `frontend/cafetwin.html?session=real_cafe` selects `real_cafe` via URL param while the default URL still selects `ai_cafe_a`.
-- [x] `uv run scripts/run_yolo_offline.py --session real_cafe --vid-stride 3` produces `tracks.cached.json` and `annotated_before.mp4`.
+- [x] `uv run scripts/vision/run_yolo_offline.py --session real_cafe --vid-stride 3` produces `tracks.cached.json` and `annotated_before.mp4`.
 - [x] `load_tracks_cache("demo_data/sessions/real_cafe/tracks.cached.json")` validates a `TracksCache` with 48 tracks, 1856 detections, 490 processed frames, and role counts `staff=15`, `customer=24`, `unknown=9`.
 - [x] `annotated_before.mp4` is readable by ffmpeg and shows YOLO/ByteTrack boxes with track IDs and zone labels.
-- [x] `uv run scripts/run_yolo_offline.py --session ai_cafe_a --vid-stride 2` produces the preferred fake-session `tracks.cached.json` and `annotated_before.mp4`.
+- [x] `uv run scripts/vision/run_yolo_offline.py --session ai_cafe_a --vid-stride 2` produces the preferred fake-session `tracks.cached.json` and `annotated_before.mp4`.
 - [x] `load_tracks_cache("demo_data/sessions/ai_cafe_a/tracks.cached.json")` validates a `TracksCache` with 11 tracks, 1275 detections, 180 processed frames, and role counts `staff=1`, `customer=10`, `unknown=0`.
-- [x] `uv run scripts/detect_layout_objects.py --session ai_cafe_a` runs high-accuracy YOLOv8x static layout detection and writes `object_detections.cached.json` with 31 aggregated furniture detections (`chair=15`, `dining table=7`, `couch=1`, `potted plant=8`) from 345 raw detections across 9 frames.
-- [x] `uv run scripts/detect_layout_objects.py --session real_cafe` writes `object_detections.cached.json` with 12 aggregated detections (`chair=11`, `dining table=1`) from 84 raw detections across 9 frames; real CCTV static furniture recall remains harder/noisier than the fake session.
+- [x] `uv run scripts/vision/detect_layout_objects.py --session ai_cafe_a` runs high-accuracy YOLOv8x static layout detection and writes `object_detections.cached.json` with 31 aggregated furniture detections (`chair=15`, `dining table=7`, `couch=1`, `potted plant=8`) from 345 raw detections across 9 frames.
+- [x] `uv run scripts/vision/detect_layout_objects.py --session real_cafe` writes `object_detections.cached.json` with 12 aggregated detections (`chair=11`, `dining table=1`) from 84 raw detections across 9 frames; real CCTV static furniture recall remains harder/noisier than the fake session.
 - [x] `load_object_detections_cache(...)` validates both static object caches and asserts geometry/source-frame/zone integrity.
 - [x] Archived detector benchmarks compare YOLOv8x (31 objects on `ai_cafe_a`, 12 on `real_cafe`), RT-DETR-x (48 / 28, higher recall/noisier), and YOLO11x (37 / 12, larger false table/counter boxes). Results live in `docs/vision_benchmarks.md`; the benchmark script and benchmark-only weights were removed after capture.
-- [x] `uv run scripts/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. The optional Moondream generator script was pruned after benchmark archival because it is not part of the stable demo path.
+- [x] `uv run scripts/vision/review_layout_objects_agent.py --session ai_cafe_a` writes a reviewed cache with 23 kept / 8 dropped detector candidates; `real_cafe` writes 9 kept / 3 dropped. The optional Moondream generator script was pruned after benchmark archival because it is not part of the stable demo path.
 - [x] Archived local Moondream Photon/Kestrel preflight records `status=skipped_insufficient_vram` on the local MX330 (`2048 MB total`, `1993 MB free`), below the 2600 MB threshold. Results live in `docs/vision_benchmarks.md`.
 - [x] Archived exact legacy 0.5B `.mf.gz` ONNX results from `vikhyatk/moondream2/tree/onnx`: supplied int8 archive is 621,619,051 bytes and runs on CPU but produces weak/noisy boxes (`ai_cafe_a`: 1 kept / 3 raw regions, `real_cafe`: 1 kept / 13 raw regions); sibling int4 archive is present but fails ONNX Runtime CPU with a `MatMulNBits` quantized-weight shape error. Benchmark script and local `.mf`/ONNX files were removed after archiving.
 - [x] Local model/image artifacts are no longer dumped in the repo root. Active weights (`yolov8n.pt`, `yolov8x.pt`) live under `models/ultralytics/`; unused or benchmark-only weights (`yolo11n.pt`, `yolo12n.pt`, `yolov8m.pt`, `rtdetr-x.pt`, `yolo11x.pt`) were removed after user confirmation / benchmark archival. Generated screenshots and annotated still images live under `images/`.
@@ -1370,7 +1370,7 @@ Tier 1D visible-perception checks (real CCTV in the canvas):
 
 - [x] FastAPI mounts `/cafe_videos` and `/demo_data` as `StaticFiles` so the browser can fetch real-CCTV assets (`HTTP 206 Partial Content` works for video range requests, CORS headers present).
 - [x] `evidence_pack._assets()` surfaces `assets.annotated_video` when an `annotated_before.web.mp4` (H.264) or `annotated_before.mp4` exists per session, preferring the web-safe variant.
-- [x] `scripts/transcode_annotated_for_web.sh` regenerates `annotated_before.web.mp4` from `annotated_before.mp4` per session via `ffmpeg -c:v libx264 -movflags +faststart`. Both files are gitignored as multi-MB pitch artifacts.
+- [x] `scripts/vision/transcode_annotated_for_web.sh` regenerates `annotated_before.web.mp4` from `annotated_before.mp4` per session via `ffmpeg -c:v libx264 -movflags +faststart`. Both files are gitignored as multi-MB pitch artifacts.
 - [x] `frontend/api.js::cafetwinApi.assetUrl(rel)` resolves backend-relative asset paths against `API_BASE` and mirrors the page's hostname (avoids the Chromium `localhost`/`127.0.0.1` mismatch that broke media element loading).
 - [x] `<RealCCTVPane>` in `frontend/app-canvas.jsx` plays `assets.annotated_video` via `<video autoplay loop muted playsInline>` with a "YOLOv8n · ByteTrack · zone polygons" badge and overlay HUD (fps/trk/src). When no overlay video exists, falls back to the raw `assets.video` and badges as "raw CCTV".
 - [x] New `cctv` toolbar toggle (next to `compare`). When ON in split mode, the left pane is the real CCTV and the right pane is the iso twin (active scenario + recommendation). When ON without split, the canvas shows real CCTV alone. Disabled state when no asset is available.

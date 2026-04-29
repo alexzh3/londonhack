@@ -87,7 +87,7 @@ def main() -> int:
     except ImportError as exc:
         raise SystemExit(
             "Missing detection dependencies. Run with: "
-            "uv run scripts/detect_layout_objects.py --session ai_cafe_a"
+            "uv run scripts/vision/detect_layout_objects.py --session ai_cafe_a"
         ) from exc
 
     session_dir = ROOT_DIR / "demo_data" / "sessions" / args.session

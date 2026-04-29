@@ -19,7 +19,7 @@
 services:
   - type: web
     name: cafetwin-backend-tier1
-    branch: tier_1
+    branch: main
     runtime: python
     plan: free
     region: oregon

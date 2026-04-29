@@ -62,7 +62,7 @@ function CanvasToolbar({ split, setSplit, layers, setLayers, zoom, setZoom,
 }
 
 // Annotated-CCTV pane — plays the offline annotated video produced by
-// `scripts/render_rich_annotated_video.py`, which composites two
+// `scripts/vision/render_rich_annotated_video.py`, which composites two
 // perception layers onto the raw CCTV: static layout objects (chairs,
 // dining tables, couches, potted plants from YOLOv8x + ObjectReviewAgent
 // — boxes + class labels with confidence) and tracked persons (YOLOv8n
@@ -137,7 +137,7 @@ function RealCCTVPane({ src, side, label, sub, hasOverlays }) {
       ) : (
         <div className="cv-real-empty">
           <div>no annotated CCTV asset</div>
-          <small>run <code>scripts/render_rich_annotated_video.py</code> to generate one</small>
+          <small>run <code>scripts/vision/render_rich_annotated_video.py</code> to generate one</small>
         </div>
       )}
       <CanvasOverlay label={label} sub={sub} side={side}
