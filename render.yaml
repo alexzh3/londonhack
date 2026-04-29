@@ -8,11 +8,19 @@
 #   2. https://dashboard.render.com → New → Blueprint → connect repo.
 #   3. Render provisions the `cafetwin-backend-tier1` web service from this file.
 #   4. In the service Environment tab, set the secrets listed below
-#      (sync: false means "value lives in the dashboard, not in git").
+#      (`sync: false` means "value lives in the dashboard, not in git").
 #
 # After deploy, the public URL (e.g. https://cafetwin-backend-tier1.onrender.com)
-# becomes CAFETWIN_RENDER_URL — set it in .env, then run
-# ./scripts/deploy_vercel.sh to ship the frontend.
+# becomes CAFETWIN_RENDER_URL — set it in your local .env, then run
+# ./scripts/deploy_vercel.sh to ship the frontend. CAFETWIN_RENDER_URL and
+# CAFETWIN_VERCEL_URL are intentionally NOT declared here because they are
+# only consumed by the deploy scripts on the operator's machine, never by
+# the running backend.
+#
+# This file mirrors `.env.example`: every variable the application reads is
+# declared here, either with a sensible public default (`value: ...`) or as
+# a dashboard-managed secret (`sync: false`). When you add a new env var
+# elsewhere, add it here and to `.env.example` together.
 #
 # Reference: https://render.com/docs/blueprint-spec
 
@@ -24,12 +32,13 @@ services:
     plan: free
     region: oregon
 
-    # Install dependencies from uv.lock without installing the repo itself as a
-    # package. The app runs from the checkout root, which avoids setuptools'
-    # flat-layout auto-discovery seeing frontend/demo_data/cafe_videos as
-    # accidental packages during `pip install .`. Pass the Render-provisioned
-    # Python explicitly because the local `.python-version` pins 3.13 while
-    # Render currently provisions 3.12 via PYTHON_VERSION below.
+    # Install dependencies from uv.lock without installing the repo itself
+    # as a package. The app runs from the checkout root, which avoids
+    # setuptools' flat-layout auto-discovery seeing
+    # frontend/demo_data/cafe_videos as accidental packages during
+    # `pip install .`. Pass the Render-provisioned Python explicitly
+    # because the local `.python-version` pins 3.13 while Render currently
+    # provisions 3.12 via PYTHON_VERSION below.
     buildCommand: uv sync --python 3.12 --frozen --no-dev --no-install-project
     startCommand: uv run --python 3.12 --no-sync uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
 
@@ -41,30 +50,56 @@ services:
       - key: PYTHON_VERSION
         value: "3.12"
 
-      # Safe default: live agent disabled until Anthropic provider is
-      # configured in the Pydantic AI Gateway org. Flip to "" in the
-      # dashboard once the provider exists.
-      - key: CAFETWIN_FORCE_FALLBACK
-        value: "1"
-
+      # ---------- Live agent path (Pydantic AI Gateway → Anthropic) ----------
+      # The four agent model strings default to gateway/Sonnet-4-6 here so
+      # blueprint sync keeps them stable across deploys. Override any of
+      # them in the dashboard to switch a specific agent's model
+      # (e.g. claude-haiku-4-5 for cheaper inference). The actual API
+      # keys are dashboard-only (`sync: false`).
       - key: CAFETWIN_OPTIMIZATION_MODEL
         value: gateway/anthropic:claude-sonnet-4-6
+      - key: CAFETWIN_PATTERN_MODEL
+        value: gateway/anthropic:claude-sonnet-4-6
+      - key: CAFETWIN_OBJECT_REVIEW_MODEL
+        value: gateway/anthropic:claude-sonnet-4-6
+      - key: CAFETWIN_SIM_MODEL
+        value: gateway/anthropic:claude-sonnet-4-6
 
+      # `sync: false` so the dashboard wins. Set to "1" in the Render
+      # dashboard during outages or when the gateway is rate-limited to
+      # force every agent onto the cached fallback path. Leave unset (or
+      # empty) to run the live agent path, which is the default in
+      # production.
+      - key: CAFETWIN_FORCE_FALLBACK
+        sync: false
+
+      - key: PYDANTIC_AI_GATEWAY_API_KEY
+        sync: false
+
+      # ---------- MuBit (memory + Agent Cards) ----------
+      - key: MUBIT_API_KEY
+        sync: false
+      - key: CAFETWIN_MUBIT_AGENTS
+        sync: false
+
+      # ---------- Logfire (observability) ----------
       - key: LOGFIRE_SERVICE_NAME
         value: cafetwin-backend-tier1
       - key: LOGFIRE_ENVIRONMENT
         value: production
-
-      # Secrets — set in dashboard, never in git.
       - key: LOGFIRE_TOKEN
         sync: false
       - key: LOGFIRE_PROJECT_URL
         sync: false
-      - key: ANTHROPIC_API_KEY
+
+      # ---------- Public-demo safety net ----------
+      # `app/api/main.py` enforces a per-IP rate limit (10/min burst →
+      # 429; 100/day → graceful fallback to cached recommendation) and
+      # tightened CORS on every LLM-spending route. Both knobs are
+      # `sync: false` so the dashboard can flip them without a code push.
+      # Leave unset in production: the rate limit stays active and CORS
+      # allows the production Vercel origin + localhost dev ports.
+      - key: CAFETWIN_DISABLE_RATE_LIMIT
         sync: false
-      - key: PYDANTIC_AI_GATEWAY_API_KEY
-        sync: false
-      - key: PYDANTIC_AI_GATEWAY_ROUTE
-        sync: false
-      - key: MUBIT_API_KEY
+      - key: CAFETWIN_CORS_ORIGINS
         sync: false

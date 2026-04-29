@@ -1438,3 +1438,17 @@ Risk: low. Maintains 1.2m walkway clearance.
 - Evidence chain is mandatory; recommendation must cite real fixture IDs.
 - Logfire trace is mandatory.
 - If anything is at risk past hour 14, cut it.
+
+## Public-demo safety net
+
+The hosted demo is open without auth so the LinkedIn / Hacker News crowd
+can click through. Two layers of protection bound the sponsor LLM
+spend:
+
+- **Tightened CORS.** Only the production Vercel origin and the local-dev ports (`5500`, `5588`) can talk to `/api/*` from a browser. Override with `CAFETWIN_CORS_ORIGINS` for additional staging URLs.
+- **Per-IP rate limit on LLM-spending routes** (`/api/run`, `/api/run/stream`, `/api/sim/prompt`):
+  - **10/minute** burst → exceeding returns **`429`** with `Retry-After`. Anti-script protection.
+  - **100/day** sustained → exceeding **gracefully degrades to the cached recommendation** instead of erroring. The visitor still gets a working `RunResponse` with `used_fallback=true`; the response carries an `X-CafeTwin-Rate-Limit: daily-cap-reached` header so operators can spot the event in Logfire. No LLM call is made, so there's no further cost.
+  - Cheap routes (state, sessions, memories, feedback, logfire_url, static mounts) are exempt — they don't burn credits and the demo needs them on every page load.
+  - Implementation: 50-line FastAPI middleware in `app/api/main.py` (sliding-window in-memory bucket, no external dependency). Per-request fallback flag propagates via `contextvars.ContextVar` in `app/_runtime_overrides.py` so the daily-cap path doesn't pollute concurrent requests from other IPs.
+  - Disable in tests / local dev with `CAFETWIN_DISABLE_RATE_LIMIT=1` (the test suite sets this in `conftest.py`).

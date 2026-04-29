@@ -17,10 +17,11 @@ The project should prioritize:
 - Treat `.env`, `.env.*`, private keys, certificates, and `secrets/` as off-limits.
 - Commit only placeholder files such as `.env.example` or `.env.sample`.
 - Before preparing a commit or PR, check that no secret file is tracked or staged.
-- agent_plan.md contains the detailed architecture and overview_plan.md contains the general overview
-- for every change also edit the agent_plan.md and overview_plan.md to keep progress 
+- `docs/agent_plan.md` contains the detailed architecture; `docs/overview_plan.md` contains the general overview
+- for every meaningful change, also edit `docs/agent_plan.md` / `docs/overview_plan.md` (and the README env table when env vars change) to keep progress
 - mubit documentation, if planning or writing mubit code use the docs: https://docs.mubit.ai/
 - pydantic documentation if planning or writing with pydantic code, use the docs: https://pydantic.dev/docs/ai/overview/
+- the public demo runs behind a per-IP rate limit + tightened CORS in `app/api/main.py`; tests bypass it via `CAFETWIN_DISABLE_RATE_LIMIT=1` in `tests/conftest.py`. When adding new LLM-spending routes, add the path to `_LIMITED_PATHS`.
 
 ## Multi-Agent Handoff (optional)
 
@@ -36,7 +37,7 @@ If the file does not exist, ignore this section — single-agent sessions don't 
 
 Local skills live under `.agents/skills/`. Invoke them via the `skill` tool before writing code in the matching domain.
 
-- **`building-pydantic-ai-agents`** (`.agents/skills/building-pydantic-ai-agents/`) — invoke before writing or editing any Pydantic AI agent (`OptimizationAgent`, future `PatternAgent` / `SceneBuilderAgent`). Covers `Agent` setup, structured output, tools, streaming, hooks, retries, and testing patterns. Required reading before touching `app/agents/`.
+- **`building-pydantic-ai-agents`** (`.agents/skills/building-pydantic-ai-agents/`) — invoke before writing or editing any Pydantic AI agent (`PatternAgent`, `OptimizationAgent`, `ObjectReviewAgent`, `SimAgent`). Covers `Agent` setup, structured output, tools, streaming, hooks, retries, and testing patterns. Required reading before touching `app/agents/`.
 - **`instrumentation`** (`.agents/skills/instrumentation/`) — invoke before adding or editing Logfire spans, including `app/logfire_setup.py`, the `/api/run` span tree, and any `logfire.span(...)` / `logfire.instrument_pydantic_ai()` call. Catches subtle ordering/config mistakes that silently drop traces.
 - **`browser-automation`** (`.agents/skills/browser-automation/`) — invoke whenever a task requires actually driving a browser (open `localhost:3000`, click through a form, read console errors, scrape a rendered page, take screenshots, verify the demo UI). Backed by the Playwright MCP server registered in `.devin/config.json`; tools appear under `mcp__playwright__*`. Use `webfetch` instead for static HTML.
 

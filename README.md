@@ -105,7 +105,7 @@ The cached perception artifacts ship under `demo_data/sessions/`. To regenerate 
 - Python 3.10+ (3.12 runs on Render; 3.13 pinned locally via `.python-version`).
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for venv + dependency management.
 - For the live agent path:
-  - A Pydantic AI Gateway API key (`PYDANTIC_AI_GATEWAY_API_KEY`) **or** a direct `ANTHROPIC_API_KEY`.
+  - A Pydantic AI Gateway API key (`PYDANTIC_AI_GATEWAY_API_KEY`).
   - A Logfire write token (`LOGFIRE_TOKEN`) + project URL (`LOGFIRE_PROJECT_URL`) for trace links.
 - For the perception rebuild path only: `ffmpeg` on PATH (used by `scripts/vision/transcode_annotated_for_web.sh`).
 
@@ -119,9 +119,9 @@ main path.
 
 | Var | Purpose |
 |---|---|
-| `PYDANTIC_AI_GATEWAY_API_KEY` | Live agents via Pydantic AI Gateway (preferred). |
-| `ANTHROPIC_API_KEY` | Direct Anthropic fallback if Gateway key is absent. |
+| `PYDANTIC_AI_GATEWAY_API_KEY` | Live agents via Pydantic AI Gateway. |
 | `CAFETWIN_OPTIMIZATION_MODEL` | e.g. `gateway/anthropic:claude-sonnet-4-6` (default) or `anthropic:claude-sonnet-4-5`. |
+| `CAFETWIN_PATTERN_MODEL` | Model for `PatternAgent` (same format). |
 | `CAFETWIN_OBJECT_REVIEW_MODEL` | Model for `ObjectReviewAgent` (same format). |
 | `CAFETWIN_SIM_MODEL` | Model for `SimAgent` (same format). |
 | `CAFETWIN_FORCE_FALLBACK=1` | Skip every live agent; always return cached outputs. Demo safety net. |
@@ -129,6 +129,8 @@ main path.
 | `LOGFIRE_SERVICE_NAME` / `LOGFIRE_ENVIRONMENT` | Optional span tags for filtering (e.g. `cafetwin-backend-tier1` / `demo`). |
 | `MUBIT_API_KEY` | Enables MuBit primary memory writes/recall + Agent Cards; jsonl remains the always-on fallback. |
 | `CAFETWIN_MUBIT_AGENTS=1` | Route per-lane memory writes through per-agent MuBit AgentDefinitions (Tier 1E). |
+| `CAFETWIN_DISABLE_RATE_LIMIT=1` | Bypass the public-demo per-IP rate limit (dev / tests). |
+| `CAFETWIN_CORS_ORIGINS` | Comma-separated allowed origins; default = prod Vercel + localhost dev. |
 | `CAFETWIN_RENDER_URL` | Set after Render deploy; consumed by `scripts/deploy_vercel.sh`. |
 | `RENDER_DEPLOY_HOOK` | Optional; lets `scripts/deploy_render.sh` trigger redeploys without the dashboard. |
 
@@ -192,7 +194,7 @@ First-time:
 
 1. Push the repo (with `render.yaml`) to GitHub.
 2. <https://dashboard.render.com> → **New** → **Blueprint** → connect repo.
-3. In the service Environment tab, set the secrets listed in `render.yaml` (`LOGFIRE_TOKEN`, `LOGFIRE_PROJECT_URL`, `ANTHROPIC_API_KEY` / `PYDANTIC_AI_GATEWAY_API_KEY`, `MUBIT_API_KEY`, …). `render.yaml` defaults `CAFETWIN_FORCE_FALLBACK="1"` as a safety net — clear it from the dashboard once those secrets are in place to run the live agents in production.
+3. In the service Environment tab, set the secrets declared `sync: false` in `render.yaml` — `LOGFIRE_TOKEN`, `LOGFIRE_PROJECT_URL`, `PYDANTIC_AI_GATEWAY_API_KEY`, `MUBIT_API_KEY`. Leave `CAFETWIN_FORCE_FALLBACK` blank to run live agents in production; set to `"1"` only when you need to force the cached path during a gateway outage.
 4. After Render assigns a public URL, set it in your local `.env`:
    ```bash
    CAFETWIN_RENDER_URL=https://cafetwin-backend-tier1.onrender.com
