@@ -1,4 +1,4 @@
-"""MVP API routes."""
+"""Tier 1 API routes."""
 
 from __future__ import annotations
 

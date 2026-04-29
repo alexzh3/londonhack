@@ -167,7 +167,9 @@ def _bbox_iou(a: tuple[float, float, float, float], b: tuple[float, float, float
 
 
 def _live_agent_enabled() -> bool:
-    if os.getenv("CAFETWIN_FORCE_FALLBACK") == "1":
+    from app._runtime_overrides import force_fallback_active
+
+    if force_fallback_active():
         return False
     return any(
         os.getenv(key)
