@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from collections.abc import Iterable
@@ -209,8 +208,12 @@ async def _mubit_remember(record: MemoryRecord) -> str | None:
     response = await _mubit_post("/v2/control/ingest", body)
     mubit_id = _mubit_id_from_response(response)
     job_id = _dig(response, "job_id")
-    if isinstance(job_id, str) and job_id:
-        await _mubit_wait_for_ingest(job_id)
+    # We intentionally don't poll GET /v2/control/ingest/jobs/{job_id}. MuBit
+    # processes single-item ingests quickly and our next recall happens on a
+    # separate `/api/run` request (seconds-to-minutes later), so the ingest
+    # always completes in time for the read path. Polling only added latency
+    # and produced 400 spans in Logfire when MuBit reaped the completed job
+    # record before our first poll tick.
     return mubit_id or (job_id if isinstance(job_id, str) and job_id else None)
 
 
@@ -251,32 +254,9 @@ async def _mubit_query(
     return _merge_memory_records(records)[:limit]
 
 
-async def _mubit_wait_for_ingest(job_id: str) -> None:
-    attempts = int(os.getenv("MUBIT_INGEST_POLL_ATTEMPTS", "4"))
-    delay = float(os.getenv("MUBIT_INGEST_POLL_INTERVAL_S", "0.15"))
-    for _ in range(max(0, attempts)):
-        try:
-            status = await _mubit_get(f"/v2/control/ingest/jobs/{job_id}")
-        except Exception:
-            return
-        state = status.get("status") if isinstance(status, dict) else None
-        if status.get("done") or state in {"completed", "done"}:
-            return
-        if state == "failed":
-            raise RuntimeError("mubit ingest failed")
-        await asyncio.sleep(delay)
-
-
 async def _mubit_post(path: str, body: dict[str, Any]) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=_mubit_timeout(), follow_redirects=True) as client:
         response = await client.post(_mubit_url(path), json=body, headers=_mubit_headers())
-        response.raise_for_status()
-        return response.json() if response.content else {}
-
-
-async def _mubit_get(path: str) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=_mubit_timeout(), follow_redirects=True) as client:
-        response = await client.get(_mubit_url(path), headers=_mubit_headers())
         response.raise_for_status()
         return response.json() if response.content else {}
 
