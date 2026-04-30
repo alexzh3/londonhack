@@ -21,13 +21,24 @@ def test_generate_candidates_prioritizes_valid_fixture_moves():
     assert all(validate_layout_geometry(_as_change(candidate, pack), pack) == [] for candidate in candidates)
 
 
-def test_generate_candidates_includes_real_cafe_queue_boundary():
+def test_generate_candidates_prefers_visible_table_moves_over_markers():
+    """Queue-marker shifts are still scored, but `move_table` / `move_chair`
+    candidates are boosted by a `visual_impact` bonus so they dominate the
+    top of the list that's shown to the OptimizationAgent. This keeps the
+    iso-twin demo visually compelling (actual furniture animates) while
+    leaving marker shifts available in the broader candidate pool.
+    """
     pack = build("real_cafe")
 
-    candidates = generate_layout_candidates(pack)
+    top = generate_layout_candidates(pack, limit=12)
+    full_pool = generate_layout_candidates(pack, limit=999)
 
-    assert candidates
-    assert any(candidate.target_id == "service_lane_marker_1" for candidate in candidates)
+    # Top-ranked moves are all visible table/chair shifts.
+    assert top
+    assert all(candidate.target_kind in {"table", "chair"} for candidate in top)
+    # Queue boundary marker is still a valid candidate in the broader pool,
+    # just deprioritized vs visible furniture moves.
+    assert any(candidate.target_id == "service_lane_marker_1" for candidate in full_pool)
 
 
 def test_cached_recommendations_pass_strict_geometry_validation():

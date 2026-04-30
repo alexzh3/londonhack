@@ -1,32 +1,30 @@
 {
-  "title": "Open the real cafe right-side service lane",
-  "rationale": "The real CCTV fixture shows the tightest conflict where pickup traffic, storage access, and staff circulation meet on the right side of the counter. Shifting the movable lane boundary deeper toward storage keeps the fixed counter and seating intact while giving staff a cleaner path through the handoff zone.",
-  "target_id": "service_lane_marker_1",
+  "title": "Slide the back-left customer table away from the service lane",
+  "rationale": "The right-side handoff zone narrows every busy window because the back-left table pushes customer detours into the counter-to-pickup corridor. Sliding it west keeps the same seats in play while opening a cleaner staff and customer path through handoff traffic.",
+  "target_id": "table_seating_1",
   "simulation": {
-    "action": "change_queue_boundary",
-    "target_id": "service_lane_marker_1",
+    "action": "move_table",
+    "target_id": "table_seating_1",
     "from_position": [
-      1102,
-      450
+      392.0,
+      105.0
     ],
     "to_position": [
-      1185,
-      468
+      272.0,
+      105.0
     ],
-    "rotation_degrees": 0
+    "rotation_degrees": -2.0
   },
   "evidence_ids": [
-    "kpi_real_cafe_w2",
+    "kpi_real_cafe_w1",
     "kpi_real_cafe_w3"
   ],
   "expected_kpi_delta": {
-    "staff_walk_distance_px": -95.0,
-    "staff_customer_crossings": -2.0,
-    "queue_obstruction_seconds": -7.0,
-    "congestion_score": -0.14,
-    "table_detour_score": -0.3
+    "staff_customer_crossings": -3.2,
+    "queue_obstruction_seconds": -11.5,
+    "table_detour_score": -0.5
   },
-  "confidence": 0.72,
-  "risk": "medium",
-  "fingerprint": "real_cafe_open_right_service_lane_v1"
+  "confidence": 0.74,
+  "risk": "low",
+  "fingerprint": "real_cafe_move_table_table_seating_1_m120_p0"
 }

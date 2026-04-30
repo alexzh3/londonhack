@@ -36,7 +36,7 @@ def test_real_cafe_fixture_pack_validates():
     assert response.assets["video"] == "cafe_videos/real_cctv.mp4"
     assert response.assets["frame"] == "demo_data/sessions/real_cafe/frame.jpg"
     assert response.pattern.id == "pattern_real_service_lane_choke"
-    assert cached.fingerprint == "real_cafe_open_right_service_lane_v1"
+    assert cached.fingerprint == "real_cafe_move_table_table_seating_1_m120_p0"
     assert validate_layout_change(cached, pack) == []
 
 
@@ -99,7 +99,7 @@ def test_run_endpoint_returns_real_cafe_fallback_response(monkeypatch, tmp_path)
     ]
     pattern_stage = next(s for s in response.stages if s.name == "pattern_agent")
     assert pattern_stage.status == "fallback"
-    assert response.layout_change.fingerprint == "real_cafe_open_right_service_lane_v1"
+    assert response.layout_change.fingerprint == "real_cafe_move_table_table_seating_1_m120_p0"
     assert response.used_fallback is True
     assert response.memory_record.payload["session_id"] == "real_cafe"
     assert response.memory_record.payload["pattern_id"] == "pattern_real_service_lane_choke"

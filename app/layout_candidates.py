@@ -253,6 +253,17 @@ def _score_candidate(
     source_bonus = 0.08 if target.source in {"manual", "fixture"} else -0.03
     confidence_bonus = target.confidence * 0.08
     move_penalty = _distance(simulation.from_position, simulation.to_position) / MAX_SHIFT_PX * 0.08
+    # Bias toward shifts that render as a visible 3D object move in the iso
+    # twin. Only `move_table` and `move_chair` animate an actual piece of
+    # furniture in `frontend/cafe-iso.jsx::recInfoFromLayout`; every other
+    # action renders as a small "boundary shift" / "station shift" marker
+    # arrow, which is correct but visually subtle. Without this bonus,
+    # queue_marker / barrier candidates structurally dominate because they
+    # sit inside the bottleneck zone and capture the full `overlap_gain`
+    # term, while tables in `seating` never overlap a queue/counter zone
+    # and can't earn that score. The live demo tells a much clearer story
+    # when the scene visibly animates a table/chair move.
+    visual_impact = {"table": 0.55, "chair": 0.45}.get(target.kind, 0.0)
     score = (
         kind_base
         + zone_bonus
@@ -260,6 +271,7 @@ def _score_candidate(
         + confidence_bonus
         + overlap_gain * 0.55
         + distance_gain * 0.24
+        + visual_impact
         - move_penalty
     )
     reasons = ["valid geometry", "no fixed-object collision"]
@@ -271,6 +283,8 @@ def _score_candidate(
         reasons.append(f"target starts in affected zone {target.zone_id}")
     if target.source in {"manual", "fixture"}:
         reasons.append("uses reviewed fixture object")
+    if visual_impact > 0:
+        reasons.append("renders as a visible 3D object move in the iso twin")
     return max(0.0, score), reasons
 
 
